@@ -72,7 +72,7 @@ untrusted input:
   | Options per choice field | 50 |
   | Text answer length | 5,000 characters; `long_text` 20,000 |
   | Files per upload field | 10 |
-  | File size | 10 MB each, 50 MB per submission |
+  | File size | 10 MB per image, 10 MB per video, 100 MB per submission |
   | Retention | 1 to 36 months |
 
 ## Transport and headers

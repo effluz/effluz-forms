@@ -172,6 +172,8 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 - GitHub holds only what deployment needs: SSH host, user, key, and the
   registry token. Application secrets never pass through CI.
 - No configuration value is ever logged.
+- `PRIVACY_CONTACT_EMAIL` is the one configuration value shown to the
+  public, in the renderer's privacy footer and consent template.
 
 ## Technology decisions
 

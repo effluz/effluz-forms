@@ -39,19 +39,22 @@ the job system, never inline.
 Any further provider (S3-compatible, Supabase Storage, Google Drive) is a new
 adapter and an ADR. No other code changes.
 
-## Photo handling rules
+## File handling rules
 
 Applied by the application layer before `put`, independent of provider:
 
 - Accept only the kinds and limits the `file_upload` field's settings allow,
-  capped by the system maximums in `security.md`. First release: images only
-  (JPEG, PNG, WebP, HEIC).
+  capped by the system maximums in `security.md`. Kinds: `image` is JPEG,
+  PNG, WebP, HEIC; `video` is MP4 and QuickTime MOV.
 - Verify type by content, not by extension or declared MIME type.
-- Strip all metadata (EXIF, XMP, GPS) by re-encoding. Submitters rarely know
-  their photos carry location.
+- **Images** are re-encoded, which strips all metadata (EXIF, XMP, GPS).
+  Submitters rarely know their photos carry location. Anything that fails
+  decoding is a validation error shown to the submitter, not a job failure.
+- **Videos** are stored as received: pass-through bytes, container and
+  codec checked by content only, no re-encoding, no metadata stripping
+  guarantee. The renderer tells the submitter this before they upload. A
+  file whose container cannot be parsed is rejected as a validation error.
 - Rename to the opaque key. The original filename is not stored.
-- Reject anything that fails decoding. A corrupt image is a validation error
-  shown to the submitter, not a job failure.
 
 ## Lifecycle
 
@@ -70,6 +73,8 @@ the row pointing at nothing.
   dead `media.upload` job.
 - Temporary links are 4 hours and not revocable. Admin pages never embed them
   in anything that leaves the browser session.
+- Video playback in the manager streams through the same temporary link
+  with HTTP range support from Dropbox; the app does not proxy video bytes.
 - Team members with Dropbox access can see photos outside the app's audit
   log. The builder's consent guidance in `ui-ux/builder.md` must reflect
   this.

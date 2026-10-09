@@ -16,7 +16,7 @@ Decision record: `decisions/0009-form-builder-versioned-definitions.md`.
 
 **Operational settings** live on the form and change without a new version:
 notification recipients, retention period, open and close dates, bot
-challenge on or off. **Anything the submitter sees** lives in the version.
+challenge on or off, allow another response on or off. **Anything the submitter sees** lives in the version.
 
 ## Text and languages
 
@@ -76,8 +76,8 @@ of the same question line up.
 | `single_choice` | option key | options[] (key + LocalizedText), display as radio or dropdown | |
 | `multiple_choice` | option key[] | options[] | min/max selected |
 | `checkbox` | boolean | | must be true |
-| `consent` | `{ accepted: true, textVersion }` | consent text LocalizedText, flagged personal-data purpose | always required |
-| `file_upload` | media reference[] | accepted kinds (image only in v1; video is an open decision, see `use-cases/reference-form-preemie-stories.md`), max files, max size per file within system limits | min/max files |
+| `consent` | `{ accepted: true, textVersion }` | consent text LocalizedText, see Consent text below | always required |
+| `file_upload` | media reference[] | accepted kinds: `image`, `video`, or both; max files; max size per file within system limits | min/max files |
 | `section` | none | title, description | |
 
 Each type is implemented once as a registered capability that provides: the
@@ -162,6 +162,26 @@ field. The version tells review and export how to interpret each key. An
 export across versions takes the union of keys and labels each column by the
 latest label.
 
+## Consent text
+
+The `consent` field's text is staff-authored but must cover a fixed
+checklist, which the builder shows beside the text and publish validation
+enforces by requiring the editor to tick each item as covered:
+
+1. Who collects the data: Effluz.
+2. What is collected: the answers and any photos or videos.
+3. The purpose, in the form's own words.
+4. Where it is stored: servers in the United States and Effluz's Dropbox.
+5. How long: the form's retention period in months, matching settings.
+6. That Effluz team members with access to that storage can see the files.
+7. How to request earlier deletion: the privacy contact address.
+8. That the submitter is an adult and, when a minor's data is involved, has
+   authority to share it.
+
+The builder offers a starting template in both languages that already
+covers 1, 2 and 4 to 8, leaving the purpose to the editor. The renderer adds
+nothing to the consent text; it must stand on its own.
+
 ## Privacy rules enforced by the model
 
 - A form **collects personal data** if it contains an `email`, `phone` or
@@ -173,6 +193,10 @@ latest label.
 - Consent text is versioned with the form. A submission stores which text it
   accepted.
 - Builder settings for uploads cannot exceed the system maximums.
+- Images are re-encoded with metadata stripped. **Videos are stored as
+  received, with no metadata-stripping guarantee.** A `file_upload` field
+  that accepts video shows a fixed notice to the submitter saying so; see
+  `ui-ux/renderer.md`.
 
 ## Builder guidance derived from the Laws of UX
 

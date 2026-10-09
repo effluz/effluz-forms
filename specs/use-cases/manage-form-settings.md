@@ -24,6 +24,9 @@ The editor opens a form's Settings tab in the manager.
      Panama time. Shown in both local and UTC.
    - **Bot challenge**: on or off, default off, with a note on the
      accessibility cost.
+   - **Allow another response**: on or off, default off. When on, the
+     confirmation screen offers a link to start the form again, for forms
+     that invite one submission per child or per item.
    - **Slug**: editable while the form has never been published; read-only
      afterwards with an explanation.
 2. Changes save on confirm, not on every keystroke, since they affect live

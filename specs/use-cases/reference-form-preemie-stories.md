@@ -61,13 +61,33 @@ copy. It is Spanish single-language, like the original.
 ## Page 5: Photos and consent
 
 - `file_upload` Sube hasta 10 fotos sin editar del bebé, required, min 1,
-  max 10, 10 MB each. Help text explains hospital and current photos and
-  what not to send. The original also accepts a short video; see Gaps.
+  max 10, 10 MB each, kinds image and video. Help text explains hospital
+  and current photos, the optional short video with a message for other
+  families, and what not to send.
 - `section` Información: the campaign explanation and the deadline.
-- `consent` Soy mayor de edad y acepto que usen la información y fotos
-  enviadas en las redes sociales y página web de Effluz, required. Consent
-  text must also state where data is stored (United States) and the
-  retention period, which the Google original lacks.
+- `consent`, required. The original text ("Soy mayor de edad y acepto que
+  usen la información y fotos enviadas en las redes sociales y página web
+  de Effluz") does not meet the checklist in `form-definition.md`. The
+  fixture uses this text, which does:
+
+  > Soy mayor de edad y tengo autoridad para compartir la información y las
+  > fotos o videos de mi hijo o hija. Autorizo a Effluz a usar lo que envío
+  > en este formulario en sus redes sociales, página web y campañas sobre
+  > bebés prematuros. Entiendo que Effluz guarda mis respuestas y archivos
+  > en servidores en Estados Unidos y en su cuenta de Dropbox durante 12
+  > meses, que las personas del equipo de Effluz con acceso a esa cuenta
+  > pueden verlos, y que puedo pedir que se eliminen antes escribiendo a
+  > {privacy contact}.
+
+  English reference translation, for the bilingual template:
+
+  > I am an adult and have the authority to share my child's information,
+  > photos and videos. I authorize Effluz to use what I send in this form on
+  > its social media, website and premature-baby campaigns. I understand
+  > that Effluz keeps my answers and files on servers in the United States
+  > and in its Dropbox account for 12 months, that Effluz team members with
+  > access to that account can see them, and that I can ask for earlier
+  > deletion by writing to {privacy contact}.
 
 ## Confirmation
 
@@ -86,7 +106,8 @@ copy. It is Spanish single-language, like the original.
 | Long labels | page 2 |
 | `short_text`, `long_text`, `email`, `phone`, `single_choice`, `file_upload`, `section`, `consent` | throughout |
 | Submitter address marked, no confirmation email | page 1, confirmation |
-| Required file upload with min and max count | page 5 |
+| Required file upload with min and max count, images and video | page 5 |
+| Consent text meeting the checklist | page 5 |
 | Close date | settings |
 | Builder warning at more than 7 fields on a page | page 3 has 7, at the limit |
 
@@ -96,12 +117,12 @@ used either. They still ship in the first release so the next form does not
 need a developer, but this fixture does not test them; the conformance suite
 does.
 
-## Gaps against the original
+## Differences from the original
 
-1. **Video upload.** The original accepts a short video in the same upload
-   field. `file_upload` is images only in the first release. Decision
-   needed: add video kinds with pass-through storage and no metadata
-   stripping guarantee, or tell families to send videos another way.
+1. **Video upload.** Supported, stored as received with no metadata
+   stripping. The renderer shows a fixed notice above the field. The 10 MB
+   per-file limit matches the original and allows roughly 20 to 40 seconds
+   of phone video.
 2. **Google account capture.** The original records the submitter's Google
    identity. We do not, by design. The explicit email field replaces it.
 3. **Multiple babies.** The original asks for one submission per baby. We
