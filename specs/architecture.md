@@ -1,15 +1,18 @@
 # System Architecture
 
-Status: first pass, 2026-10-08. Core decisions are accepted and recorded in
-`decisions/`. Two tooling choices remain proposed; see Open items.
+Status: first pass, revised 2026-10-09 for the form builder model (ADR 0009).
+Core decisions are accepted and recorded in `decisions/`. Two tooling choices
+remain proposed; see Open items.
 
 ## Purpose and scale
 
-`effluz-forms` hosts public forms for Effluz events and processes, plus a small
-admin page where Effluz staff review submissions. Design targets:
+`effluz-forms` is a form builder and manager. Effluz staff build and publish
+forms in an admin area; the public fills them in; staff review the results.
+Forms are versioned data in the database, not code. Design targets:
 
-- Hundreds of submissions per event, not thousands per hour.
+- Tens of forms, hundreds of submissions per form, not thousands per hour.
 - A single VPS, one or two developers, continuous deployment from `main`.
+- New forms need no developer. Developers add capabilities.
 - Submission data is personal and sometimes about children. Every component
   is chosen to keep that data in as few places as possible.
 
@@ -29,8 +32,9 @@ magnitude or a second server appears.
         |                       |
   +-----+-----+          +------+------+
   |    app    |          |   worker    |  same image, job runner entrypoint
-  | forms +   |          |  outbox     |
-  | admin     |          |  poller     |
+  | renderer  |          |  outbox     |
+  | builder   |          |  poller     |
+  | manager   |          |             |
   +-----+-----+          +------+------+
         |                       |
         +-----------+-----------+
@@ -52,12 +56,40 @@ The application is built with Next.js and React (ADR 0008). `app` is the
 Next.js server. `worker` is a plain Node entrypoint in the same codebase that
 imports the application layer directly and never loads Next.js.
 
-## How Clean Architecture maps onto this system
+## Surfaces
 
-Each form under `src/forms/<form-name>/` and the shared code under
-`src/shared/` follow the four layers defined in `CLAUDE.md`. The system
-components above are all **infrastructure adapters** behind ports owned by the
-application layer. The ports every form can rely on from `src/shared/`:
+| Surface | Who | Path | Owning module's presentation |
+|---|---|---|---|
+| **Renderer** | The public | `/f/<slug>` | `submissions` |
+| **Builder** | Staff | `/admin/forms/<id>/edit` | `definitions` |
+| **Manager** | Staff | `/admin/...` | `definitions` (lifecycle, settings), `review` (submissions) |
+
+## Modules
+
+Code is organized by capability under `src/modules/`, each with the four
+layers from `CLAUDE.md`. Dependencies between modules point only downward in
+this table and go through each module's public application API.
+
+| Module | Responsibility | May depend on |
+|---|---|---|
+| `form-model` | The contract in `form-definition.md`: field type registry, validation rules, condition evaluation, publish validation. Pure domain, no I/O. | `shared` |
+| `identity` | Staff sign-in, sessions, audit log | `shared` |
+| `media` | `MediaStorage` port and adapters, photo processing, media records | `shared` |
+| `notifications` | Email templates and the `EmailSender` port; job handlers for email | `shared` |
+| `definitions` | Forms, drafts, versions, lifecycle, operational settings, QR codes | `form-model`, `identity` |
+| `submissions` | Public rendering of a published version, server validation, intake transaction, enqueuing jobs | `form-model`, `definitions`, `media`, `notifications` |
+| `review` | Listing, viewing, exporting and deleting submissions; dead job retry | `form-model`, `definitions`, `submissions`, `media`, `identity` |
+
+`shared/` holds the kernel: `LocalizedText`, ids, `Clock`, `UnitOfWork`,
+`JobQueue`, logging, and nothing that belongs to one module.
+
+Adding a module or an edge to this table requires an ADR.
+
+## Ports
+
+The system components in the overview are all **infrastructure adapters**
+behind ports owned by the application layer. Ports available from `shared/`
+or a module's public API:
 
 | Port | Responsibility | First adapter | Spec |
 |---|---|---|---|
@@ -68,8 +100,11 @@ application layer. The ports every form can rely on from `src/shared/`:
 | `AdminIdentity` | Verify a staff sign-in and return an allowed identity | Google OpenID Connect | `system/security.md` |
 | `Clock`, `IdGenerator` | Determinism in tests | System | n/a |
 
-Repositories are form-specific and live inside each form's `application/`
-(port) and `infrastructure/` (adapter) folders.
+| `FieldTypeRegistry` | Look up a field type's validator, normalizer, exporter | In-code registry in `form-model` | `form-definition.md` |
+
+Repositories belong to the module that owns the aggregate (`definitions` owns
+forms and versions, `submissions` owns submissions) and are defined as ports
+in that module's `application/` with adapters in its `infrastructure/`.
 
 **Where the framework is allowed.** Next.js and React appear only in
 `presentation/` folders and in the composition root under `src/app/`. Route
@@ -78,26 +113,44 @@ result to a response. A use case must be callable from a test, from the worker,
 and from a route handler without change. No React or Next.js import may appear
 in `domain/`, `application/`, or `infrastructure/`.
 
+## Publishing data flow
+
+1. Staff edit the draft in the builder. Every save is validated structurally
+   by `form-model` and written to the draft row.
+2. Publish runs the full publish validation (labels, translations, consent,
+   retention, condition references). Failures are returned as a list the
+   builder shows inline.
+3. In one transaction: the draft becomes an immutable version row, the form
+   points at it, a new draft is cloned from it, and an audit entry is written.
+4. The renderer serves the new version on the next request. No cache to
+   invalidate beyond the per-process definition cache keyed by version id.
+
 ## Submission data flow
 
-1. The browser posts the form, including photos, to `app`.
-2. `app` validates fields, file count, size and type at the boundary. Photos are
-   written to the local staging directory under random names, and image
-   metadata (EXIF, including GPS) is stripped.
-3. In **one database transaction** the use case stores the submission, one
-   media record per photo with status `staged`, and the jobs: one
-   `media.upload` per photo, one `email.submitter_confirmation`, one
-   `email.staff_notification`.
+1. The browser requests `/f/<slug>`. `submissions` loads the published version
+   and renders page one in the chosen locale.
+2. Each page posts to `app`. Server-side, `form-model` evaluates conditions
+   and validation rules against the version. Answers to hidden fields are
+   discarded. Photos are written to the local staging directory under random
+   names with metadata (EXIF, including GPS) stripped.
+3. On the final page, in **one database transaction**, the use case stores
+   the submission with its answers document and version id, one media record
+   per photo with status `staged`, and the jobs: one `media.upload` per
+   photo, one `email.submitter_confirmation` if the version defines one and
+   the form has a submitter email field, one `email.staff_notification` per
+   configured recipient group.
 4. The transaction commits. The user sees the success screen. Nothing external
    has been called yet, so a provider outage never loses a submission.
 5. `worker` picks jobs up. Uploads move each photo to Dropbox, mark the media
    record `stored` with its provider reference, and delete the staging copy.
    Email jobs call the provider.
-6. The admin page lists submissions. For each photo it serves the staging copy
-   if still present, otherwise a short-lived Dropbox link.
+6. The manager lists submissions per form and renders each answer through
+   its field type's review display, using the pinned version for labels. For
+   each photo it serves the staging copy if still present, otherwise a
+   short-lived Dropbox link.
 
-The staff notification links to the submission in the admin page and carries
-no story text or photos. Email is the least controlled channel we have.
+The staff notification links to the submission in the manager and carries
+no answers or photos. Email is the least controlled channel we have.
 
 ## Environments
 
@@ -132,6 +185,7 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 | Email | SMTP2GO behind the `EmailSender` port | accepted | `decisions/0006` |
 | CI/CD | GitHub Actions, images in GitHub Container Registry | accepted | `decisions/0007` |
 | Application | Next.js and React, framework confined to presentation and composition root | accepted | `decisions/0008` |
+| Product shape | Staff-authored, versioned form definitions; modules by capability | accepted | `decisions/0009` |
 | Error tracking | Sentry with PII scrubbing | proposed | `system/observability.md` |
 | Bot challenge | Cloudflare Turnstile on the final step | proposed | `system/security.md` |
 
@@ -150,17 +204,20 @@ repository. Each account must have at least two people able to recover it.
 
 ## Open items
 
-None block the first form. Still to confirm before the first production deploy:
+None block building the builder. Still to confirm before the first production
+deploy:
 
 1. **Error tracker and bot challenge** are proposed, not decided. Both are
    adapters; the forms can be built without them.
-2. **Data residency.** The VPS is in the United States. Each form's use-case
-   spec must state where its submitters are and whether that is acceptable.
+2. **Data residency.** The VPS is in the United States. The consent text
+   staff write must say so where submitters are elsewhere; the builder's
+   consent guidance in `ui-ux/builder.md` covers this.
 3. **Dropbox ownership.** The media account is a personal one. See ADR 0002
    for the recovery requirement that follows.
 
 ## What this architecture deliberately leaves out
 
 Message broker, cache layer, separate worker service, multi-region, roles and
-permissions beyond a single admin role, public API, mobile app. Each would need
-an ADR explaining what changed.
+permissions beyond a single admin role, public API, embedding or iframes,
+payments, form-specific code of any kind, mobile app. Each would need an ADR
+explaining what changed.

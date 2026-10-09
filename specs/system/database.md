@@ -5,9 +5,10 @@ Decision record: `decisions/0001-postgres-in-container.md`.
 
 ## Role
 
-PostgreSQL is the single system of record. It holds submissions, media
-records, the jobs outbox, admin sessions and the audit log. Photos themselves
-are never stored in the database, only references.
+PostgreSQL is the single system of record. It holds form definitions and
+their versions, submissions, media records, the jobs outbox, admin sessions
+and the audit log. Photos themselves are never stored in the database, only
+references.
 
 ## Deployment
 
@@ -33,15 +34,28 @@ Rules:
 
 ## Schema conventions
 
-- Table and column names in `snake_case`, singular table names per aggregate
-  (`submission`, `media`, `job`).
+- Table and column names in `snake_case`, singular table names per aggregate.
 - Every table has `id` (random UUID), `created_at`, `updated_at` in UTC.
-- Submission tables are form-specific and defined by each form's migrations.
-  Shared tables (`job`, `media`, `admin_session`, `audit_log`) live in
-  `src/shared/infrastructure/`.
-- Personal data columns are documented as such in the migration that adds
-  them, so retention and export code can find them.
-- No soft deletes for submissions. Retention means the row is gone.
+- Core tables and the module that owns their migrations:
+
+  | Table | Owner | Notes |
+  |---|---|---|
+  | `form` | `definitions` | slug, status, settings (jsonb), current_version_id |
+  | `form_draft` | `definitions` | one row per form, definition (jsonb), mutable |
+  | `form_version` | `definitions` | number, definition (jsonb), published_at, published_by. **Never updated after insert**; enforced by a trigger. |
+  | `submission` | `submissions` | form_id, form_version_id, locale, answers (jsonb), consent (jsonb), received_at |
+  | `media` | `media` | submission_id, field_key, status, provider_ref, content_type, size |
+  | `job` | `shared` | see `jobs.md` |
+  | `admin_session`, `audit_log` | `identity` | see `security.md` |
+
+- Definitions and answers are jsonb documents validated by `form-model`
+  before they are written. The database does not know field types.
+- `answers` is personal data as a whole. Retention and export treat the
+  document, never individual keys.
+- Indexes: `submission (form_id, received_at desc)` for review listing;
+  `form (slug)` unique; GIN on `answers` only if a real query needs it.
+- No soft deletes for submissions. Retention means the row is gone. Forms
+  are archived, never deleted, once they have submissions.
 
 ## Migrations
 

@@ -20,9 +20,9 @@ Runs on every pull request and every push to `main`.
 |---|---|---|
 | `lint` | Formatting and lint rules | nothing |
 | `typecheck` | Static types | nothing |
-| `unit` | Domain and application tests, no I/O | nothing |
+| `unit` | Domain and application tests, no I/O; includes the field type conformance suite | nothing |
 | `integration` | Infrastructure adapters against a Postgres service container, the local disk media adapter, a fake email provider | Postgres service |
-| `e2e` | Happy path and main failure path per form in a browser against the built app | Postgres service |
+| `e2e` | Build, publish, submit and review a form in a browser against the built app; invalid submission and closed form paths | Postgres service |
 | `build` | Builds the production image to prove it builds; not pushed on PRs | nothing |
 
 Jobs run in parallel where the table says they need nothing. The whole

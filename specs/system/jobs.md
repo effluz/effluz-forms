@@ -72,8 +72,8 @@ weekly (removes succeeded jobs older than 30 days).
 |---|---|---|
 | `media.upload` | Submission stored | Staging to Dropbox, media row to `stored` |
 | `media.delete` | Retention purge or admin delete | Remove from Dropbox and staging |
-| `email.submitter_confirmation` | Submission stored | Confirmation in the submitter's language |
-| `email.staff_notification` | Submission stored | Link to the admin page, no content |
-| `retention.purge` | Daily schedule | Delete submissions past their form's retention |
+| `email.submitter_confirmation` | Submission stored, version defines one | Confirmation in the submitter's locale |
+| `email.staff_notification` | Submission stored | Link to the manager, no content |
+| `retention.purge` | Daily schedule | Delete submissions past their form's retention setting |
 | `backup.database` | Nightly schedule | Encrypted dump to Dropbox backup folder |
 | `jobs.cleanup` | Weekly schedule | Prune old succeeded jobs |

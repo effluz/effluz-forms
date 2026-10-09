@@ -43,8 +43,9 @@ adapter and an ADR. No other code changes.
 
 Applied by the application layer before `put`, independent of provider:
 
-- Accept only the types and limits the form's use-case spec lists. Defaults:
-  JPEG, PNG, WebP, HEIC; 10 MB per file; count per submission set by the form.
+- Accept only the kinds and limits the `file_upload` field's settings allow,
+  capped by the system maximums in `security.md`. First release: images only
+  (JPEG, PNG, WebP, HEIC).
 - Verify type by content, not by extension or declared MIME type.
 - Strip all metadata (EXIF, XMP, GPS) by re-encoding. Submitters rarely know
   their photos carry location.
@@ -70,4 +71,5 @@ the row pointing at nothing.
 - Temporary links are 4 hours and not revocable. Admin pages never embed them
   in anything that leaves the browser session.
 - Team members with Dropbox access can see photos outside the app's audit
-  log. Document this in the use-case spec's privacy section.
+  log. The builder's consent guidance in `ui-ux/builder.md` must reflect
+  this.

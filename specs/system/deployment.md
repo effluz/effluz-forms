@@ -6,8 +6,8 @@ runbooks. Decision record: `decisions/0004-single-vps-docker-compose.md`.
 ## Server baseline
 
 - One InterServer VPS, current Ubuntu LTS, United States region. Personal
-  data therefore rests in the US; use-case specs must state whether that is
-  acceptable for their submitters.
+  data therefore rests in the US; the builder's consent guidance tells staff
+  to say so when submitters are elsewhere.
 - Docker Engine with the Compose plugin, installed from Docker's repository.
 - Unattended security upgrades on. Firewall allows only 22, 80, 443.
 - SSH by key only, root login disabled, a dedicated `deploy` user in the
@@ -34,7 +34,7 @@ once per server and kept current. It is the only way a server is set up.
 | Service | Image | Notes |
 |---|---|---|
 | `proxy` | Caddy | Automatic TLS, rate limiting, body size limit, security headers, serves `app` |
-| `app` | `ghcr.io/effluz/effluz-forms:<sha>` | Next.js server: public forms and admin page |
+| `app` | `ghcr.io/effluz/effluz-forms:<sha>` | Next.js server: renderer, builder, manager |
 | `worker` | same image | Entry point runs the Node job poller, no Next.js; one replica |
 | `db` | Postgres, pinned major | Named volume, internal network only |
 

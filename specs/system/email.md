@@ -10,8 +10,8 @@ is committed:
 
 | Message | To | Language | Content |
 |---|---|---|---|
-| Submitter confirmation | The submitter | Submitter's chosen form language | Thanks, what happens next, how to request deletion |
-| Staff notification | Configured staff address or group | English | Form name, submission id, time, link to admin page |
+| Submitter confirmation | The field marked as submitter address, if the form has one and the version defines a confirmation email | Submitter's locale | Staff-authored subject and body from the version, inside a fixed template that adds how to request deletion |
+| Staff notification | Recipients in the form's settings | English | Form name, submission id, time, link to the manager |
 
 The staff notification deliberately carries no story text and no photos.
 
@@ -27,8 +27,10 @@ retry after a crash can detect an already-sent message.
 
 - Live in `src/shared/presentation/email/`, one folder per template with an
   English and a Spanish version, each with a plain-text and an HTML body.
-- Copy is sourced from the owning spec: confirmation copy from the form's UI/UX
-  spec, staff notification copy from this file.
+- The fixed parts of both templates are specified in `ui-ux/renderer.md`
+  (confirmation) and this file (notification). The variable parts of the
+  confirmation come from the published version and are escaped and
+  sanitized like all staff-authored text.
 - HTML is table-based and inline-styled, uses design-system colors, and reads
   correctly with images blocked. Plain text is not generated from HTML; it is
   written.

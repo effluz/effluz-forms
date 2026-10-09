@@ -5,8 +5,9 @@ Date: 2026-10-08
 
 ## Context
 
-The forms need server-rendered, accessible, bilingual pages with file upload,
-plus an authenticated admin page, served from one container. The team knows
+The renderer needs server-rendered, accessible, bilingual pages with file
+upload; the builder and manager need a rich authenticated admin UI; all served
+from one container. The team knows
 React. Clean Architecture requires that the framework not leak into domain
 and application code.
 

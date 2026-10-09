@@ -1,0 +1,185 @@
+# Form Definition Model
+
+The single contract every surface consumes: builder, renderer, validator,
+storage, export, review. Status: first pass, 2026-10-09.
+Decision record: `decisions/0009-form-builder-versioned-definitions.md`.
+
+## Concepts
+
+| Concept | Meaning |
+|---|---|
+| **Form** | A named thing staff manage. Has a slug, a lifecycle status, operational settings, and versions. |
+| **Version** | An immutable snapshot of everything a submitter sees: pages, fields, logic, consent text, confirmation copy, languages. Created on publish. |
+| **Draft** | The one mutable working copy of a form. Publishing turns it into the next version and starts a fresh draft from it. |
+| **Submission** | One completed response. Pins the version it answered. |
+| **Field type** | A registered capability: how a kind of question is edited, rendered, validated, stored, exported and reviewed. |
+
+**Operational settings** live on the form and change without a new version:
+notification recipients, retention period, open and close dates, bot
+challenge on or off. **Anything the submitter sees** lives in the version.
+
+## Text and languages
+
+Every human-readable string in a version is a `LocalizedText`:
+`{ en: string, es: string }`. A form is either bilingual (both required on
+publish) or marked single-language, in which case the other value is absent
+and the renderer offers only one language. Submissions record the locale the
+submitter used.
+
+Staff-authored text is plain text. It is escaped on every render. No markup
+is interpreted. Section descriptions and confirmation copy may use a
+restricted subset (paragraphs, bold, links to `https` URLs) that the renderer
+sanitizes; nothing else.
+
+## Structure of a version
+
+```
+Version
+  languages: bilingual | en | es
+  pages[]                      ordered, at least one
+    key, title, description?
+    fields[]                   ordered
+      key                      stable identifier, see Keys
+      type                     a registered field type
+      label                    LocalizedText, required
+      help?                    LocalizedText
+      required: boolean
+      validation[]             rules allowed for the type
+      settings                 type-specific, validated by the type
+      visibility?              a Condition
+    visibility?                a Condition on the page
+  consent                      a consent field is mandatory when the form collects personal data, see Privacy
+  confirmation
+    screen: LocalizedText      shown after submit
+    email?: { subject, body }  LocalizedText each; sent only if the form has an email field marked as the submitter's address
+```
+
+### Keys
+
+Field and page keys are stable identifiers generated once and preserved
+across versions when staff edit a field. Editing a label keeps the key.
+Deleting a field and adding a new one produces a new key. Keys are what
+export, review and conditions reference, so answers from different versions
+of the same question line up.
+
+## Field types in the first release
+
+| Type | Answer shape | Settings | Validation allowed |
+|---|---|---|---|
+| `short_text` | string | placeholder | min/max length, pattern |
+| `long_text` | string | placeholder, rows | min/max length |
+| `email` | string | mark as submitter address | pattern (syntax enforced always) |
+| `phone` | string | | min/max length |
+| `number` | number | integer only, unit label | min/max value |
+| `date` | ISO date string | | min/max date, not in future |
+| `single_choice` | option key | options[] (key + LocalizedText), display as radio or dropdown | |
+| `multiple_choice` | option key[] | options[] | min/max selected |
+| `checkbox` | boolean | | must be true |
+| `consent` | `{ accepted: true, textVersion }` | consent text LocalizedText, flagged personal-data purpose | always required |
+| `file_upload` | media reference[] | accepted kinds (image only in v1), max files, max size per file within system limits | min/max files |
+| `section` | none | title, description | |
+
+Each type is implemented once as a registered capability that provides: the
+builder editor for its settings, the renderer component, the server validator,
+the storage normalizer, the export formatter, and the review display. A type
+missing any of these fails the conformance suite.
+
+Adding a type: see `CLAUDE.md`, "Adding a capability". Removing a type is not
+supported while any version uses it.
+
+## Validation
+
+Rules are declarative, attached per field, and chosen from the list the
+field type allows. The server evaluates them against the version on every
+submission. The client evaluates the same rules for immediate feedback and
+may not add or skip any.
+
+- `required` is a field property, not a rule, and is skipped for hidden fields.
+- Messages are built from the rule and the field label by the renderer, in
+  the submitter's locale. Staff do not write error messages.
+- System maximums bound anything staff can set: text length, file size, file
+  count, options per choice field, fields per page, pages per form. Values are
+  in `specs/system/security.md`.
+
+## Conditional logic
+
+A `Condition` decides whether a field or page is shown:
+
+```
+Condition := { all: Clause[] } | { any: Clause[] } | Clause
+Clause    := { field: key, op: Operator, value?: any }
+Operator  := equals | not_equals | contains | not_contains | is_empty
+           | is_not_empty | greater_than | less_than | is_one_of
+```
+
+Rules:
+
+- A clause may reference only a field that appears **earlier** in the form:
+  an earlier page, or earlier on the same page. The builder enforces this, so
+  cycles are impossible and evaluation is a single forward pass.
+- A hidden field is not validated and its answer is **discarded** on submit,
+  even if the client sent one.
+- A hidden page is skipped in navigation and progress.
+- A field referenced by a condition cannot be deleted until the condition is
+  removed. The builder shows where it is used.
+- Operators are registered capabilities with a type compatibility list, so
+  the builder only offers operators that make sense for the referenced field.
+
+## Lifecycle
+
+```
+draft --publish--> published --close--> closed --archive--> archived
+                      |  ^                |
+                      |  +---reopen-------+
+                      +--publish again--> new version, stays published
+```
+
+- `draft`: has never been published. Not reachable by the public.
+- `published`: the current version is live at `/f/<slug>`. Open and close
+  dates can narrow that window.
+- `closed`: public URL shows a closed message. Submissions remain reviewable.
+- `archived`: hidden from the default manager list. Reversible.
+- A form with submissions cannot be deleted, only archived. Submissions are
+  removed by retention or explicit, audited deletion.
+
+Publishing validates the draft: at least one page with one input field, no
+unlabeled field, all translations present for bilingual forms, consent
+present when required, retention set, no dangling condition references.
+
+## Submissions
+
+```
+Submission
+  id, formId, versionId, locale, receivedAt
+  answers: { [fieldKey]: answer }   only visible fields, normalized per type
+  media[]: references for file_upload answers
+  consent: { fieldKey, textVersion, acceptedAt }
+```
+
+Answers are stored as a document keyed by field key, never as one column per
+field. The version tells review and export how to interpret each key. An
+export across versions takes the union of keys and labels each column by the
+latest label.
+
+## Privacy rules enforced by the model
+
+- A form **collects personal data** if it contains an `email`, `phone` or
+  `file_upload` field, or any field the staff member flags as personal. Such
+  a form cannot publish without a `consent` field and a retention period.
+- Retention is set per form in whole months. Default 12, maximum 36. The
+  purge job deletes submissions and their media past retention, counted from
+  `receivedAt`.
+- Consent text is versioned with the form. A submission stores which text it
+  accepted.
+- Builder settings for uploads cannot exceed the system maximums.
+
+## Builder guidance derived from the Laws of UX
+
+The renderer guarantees accessible, consistent output for any valid
+definition. The builder guides what the renderer cannot fix:
+
+- Warns above 7 input fields on one page and blocks above the system
+  maximum (Miller's Law, Hick's Law).
+- Suggests a page break before a `file_upload` field.
+- Requires a confirmation screen text (Peak-End Rule).
+- Shows a live preview in both languages.
