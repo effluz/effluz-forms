@@ -20,6 +20,7 @@ wins until the spec is deliberately changed.
 | `specs/design.md` | Cross-form design principles and visual direction |
 | `specs/ui-ux/<form-name>.md` | UI and UX behavior of one form: screens, flow, copy, states, validation |
 | `specs/use-cases/<form-name>.md` | Purpose, actors, fields, business rules, consent, retention for one form |
+| `specs/system/<concern>.md` | One system concern each: database, media storage, jobs, email, security, deployment, CI/CD, observability |
 | `specs/decisions/NNNN-<slug>.md` | Architecture Decision Records (ADRs) |
 | `design-system/` | Brand assets, tokens, component standards, accessibility standards |
 
@@ -30,6 +31,7 @@ authoritative for its topic.
 
 ```
 src/
+  app/                      composition root and framework entry points only
   forms/<form-name>/        one folder per form, self-contained
     domain/                 entities, value objects, business rules, errors
     application/            use cases, ports (interfaces), DTOs
@@ -37,6 +39,7 @@ src/
     presentation/           screens, components, view models, copy bindings
   shared/                   cross-form code, same four layers, no form-specific logic
 tests/                      integration and end-to-end tests, fixtures, test helpers
+ops/                        server provisioning script, Compose files, runbooks
 ```
 
 - Unit tests sit next to the code they test.
@@ -44,6 +47,7 @@ tests/                      integration and end-to-end tests, fixtures, test hel
 - A form never imports from another form. Promote common code to `shared/`
   instead, and only when at least two forms need it.
 - Static brand assets referenced by code live in `design-system/`, not in a form.
+- Framework imports are allowed only in `presentation/` folders and `src/app/`.
 
 ## Workflow for every task
 

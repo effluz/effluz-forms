@@ -1,0 +1,91 @@
+# Security
+
+Owns: admin authentication, session handling, abuse protection, secrets, audit.
+Decision record: `decisions/0005-google-workspace-admin-auth.md`.
+
+## Threat model in one paragraph
+
+Attackers who matter: spammers filling the public form, opportunists scanning
+the VPS, and anyone who obtains a staff Google account or a Dropbox login. The
+assets: submitter stories, emails and photos of children. Impact of a leak is
+reputational and human, not financial. Controls below are proportionate to
+that.
+
+## Admin authentication
+
+- Sign-in with Google through OpenID Connect. The app verifies the ID token
+  signature, audience, expiry, `email_verified`, and that the hosted-domain
+  claim equals `effluz.com`. Any other account, including personal Gmail, is
+  rejected with a neutral message.
+- The `AdminIdentity` port returns `{ email, name }` or a refusal. The
+  application layer never sees Google-specific objects.
+- One role: admin. Everyone who passes is an admin. Roles are an ADR away if
+  ever needed.
+- Removing someone's access means removing them from the Workspace. There is
+  no local user table to drift from it.
+
+## Sessions
+
+- Server-side session stored in Postgres, referenced by an opaque cookie:
+  `HttpOnly`, `Secure`, `SameSite=Lax`, scoped to the admin path.
+- Idle timeout of 8 hours, absolute lifetime of 7 days, rotation on sign-in.
+- Every state-changing admin request carries a CSRF token.
+- Sign-out destroys the server record, not just the cookie.
+
+## Public form abuse protection
+
+Layered, cheapest first:
+
+1. **Proxy rate limit** per IP on form submission routes.
+2. **Honeypot field** hidden from humans; a filled honeypot is a silent accept
+   that stores nothing.
+3. **Minimum time-to-submit** measured from form render; faster than a human
+   is a silent accept.
+4. **Bot challenge** (Cloudflare Turnstile, proposed) only on the final step
+   and only when the use-case spec enables it. It costs accessibility and
+   must never be the first line.
+5. **Upload limits** enforced at the proxy (body size) and the app (count,
+   type by content, decode success).
+
+Silent accepts return the normal success screen. Telling a bot it was caught
+teaches it.
+
+## Transport and headers
+
+- TLS everywhere, HTTP redirected, HSTS enabled after the first week.
+- Content-Security-Policy with no inline scripts, `frame-ancestors 'none'`,
+  `Referrer-Policy: no-referrer` on admin pages so Dropbox temporary links
+  never leak through referrers.
+- Admin routes are not linked from public pages and are excluded from search
+  indexing.
+
+## Secrets
+
+- Environment variables only, as described in `architecture.md`.
+- Rotation procedure documented in `deployment.md` for: database password,
+  Dropbox refresh token, email provider key, Google client secret, session
+  signing key, backup encryption key.
+- A leaked secret is rotated first and investigated second.
+
+## Audit log
+
+An `audit_log` table records admin actions: sign-in, sign-out, submission
+viewed, photo viewed, export, delete, job retry. Each row: actor email,
+action, target id, timestamp, IP. Append-only from the application role. Kept
+for one year. This is the only place where "who looked at a child's photo"
+can be answered, so it is not optional.
+
+## Dependencies and supply chain
+
+- Lockfile committed, installs in CI are frozen to it.
+- Automated dependency update PRs enabled; security updates merged within a
+  week.
+- GitHub secret scanning and push protection on.
+- Container images pinned by digest in the Compose file, updated through PRs.
+
+## Incident basics
+
+If personal data may have been exposed: revoke the relevant credential, snapshot
+logs, write down the timeline, and notify Effluz leadership the same day. Legal
+notification duties depend on the submitters' jurisdiction and are the use-case
+spec's responsibility to state.
