@@ -43,7 +43,8 @@ Rules:
   | `form` | `definitions` | slug, status, settings (jsonb), current_version_id |
   | `form_draft` | `definitions` | one row per form, definition (jsonb), mutable |
   | `form_version` | `definitions` | number, definition (jsonb), published_at, published_by. **Never updated after insert**; enforced by a trigger. |
-  | `submission` | `submissions` | form_id, form_version_id, locale, answers (jsonb), consent (jsonb), received_at |
+  | `submission_in_progress` | `submissions` | opaque token, form_version_id, locale, answers so far (jsonb), submit token, expires_at. Personal data; purged after 24 hours. |
+  | `submission` | `submissions` | form_id, form_version_id, locale, answers (jsonb), consent (jsonb), received_at, reference (short, unique per form) |
   | `media` | `media` | submission_id, field_key, status, provider_ref, content_type, size |
   | `job` | `shared` | see `jobs.md` |
   | `admin_session`, `audit_log` | `identity` | see `security.md` |

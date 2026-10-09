@@ -4,7 +4,10 @@ One file per capability. Each states: actors, trigger, main flow, alternate
 flows and errors, rules, audit entries, success criteria. Names match the
 module that owns the capability.
 
-To write, in build order:
+`reference-form-preemie-stories.md` is the acceptance fixture: the first
+form the builder must reproduce, with the gaps it exposes.
+
+In build order:
 
 | File | Module | Capability |
 |---|---|---|

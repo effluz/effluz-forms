@@ -94,9 +94,10 @@ untrusted input:
 
 ## Audit log
 
-An `audit_log` table records admin actions: sign-in, sign-out, form created,
-draft saved, published, closed, archived, settings changed, submission
-viewed, photo viewed, export, delete, job retry. Each row: actor email,
+An `audit_log` table records every staff action named in the Audit entries
+section of each use case under `specs/use-cases/`: sign-in and rejection,
+form lifecycle and settings, draft saves, submission listing, viewing,
+photo viewing, export, deletion, job retry and discard. Each row: actor email,
 action, target id, timestamp, IP. Append-only from the application role. Kept
 for one year. This is the only place where "who looked at a child's photo"
 can be answered, so it is not optional.

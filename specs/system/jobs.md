@@ -25,7 +25,7 @@ the shared ports.
 | Column | Purpose |
 |---|---|
 | `id`, `type`, `payload` (jsonb) | Identity and work |
-| `status` | `pending`, `running`, `succeeded`, `failed`, `dead` |
+| `status` | `pending`, `running`, `succeeded`, `failed`, `dead`, `discarded` (by an operator, with a reason) |
 | `attempts`, `max_attempts` | Default 8 attempts |
 | `run_at` | Earliest execution time, used for backoff and scheduling |
 | `locked_at`, `locked_by` | Worker claim, expires after a lease period |
@@ -64,7 +64,8 @@ also makes its unsent jobs no-ops.
 Defined in code with a schedule. The worker's scheduler loop enqueues them with
 a `uniqueKey` of `<type>:<period>` so a restart never doubles them. Initial
 set: `retention.purge` daily, `backup.database` nightly, `jobs.cleanup`
-weekly (removes succeeded jobs older than 30 days).
+daily (removes succeeded jobs older than 30 days, expired in-progress
+submission records older than 24 hours, and their staged files).
 
 ## Job types in the first release
 
@@ -76,4 +77,4 @@ weekly (removes succeeded jobs older than 30 days).
 | `email.staff_notification` | Submission stored | Link to the manager, no content |
 | `retention.purge` | Daily schedule | Delete submissions past their form's retention setting |
 | `backup.database` | Nightly schedule | Encrypted dump to Dropbox backup folder |
-| `jobs.cleanup` | Weekly schedule | Prune old succeeded jobs |
+| `jobs.cleanup` | Daily schedule | Prune old succeeded jobs, expired in-progress records and their staged files |

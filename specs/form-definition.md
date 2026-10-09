@@ -26,10 +26,11 @@ publish) or marked single-language, in which case the other value is absent
 and the renderer offers only one language. Submissions record the locale the
 submitter used.
 
-Staff-authored text is plain text. It is escaped on every render. No markup
-is interpreted. Section descriptions and confirmation copy may use a
-restricted subset (paragraphs, bold, links to `https` URLs) that the renderer
-sanitizes; nothing else.
+Staff-authored text is plain text and is escaped on every render. Four
+places may use a restricted rich-text subset (paragraphs, line breaks, bold,
+bulleted lists, links to `https` URLs) that the renderer sanitizes: page
+descriptions, field help, `section` descriptions, and confirmation copy.
+Labels and options are always plain text.
 
 ## Structure of a version
 
@@ -68,7 +69,7 @@ of the same question line up.
 |---|---|---|---|
 | `short_text` | string | placeholder | min/max length, pattern |
 | `long_text` | string | placeholder, rows | min/max length |
-| `email` | string | mark as submitter address | pattern (syntax enforced always) |
+| `email` | string | mark as submitter address (at most one per form) | pattern (syntax enforced always) |
 | `phone` | string | | min/max length |
 | `number` | number | integer only, unit label | min/max value |
 | `date` | ISO date string | | min/max date, not in future |
@@ -76,7 +77,7 @@ of the same question line up.
 | `multiple_choice` | option key[] | options[] | min/max selected |
 | `checkbox` | boolean | | must be true |
 | `consent` | `{ accepted: true, textVersion }` | consent text LocalizedText, flagged personal-data purpose | always required |
-| `file_upload` | media reference[] | accepted kinds (image only in v1), max files, max size per file within system limits | min/max files |
+| `file_upload` | media reference[] | accepted kinds (image only in v1; video is an open decision, see `use-cases/reference-form-preemie-stories.md`), max files, max size per file within system limits | min/max files |
 | `section` | none | title, description | |
 
 Each type is implemented once as a registered capability that provides: the
