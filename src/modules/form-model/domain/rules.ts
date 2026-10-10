@@ -184,19 +184,24 @@ export function evaluateRule(
   ctx: RuleContext,
 ): ValidationCode | undefined {
   switch (rule.rule) {
+    // A string never has more graphemes than UTF-16 code units, so the cheap
+    // code-unit length decides first and graphemes are counted only when needed.
     case "min_length":
-      return typeof answer === "string" && graphemeLength(answer) < rule.value
+      return typeof answer === "string" &&
+        (answer.length < rule.value || graphemeLength(answer) < rule.value)
         ? "min_length"
         : undefined;
     case "max_length":
-      return typeof answer === "string" && graphemeLength(answer) > rule.value
+      return typeof answer === "string" &&
+        answer.length > rule.value &&
+        graphemeLength(answer) > rule.value
         ? "max_length"
         : undefined;
     case "pattern":
       if (typeof answer !== "string") return undefined;
       // Oversized input is refused before any regex is built or run. Combining
       // marks add code units without adding graphemes, so both are bounded.
-      if (graphemeLength(answer) > PATTERN_MAX_INPUT || answer.length > PATTERN_MAX_INPUT)
+      if (answer.length > PATTERN_MAX_INPUT || graphemeLength(answer) > PATTERN_MAX_INPUT)
         return "pattern";
       return new RegExp(`^(?:${rule.value})$`, `u${rule.flags ?? ""}`).test(answer.trim())
         ? undefined

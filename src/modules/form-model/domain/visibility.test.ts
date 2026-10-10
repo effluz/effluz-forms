@@ -55,6 +55,26 @@ describe("evaluateVisibility", () => {
     expect(v.fields.get("weeks")).toBe(false);
     expect(v.visibleAnswers).toEqual({ twins: false });
   });
+  it("does not read an inherited property as the answer of a field keyed constructor", () => {
+    const own = parseDraft(
+      {
+        languages: "es",
+        confirmation: { screen: { es: "Gracias" } },
+        pages: [
+          {
+            key: "page1",
+            title: { es: "Uno" },
+            fields: [{ key: "constructor", type: "short_text", label: { es: "Campo" } }],
+          },
+        ],
+      },
+      registry,
+    );
+    if (!own.ok) throw new Error(JSON.stringify(own.issues));
+    const v = evaluateVisibility(own.version, {});
+    expect(v.fields.get("constructor")).toBe(true);
+    expect(Object.hasOwn(v.visibleAnswers, "constructor")).toBe(false);
+  });
   it("treats a reference to a later field as undefined (single forward pass)", () => {
     const v = evaluateVisibility(version, { twins: true, weeks: 30 });
     expect(v.fields.get("later_dep")).toBe(false);

@@ -20,29 +20,32 @@ export const clauseSchema = z
   });
 export type Clause = z.infer<typeof clauseSchema>;
 
-export type Condition = Clause | { all: Condition[] } | { any: Condition[] };
+/** A clause or one flat group of clauses; groups do not nest (specs/form-definition.md). */
+export type Condition = Clause | { all: Clause[] } | { any: Clause[] };
 
-export const conditionSchema: z.ZodType<Condition> = z.lazy(() =>
-  z.union([
-    clauseSchema,
-    z.object({ all: z.array(conditionSchema) }).strict(),
-    z.object({ any: z.array(conditionSchema) }).strict(),
-  ]),
-);
+export const conditionSchema: z.ZodType<Condition> = z.union([
+  clauseSchema,
+  z.object({ all: z.array(clauseSchema) }).strict(),
+  z.object({ any: z.array(clauseSchema) }).strict(),
+]);
+
+function evaluateClause(clause: Clause, answers: Readonly<Record<string, unknown>>): boolean {
+  const answer = Object.hasOwn(answers, clause.field) ? answers[clause.field] : undefined;
+  return OPERATORS[clause.op].evaluate(answer, clause.value);
+}
 
 export function evaluateCondition(
   condition: Condition,
   answers: Readonly<Record<string, unknown>>,
 ): boolean {
-  if ("all" in condition) return condition.all.every((c) => evaluateCondition(c, answers));
-  if ("any" in condition) return condition.any.some((c) => evaluateCondition(c, answers));
-  const answer = Object.hasOwn(answers, condition.field) ? answers[condition.field] : undefined;
-  return OPERATORS[condition.op].evaluate(answer, condition.value);
+  if ("all" in condition) return condition.all.every((c) => evaluateClause(c, answers));
+  if ("any" in condition) return condition.any.some((c) => evaluateClause(c, answers));
+  return evaluateClause(condition, answers);
 }
 
 /** Every field key referenced anywhere in the condition, in order of appearance. */
 export function referencedKeys(condition: Condition): string[] {
-  if ("all" in condition) return condition.all.flatMap(referencedKeys);
-  if ("any" in condition) return condition.any.flatMap(referencedKeys);
+  if ("all" in condition) return condition.all.map((c) => c.field);
+  if ("any" in condition) return condition.any.map((c) => c.field);
   return [condition.field];
 }

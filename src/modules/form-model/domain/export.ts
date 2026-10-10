@@ -78,10 +78,8 @@ export function exportRow(
     if (!field) return "";
     if (!cache.has(col.key)) {
       const def = registry.get(field.type);
-      cache.set(
-        col.key,
-        def.exportCells(answers[col.key], field.settings, locale, version.languages),
-      );
+      const answer = Object.hasOwn(answers, col.key) ? answers[col.key] : undefined;
+      cache.set(col.key, def.exportCells(answer, field.settings, locale, version.languages));
     }
     return cache.get(col.key)?.[col.cell] ?? "";
   });

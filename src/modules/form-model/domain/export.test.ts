@@ -118,4 +118,9 @@ describe("exportRow", () => {
       "",
     ]);
   });
+  it("reads only own properties of the answers", () => {
+    const v = textVersion([{ key: "constructor" }]);
+    const columns = exportColumns([v], registry, "en");
+    expect(exportRow(columns, v, registry, {}, "en")).toEqual([""]);
+  });
 });
