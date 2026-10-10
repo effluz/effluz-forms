@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { defineFieldType } from "./field-type";
 import { consentItems } from "./field-types/consent";
-import { buildDefaultRegistry } from "./field-types";
+import { buildDefaultRegistry, defaultFieldTypes } from "./field-types";
+import { longText } from "./field-types/long-text";
+import { createRegistry } from "./registry";
 import { checkDefinition, collectsPersonalData, parseVersion, validateForPublish } from "./publish";
 import { parseDraft } from "./version";
 
@@ -333,6 +336,42 @@ describe("checkDefinition", () => {
     ]);
     expect(overMax([pattern, { rule: "max_length", value: 500 }])).toEqual([]);
     expect(overMax([pattern, { rule: "max_length", value: 1001 }])).toHaveLength(1);
+  });
+  it("derives the max_length requirement from the type's rules and cap, not its id", () => {
+    const withLongTextCap = (maxLength: number) =>
+      createRegistry([
+        ...defaultFieldTypes.filter((d) => d.id !== "long_text"),
+        defineFieldType({
+          ...longText,
+          allowedRules: ["min_length", "max_length", "pattern"],
+          maxLength,
+        }),
+      ]);
+    const overMax = (maxLength: number) => {
+      const reg = withLongTextCap(maxLength);
+      const draft = parseDraft(
+        withFields([
+          {
+            key: "story",
+            type: "long_text",
+            label: { en: "Story", es: "Historia" },
+            validation: [{ rule: "pattern", value: "[a-z]+" }],
+          },
+          consentField,
+        ]),
+        reg,
+      );
+      if (!draft.ok) throw new Error(JSON.stringify(draft.issues));
+      return checkDefinition(draft.version, reg).filter((i) => i.code === "over_maximum");
+    };
+    expect(overMax(2_000)).toEqual([
+      {
+        code: "over_maximum",
+        path: "pages/0/fields/0/validation",
+        params: { detail: "pattern requires max_length <= 1000" },
+      },
+    ]);
+    expect(overMax(800)).toEqual([]);
   });
   it("lets an email field carry a pattern rule without a max_length rule", () => {
     const v = parse(

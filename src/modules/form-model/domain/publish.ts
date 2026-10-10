@@ -43,9 +43,6 @@ export function collectsPersonalData(version: Version, registry: FieldTypeRegist
   );
 }
 
-/** Types whose pattern rule needs a max_length rule. Email is capped by its own 254 limit. */
-const PATTERN_BOUNDED_TYPES = ["short_text", "phone"];
-
 export function checkDefinition(version: Version, registry: FieldTypeRegistry): PublishIssue[] {
   const issues: PublishIssue[] = [];
   const L = version.languages;
@@ -161,9 +158,13 @@ export function checkDefinition(version: Version, registry: FieldTypeRegistry): 
               detail: `${rule.rule} ${String(rule.value)} > ${String(maxFiles)} files`,
             });
       }
-      // A pattern rule only matches answers up to PATTERN_MAX_INPUT, so the length must be capped.
+      // A pattern rule only matches answers up to PATTERN_MAX_INPUT, so the length must be
+      // capped, unless the type's own hard cap already is (email's 254).
+      const typeCapsPatternInput =
+        def.maxLength !== undefined && def.maxLength <= PATTERN_MAX_INPUT;
       if (
-        PATTERN_BOUNDED_TYPES.includes(def.id) &&
+        def.allowedRules.includes("pattern") &&
+        !typeCapsPatternInput &&
         field.validation.some((r) => r.rule === "pattern")
       ) {
         const bounded = field.validation.some(
