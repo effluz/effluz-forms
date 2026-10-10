@@ -3,6 +3,7 @@ import { getContainer } from "@/app/container";
 import { currentSession } from "@/modules/identity/application";
 import { clientIp, ERROR_PATH, signInPath } from "@/modules/identity/presentation/http";
 import type { Logger } from "@/shared/application/ports/logger";
+import { createLogger } from "@/shared/infrastructure/logging/logger";
 
 /**
  * The HTTP-level admin gate. Every request under /admin except the auth routes needs
@@ -13,7 +14,7 @@ import type { Logger } from "@/shared/application/ports/logger";
  * specs/use-cases/sign-in.md, "Trigger".
  */
 export async function proxy(request: NextRequest): Promise<NextResponse> {
-  const { pathname, searchParams } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
   if (pathname === "/admin/auth" || pathname.startsWith("/admin/auth/")) return NextResponse.next();
 
   let logger: Logger | undefined;
@@ -26,20 +27,37 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       meta: { ip: clientIp(request.headers) },
     });
     if (current.state === "active") return NextResponse.next();
-
-    // `_rsc` is Next's internal cache-busting parameter on client navigations.
-    const query = new URLSearchParams(searchParams);
-    query.delete("_rsc");
-    const search = query.size > 0 ? `?${query.toString()}` : "";
     return NextResponse.redirect(
-      new URL(signInPath(`${pathname}${search}`), container.config.publicBaseUrl),
+      new URL(signInPath(`${pathname}${withoutRsc(search)}`), container.config.publicBaseUrl),
       302,
     );
   } catch (e) {
     // Never let a request through when the session cannot be checked (database down).
-    logger?.warn("admin gate failed", { error: e instanceof Error ? e.name : "Error" });
+    // Without a container (invalid configuration) a stand-alone logger still records it.
+    (logger ?? fallbackLogger()).warn("admin gate failed", {
+      error: e instanceof Error ? e.name : "Error",
+    });
     return NextResponse.redirect(new URL(ERROR_PATH, request.url), 302);
   }
+}
+
+/**
+ * The query string as sent, minus Next's internal `_rsc` cache-busting parameter.
+ * Pairs are kept verbatim: re-encoding would turn `/` into `%2F`, which
+ * sanitizeReturnTo rejects.
+ */
+function withoutRsc(search: string): string {
+  const pairs = search
+    .replace(/^\?/, "")
+    .split("&")
+    .filter((pair) => pair !== "" && pair.split("=")[0] !== "_rsc");
+  return pairs.length > 0 ? `?${pairs.join("&")}` : "";
+}
+
+let fallback: Logger | undefined;
+function fallbackLogger(): Logger {
+  fallback ??= createLogger({ service: "app", level: "warn", version: "unknown" });
+  return fallback;
 }
 
 export const config = {

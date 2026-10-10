@@ -4,6 +4,7 @@ import { clearedCookie, readCookie } from "@/modules/identity/presentation/cooki
 import { csrfRejectedPage } from "@/modules/identity/presentation/csrf-page";
 import {
   clientIp,
+  ERROR_PATH,
   forbidden,
   redirectTo,
   SIGNED_OUT_PATH,
@@ -25,17 +26,24 @@ async function csrfField(request: Request): Promise<string> {
  * specs/system/security.md, "Sessions".
  */
 export async function POST(request: Request): Promise<Response> {
-  const { identity, config } = getContainer();
+  const { identity, config, logger } = getContainer();
   const cookieName = config.session.cookieName;
-  const cleared = clearedCookie(cookieName, config.session.secure);
   const sessionId = readCookie(request.headers.get("cookie"), cookieName);
-  if (sessionId === null) return redirectTo(SIGNED_OUT_PATH, [cleared]);
+  // No cookie, no Set-Cookie: a cross-site form post arrives without the SameSite=Lax
+  // session cookie, and clearing it here would sign staff out without the CSRF token.
+  if (sessionId === null) return redirectTo(SIGNED_OUT_PATH);
 
-  const outcome = await signOut(identity, {
-    sessionId,
-    csrfToken: await csrfField(request),
-    meta: { ip: clientIp(request.headers) },
-  });
+  let outcome: Awaited<ReturnType<typeof signOut>>;
+  try {
+    outcome = await signOut(identity, {
+      sessionId,
+      csrfToken: await csrfField(request),
+      meta: { ip: clientIp(request.headers) },
+    });
+  } catch (e) {
+    logger.warn("sign-out failed", { error: e instanceof Error ? e.name : "Error" });
+    return redirectTo(ERROR_PATH);
+  }
   if (outcome === "csrf_mismatch") return forbidden(csrfRejectedPage());
-  return redirectTo(SIGNED_OUT_PATH, [cleared]);
+  return redirectTo(SIGNED_OUT_PATH, [clearedCookie(cookieName, config.session.secure)]);
 }

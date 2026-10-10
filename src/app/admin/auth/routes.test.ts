@@ -134,6 +134,16 @@ describe("GET /admin/auth/callback", () => {
     });
   });
 
+  it("marks the session cookie Secure when the config asks for it", async () => {
+    useContainer({ ...baseConfig, session: { ...baseConfig.session, secure: true } });
+    const cookie = await start("/admin");
+    deps.identity.script(workspaceClaims());
+    const res = await callback(callbackRequest(cookie));
+    expect(setCookie(res, SESSION)).toMatch(
+      /^effluz_admin_session=[^;]+; Path=\/admin; HttpOnly; SameSite=Lax; Max-Age=\d+; Secure$/,
+    );
+  });
+
   it("sends a refused account to the denied page without a session cookie", async () => {
     const cookie = await start("/admin");
     deps.identity.script({
@@ -250,10 +260,30 @@ describe("POST /admin/auth/signout", () => {
     expect(html).toContain('href="/admin"');
   });
 
-  it("goes to the signed-out page when there is no session cookie", async () => {
+  it("sets no cookie when the request carries no session cookie, so a cross-site post cannot sign anyone out", async () => {
     const res = await signout(signoutRequest(null, "anything"));
     expect(res.status).toBe(302);
     expect(res.headers.get("Location")).toBe("/admin/auth/signed-out");
+    expect(res.headers.getSetCookie()).toEqual([]);
+  });
+
+  it("goes to the error page when sign-out fails, logging only the error class", async () => {
+    const { id, csrf } = await signedIn();
+    deps.sessions.findById = () => Promise.reject(new TypeError("connect ECONNREFUSED"));
+    const res = await signout(signoutRequest(id, csrf));
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/admin/auth/error");
+    expect(res.headers.getSetCookie()).toEqual([]);
+    expect(warn).toHaveBeenCalledWith("sign-out failed", { error: "TypeError" });
+  });
+
+  it("clears the session cookie with Secure when the config asks for it", async () => {
+    useContainer({ ...baseConfig, session: { ...baseConfig.session, secure: true } });
+    const { id, csrf } = await signedIn();
+    const res = await signout(signoutRequest(id, csrf));
+    expect(setCookie(res, SESSION)).toBe(
+      `${SESSION}=; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=0; Secure`,
+    );
   });
 
   it("goes to the signed-out page when the cookie names no session", async () => {

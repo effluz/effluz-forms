@@ -30,9 +30,10 @@ A staff member opens any `/admin` path without a valid session.
 ## Alternate flows and errors
 
 - **Wrong domain or unverified email.** No session. A neutral page says this
-  account cannot access the admin area, with a sign-out-of-Google link. An
-  audit entry `sign_in_rejected` records the attempted domain, not the
-  address.
+  account cannot access the admin area and offers "Try another account",
+  which restarts sign-in with Google's account chooser
+  (`prompt=select_account`). An audit entry `sign_in_rejected` records the
+  attempted domain, not the address.
 - **State or nonce mismatch, expired code.** Restart the flow once
   automatically; on a second failure show an error page.
 - **Google unavailable.** Error page with a retry. No partial session.

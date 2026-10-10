@@ -57,7 +57,8 @@
 
 .card {
   box-sizing: border-box;
-  max-width: 560px;
+  /* size.contentWidthPublic */
+  max-width: 640px;
   margin: 64px auto 0;
   padding: 32px;
   background: var(--surface-card);

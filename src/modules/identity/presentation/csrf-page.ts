@@ -3,12 +3,13 @@ import { copy, type CopyKey } from "./copy";
 /**
  * The page behind a sign-out refused for a wrong CSRF token, as one static HTML
  * document: a route handler response has no React tree or CSS module behind it.
- * Colors and sizes repeat the tokens used in `auth.module.css`.
+ * Colors and sizes repeat the tokens used in `auth.module.css` (the card width
+ * is `size.contentWidthPublic`).
  */
 
 const STYLE = [
   "body{margin:0;background:#f4f3fa;color:#372549;font:15px/1.6 Poppins,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}",
-  "main{box-sizing:border-box;max-width:560px;margin:64px auto 0;padding:32px;background:#fff;border:1px solid #eff0f5;border-radius:16px}",
+  "main{box-sizing:border-box;max-width:640px;margin:64px auto 0;padding:32px;background:#fff;border:1px solid #eff0f5;border-radius:16px}",
   "h1{margin:0 0 16px;font-size:24px;font-weight:600;line-height:1.2}",
   "p{margin:0 0 24px}",
   "span{display:block;color:#774c60;font-weight:400}",

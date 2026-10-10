@@ -160,3 +160,45 @@ describe("layer boundaries", () => {
     expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });
 });
+
+describe("files outside a layer folder", () => {
+  const boundaryRules = (messages: { ruleId: string | null }[]) =>
+    messages.map((m) => m.ruleId).filter((id) => id?.startsWith("boundaries/"));
+
+  it("refuses a stray module file importing another module's infrastructure", async () => {
+    const rules = await lintVirtual(
+      "src/modules/media/boundary-probe-stray.ts",
+      `import { GoogleOidcAdmin } from "@/modules/identity/infrastructure/google-oidc";\nexport const g = GoogleOidcAdmin;\n`,
+    );
+    expect(boundaryRules(rules)).not.toEqual([]);
+  });
+
+  it("refuses a stray shared file importing a module", async () => {
+    const rules = await lintVirtual(
+      "src/shared/boundary-probe-stray.ts",
+      `import { sanitizeReturnTo } from "@/modules/identity/application";\nexport const s = sanitizeReturnTo;\n`,
+    );
+    expect(boundaryRules(rules)).not.toEqual([]);
+  });
+
+  it("refuses a stray file in the src root importing module infrastructure", async () => {
+    const rules = await lintVirtual(
+      "src/boundary-probe-stray.ts",
+      `import { PgAuditLog } from "@/modules/identity/infrastructure/pg-audit-log";\nexport const p = PgAuditLog;\n`,
+    );
+    expect(boundaryRules(rules)).not.toEqual([]);
+  });
+
+  it("refuses a stray file in the src root even without imports", async () => {
+    const rules = await lintVirtual("src/boundary-probe-empty.ts", `export const x = 1;\n`);
+    expect(boundaryRules(rules)).toContain("boundaries/no-unknown-files");
+  });
+
+  it("lets the Next proxy and its test import the container and the identity public API", async () => {
+    const results = await eslint.lintFiles([
+      path.join(process.cwd(), "src/proxy.ts"),
+      path.join(process.cwd(), "src/proxy.test.ts"),
+    ]);
+    expect(results.flatMap((r) => boundaryRules(r.messages))).toEqual([]);
+  });
+});

@@ -2,6 +2,11 @@ import { NextRequest } from "next/server";
 import type { Pool } from "pg";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const fallbackWarn = vi.hoisted(() => vi.fn());
+vi.mock("@/shared/infrastructure/logging/logger", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/infrastructure/logging/logger")>()),
+  createLogger: () => ({ warn: fallbackWarn }),
+}));
 vi.mock("@/app/container", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/app/container")>()),
   getContainer: vi.fn(),
@@ -9,6 +14,7 @@ vi.mock("@/app/container", async (importOriginal) => ({
 
 import { loadConfig } from "@/app/config";
 import { buildContainer, getContainer } from "@/app/container";
+import { sanitizeReturnTo } from "@/modules/identity/application";
 import { makeDeps, type FakeIdentityDeps } from "@/modules/identity/application/testing/fakes";
 import type { Logger } from "@/shared/application/ports/logger";
 import { config as proxyConfig, proxy } from "./proxy";
@@ -32,6 +38,7 @@ let deps: FakeIdentityDeps;
 
 beforeEach(() => {
   warn.mockReset();
+  fallbackWarn.mockReset();
   deps = makeDeps({ publicBaseUrl: BASE });
   vi.mocked(getContainer).mockReturnValue(
     buildContainer(config, { pool: {} as unknown as Pool, logger, identity: deps }),
@@ -78,6 +85,28 @@ describe("admin proxy gate", () => {
     );
   });
 
+  it("keeps the rest of the query as sent, so a slash in a value survives sanitizing", async () => {
+    for (const query of ["?tab=a/b&_rsc=1", "?_rsc=1&tab=a/b", "?tab=a/b"]) {
+      const res = await proxy(request(`/admin/forms${query}`));
+      const returnTo = new URL(res.headers.get("location") ?? "").searchParams.get("returnTo");
+      expect(returnTo).toBe("/admin/forms?tab=a/b");
+      expect(sanitizeReturnTo(returnTo)).toBe("/admin/forms?tab=a/b");
+    }
+  });
+
+  it("gates paths that only look like the auth routes", async () => {
+    const lookalike = await proxy(request("/admin/authx"));
+    expect(lookalike.status).toBe(302);
+    expect(lookalike.headers.get("location")).toBe(
+      `${BASE}/admin/auth/signin?returnTo=${encodeURIComponent("/admin/authx")}`,
+    );
+    const dotted = await proxy(request("/admin/auth/../forms"));
+    expect(dotted.status).toBe(302);
+    expect(dotted.headers.get("location")).toBe(
+      `${BASE}/admin/auth/signin?returnTo=${encodeURIComponent("/admin/forms")}`,
+    );
+  });
+
   it("redirects when the cookie names no session", async () => {
     const res = await proxy(request("/admin", `${COOKIE}=gone`));
     expect(res.status).toBe(302);
@@ -104,7 +133,11 @@ describe("admin proxy gate", () => {
 
   it("leaves the auth routes alone, without reading the container", async () => {
     vi.mocked(getContainer).mockClear();
-    for (const path of ["/admin/auth/signin?returnTo=%2Fadmin", "/admin/auth/denied"]) {
+    for (const path of [
+      "/admin/auth",
+      "/admin/auth/signin?returnTo=%2Fadmin",
+      "/admin/auth/denied",
+    ]) {
       const res = await proxy(request(path));
       expect(passesThrough(res)).toBe(true);
     }
@@ -118,6 +151,7 @@ describe("admin proxy gate", () => {
     const res = await proxy(request("/admin/forms"));
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe(`${BASE}/admin/auth/error`);
+    expect(fallbackWarn).toHaveBeenCalledWith("admin gate failed", { error: "Error" });
   });
 
   it("sends the request to the error page when the session lookup fails, logging only the class", async () => {
