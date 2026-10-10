@@ -29,14 +29,16 @@ export function buildContainer(config: AppConfig, overrides: Partial<Container> 
     overrides.logger ??
     createLogger({ service: config.service, level: config.logLevel, version: config.appVersion });
   const pool = overrides.pool ?? createPool(config.databaseUrl, { logger });
+  // `??` per field, so an explicit `undefined` override cannot clobber a default.
   return {
     config,
     logger,
     pool,
-    uow: new PgUnitOfWorkFactory(pool),
-    queue: new PgJobQueue(systemIdGenerator, systemClock),
-    jobStore: new PgJobStore(pool, systemClock, { leaseSeconds: config.worker.leaseSeconds }),
-    ...overrides,
+    uow: overrides.uow ?? new PgUnitOfWorkFactory(pool),
+    queue: overrides.queue ?? new PgJobQueue(systemIdGenerator, systemClock),
+    jobStore:
+      overrides.jobStore ??
+      new PgJobStore(pool, systemClock, { leaseSeconds: config.worker.leaseSeconds }),
   };
 }
 

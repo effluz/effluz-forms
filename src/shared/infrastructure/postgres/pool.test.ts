@@ -21,6 +21,7 @@ describe("poolOptions", () => {
     expect(o.statement_timeout).toBe(30_000);
     expect(o.max).toBe(10);
     expect(o.application_name).toBe("effluz-forms");
+    expect(o.connectionTimeoutMillis).toBe(5_000);
   });
 
   it("passes 0 through, leaving the server default to apply", () => {

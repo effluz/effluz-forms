@@ -1,7 +1,7 @@
 import type { Pool } from "pg";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config";
-import { buildContainer } from "./container";
+import { buildContainer, type Container } from "./container";
 
 const config = loadConfig({
   NODE_ENV: "test",
@@ -31,5 +31,15 @@ describe("buildContainer", () => {
     const logger = { marker: true } as unknown as ReturnType<typeof buildContainer>["logger"];
     const c = buildContainer(config, { pool, logger });
     expect(c.logger).toBe(logger);
+  });
+
+  it("keeps the defaults when an override is explicitly undefined", () => {
+    const pool = {} as unknown as Pool;
+    // exactOptionalPropertyTypes forbids this in typed code; plain JS callers can still do it.
+    const overrides = { pool, uow: undefined, queue: undefined, jobStore: undefined };
+    const c = buildContainer(config, overrides as unknown as Partial<Container>);
+    expect(typeof c.uow.run).toBe("function");
+    expect(typeof c.queue.enqueue).toBe("function");
+    expect(c.jobStore.leaseSeconds).toBe(config.worker.leaseSeconds);
   });
 });

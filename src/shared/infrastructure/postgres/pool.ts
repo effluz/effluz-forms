@@ -16,6 +16,8 @@ export function poolOptions(databaseUrl: string, opts: PoolOptions = {}): PoolCo
     connectionString: databaseUrl,
     max: opts.max ?? 10,
     application_name: "effluz-forms",
+    // Bounds how long a query waits for a connection, so an unreachable host fails fast instead of hanging.
+    connectionTimeoutMillis: 5_000,
     statement_timeout: opts.statementTimeoutMs ?? 30_000,
   };
 }
