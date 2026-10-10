@@ -19,7 +19,7 @@
 import type { Clock } from "@/shared/application/ports/clock";
 import type { IdGenerator } from "@/shared/application/ports/id-generator";
 import type { UnitOfWork, UnitOfWorkFactory } from "@/shared/application/ports/unit-of-work";
-import type { AuditEntry } from "../../domain/audit";
+import { assertNoPersonalData, type AuditEntry } from "../../domain/audit";
 import type { Session } from "../../domain/session";
 import type { IdentityDeps } from "../deps";
 import type {
@@ -131,6 +131,7 @@ export class InMemoryAuditLog implements AuditLog {
   readonly entries: { entry: AuditEntry; at: Date }[] = [];
 
   record(_uow: UnitOfWork, entry: AuditEntry, at: Date): Promise<void> {
+    assertNoPersonalData(entry.details);
     this.entries.push({ entry, at: new Date(at.getTime()) });
     return Promise.resolve();
   }
@@ -158,7 +159,7 @@ export class InMemorySignInAttemptStore implements SignInAttemptStore {
     const row = this.rows.get(id);
     if (!row) return Promise.resolve(null);
     this.rows.delete(id);
-    const expired = now.getTime() > row.createdAt.getTime() + ATTEMPT_TTL_MS;
+    const expired = now.getTime() >= row.createdAt.getTime() + ATTEMPT_TTL_MS;
     return Promise.resolve(expired ? null : row);
   }
 }

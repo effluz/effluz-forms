@@ -24,6 +24,12 @@ describe("startSignIn", () => {
     ["https://evil.example/admin", "/admin"],
     ["//evil.example", "/admin"],
     ["/f/slug", "/admin"],
+    ["/adminx", "/admin"],
+    ["/admin/../f/slug", "/admin"],
+    ["/admin/%2e%2e/f/slug", "/admin"],
+    ["/admin%2Fx", "/admin"],
+    ["/admin?tab=2", "/admin?tab=2"],
+    ["/admin", "/admin"],
   ])("sanitizes returnTo %s to %s", async (given, expected) => {
     const deps = makeDeps();
     const { attemptId } = await startSignIn(deps, { returnTo: given });
@@ -49,5 +55,9 @@ describe("sanitizeReturnTo", () => {
     expect(sanitizeReturnTo("/admin\\evil")).toBe("/admin");
     expect(sanitizeReturnTo("/admin\n/x")).toBe("/admin");
     expect(sanitizeReturnTo("/admin?next=https://evil.example")).toBe("/admin");
+  });
+
+  it("keeps a dotted name that is not a parent-directory segment", () => {
+    expect(sanitizeReturnTo("/admin/a..b/c")).toBe("/admin/a..b/c");
   });
 });

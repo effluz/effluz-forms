@@ -6,12 +6,15 @@ import { callbackRedirectUri, type IdentityDeps } from "./deps";
  */
 export function sanitizeReturnTo(input: string | null | undefined): string {
   if (!input) return "/admin";
+  const inAdmin = input === "/admin" || input.startsWith("/admin/") || input.startsWith("/admin?");
   if (
-    !input.startsWith("/admin") ||
+    !inAdmin ||
     input.startsWith("//") ||
     // eslint-disable-next-line no-control-regex -- control characters are exactly what is rejected
     /[\\\u0000-\u001f]/.test(input) ||
-    input.includes("://")
+    input.includes("://") ||
+    /%2[ef]/i.test(input) ||
+    /(^|[/?#&=])\.\.($|[/?#&=])/.test(input)
   ) {
     return "/admin";
   }

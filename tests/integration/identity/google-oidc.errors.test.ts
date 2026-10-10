@@ -130,6 +130,13 @@ describe("GoogleOidcAdmin ID token validation", () => {
     });
   });
 
+  it("reports stale when the ID token carries another nonce than the attempt's", async () => {
+    expect(await signIn("nonce-1", { nonce: "someone-elses-nonce" })).toEqual({
+      ok: false,
+      reason: "stale",
+    });
+  });
+
   it("rejects a token for another audience", async () => {
     expect(await signIn("aud-1", { audience: "another-client" })).toEqual({
       ok: false,

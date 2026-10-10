@@ -109,13 +109,14 @@ describe("GoogleOidcAdmin", () => {
       ),
     ).toEqual({ ok: false, reason: "invalid_token" });
   });
-  it("reports exchange_failed when the token endpoint errors", async () => {
+  // Changed from exchange_failed: invalid_grant (unknown, expired or used code) is "stale".
+  it("reports stale when the token endpoint answers invalid_grant", async () => {
     const a = adapter();
     const start = await a.beginSignIn(redirectUri);
     const cb = await authorize(start.authorizationUrl + "&__code=unknown-code");
     expect(await a.completeSignIn({ url: cb }, { ...start, redirectUri })).toEqual({
       ok: false,
-      reason: "exchange_failed",
+      reason: "stale",
     });
   });
 });

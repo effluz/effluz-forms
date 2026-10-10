@@ -116,7 +116,7 @@ describe("completeSignIn", () => {
   it("returns retry when the attempt has expired", async () => {
     const deps = makeDeps();
     seedAttempt(deps);
-    deps.clock.advance(10 * 60 * 1000 + 1);
+    deps.clock.advance(10 * 60 * 1000);
     const result = await completeSignIn(deps, {
       attemptId: "attempt-1",
       callbackUrl: CALLBACK,
@@ -209,6 +209,39 @@ describe("completeSignIn", () => {
     });
     expect(result).toEqual({ outcome: "error" });
     expect(deps.audit.entries).toHaveLength(0);
+  });
+
+  it("returns retry when the code is stale", async () => {
+    const deps = makeDeps();
+    seedAttempt(deps);
+    deps.identity.script({ ok: false, reason: "stale" });
+    const result = await completeSignIn(deps, {
+      attemptId: "attempt-1",
+      callbackUrl: CALLBACK,
+      meta: META,
+    });
+    expect(result).toEqual({ outcome: "retry" });
+    expect(deps.audit.entries).toHaveLength(0);
+    expect(deps.sessions.all()).toHaveLength(0);
+  });
+
+  it("spends the attempt even when the exchange fails", async () => {
+    const deps = makeDeps();
+    seedAttempt(deps);
+    deps.identity.script({ ok: false, reason: "invalid_token" });
+    const first = await completeSignIn(deps, {
+      attemptId: "attempt-1",
+      callbackUrl: CALLBACK,
+      meta: META,
+    });
+    const second = await completeSignIn(deps, {
+      attemptId: "attempt-1",
+      callbackUrl: CALLBACK,
+      meta: META,
+    });
+    expect(first).toEqual({ outcome: "error" });
+    expect(second).toEqual({ outcome: "retry" });
+    expect(deps.identity.completeCalls).toHaveLength(1);
   });
 
   it("returns retry on a state mismatch", async () => {

@@ -14,7 +14,14 @@ export interface CallbackInput {
 
 export type SignInCompletion =
   | { ok: true; claims: IdentityClaims }
-  | { ok: false; reason: "state_mismatch" | "exchange_failed" | "invalid_token" };
+  | {
+      ok: false;
+      /**
+       * `stale`: the authorization code was expired, consumed or did not match the
+       * attempt (nonce), so one restart is worth trying.
+       */
+      reason: "state_mismatch" | "stale" | "exchange_failed" | "invalid_token";
+    };
 
 /** The external identity provider used for admin sign-in. */
 export interface AdminIdentity {

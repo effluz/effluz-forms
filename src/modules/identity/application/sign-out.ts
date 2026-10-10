@@ -1,3 +1,4 @@
+import { sessionState } from "../domain/session";
 import type { IdentityDeps, RequestMeta } from "./deps";
 
 /**
@@ -25,9 +26,29 @@ export async function signOut(
 ): Promise<"signed_out" | "csrf_mismatch" | "no_session"> {
   const session = await deps.sessions.findById(input.sessionId);
   if (session === null) return "no_session";
-  if (!constantTimeEqual(session.csrfToken, input.csrfToken)) return "csrf_mismatch";
 
   const now = deps.clock.now();
+  const state = sessionState(session, now);
+  if (state !== "active") {
+    // An expired session cannot sign out; clean it up exactly as currentSession would.
+    await deps.uow.run(async (uow) => {
+      await deps.sessions.delete(uow, session.id);
+      await deps.audit.record(
+        uow,
+        {
+          action: "session_expired",
+          actorEmail: session.email,
+          targetId: session.id,
+          ip: input.meta.ip,
+          details: { reason: state },
+        },
+        now,
+      );
+    });
+    return "no_session";
+  }
+  if (!constantTimeEqual(session.csrfToken, input.csrfToken)) return "csrf_mismatch";
+
   await deps.uow.run(async (uow) => {
     await deps.sessions.delete(uow, session.id);
     await deps.audit.record(

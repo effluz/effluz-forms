@@ -37,7 +37,9 @@ export async function completeSignIn(
     },
   );
   if (!completion.ok) {
-    return completion.reason === "state_mismatch" ? { outcome: "retry" } : { outcome: "error" };
+    return completion.reason === "state_mismatch" || completion.reason === "stale"
+      ? { outcome: "retry" }
+      : { outcome: "error" };
   }
 
   const admission = admit(completion.claims, deps.allowedHostedDomain);

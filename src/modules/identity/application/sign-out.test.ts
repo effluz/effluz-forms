@@ -57,6 +57,33 @@ describe("signOut", () => {
     expect(deps.audit.entries).toHaveLength(0);
   });
 
+  it("treats an expired session as gone: deletes it, audits session_expired, returns no_session", async () => {
+    const deps = makeDeps();
+    seed(deps);
+    deps.clock.advance(8 * 60 * 60 * 1000 + 1);
+
+    const result = await signOut(deps, {
+      sessionId: "session-1",
+      csrfToken: "csrf-token-1",
+      meta: META,
+    });
+
+    expect(result).toBe("no_session");
+    expect(deps.sessions.has("session-1")).toBe(false);
+    expect(deps.audit.entries).toEqual([
+      {
+        entry: {
+          action: "session_expired",
+          actorEmail: "staff@example.com",
+          targetId: "session-1",
+          ip: "203.0.113.7",
+          details: { reason: "idle_expired" },
+        },
+        at: deps.clock.now(),
+      },
+    ]);
+  });
+
   it("returns no_session for an unknown session", async () => {
     const deps = makeDeps();
     const result = await signOut(deps, { sessionId: "nope", csrfToken: "x", meta: META });

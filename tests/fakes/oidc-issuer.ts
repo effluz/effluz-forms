@@ -22,6 +22,8 @@ export interface FakeIssuer {
 export interface GrantOptions {
   signWithWrongKey?: boolean;
   omitNonce?: boolean;
+  /** Puts this value in the `nonce` claim instead of the one from /authorize. */
+  nonce?: string;
   /** Seconds until the ID token expires, from now. Negative values give an expired token. */
   expiresIn?: number;
   /** Overrides the `aud` claim (default: the client id). */
@@ -96,7 +98,8 @@ export async function startFakeIssuer(): Promise<FakeIssuer> {
   async function idToken(grant: Grant, nonce: string | null): Promise<string> {
     const claims: Record<string, unknown> = { ...grant.claims };
     const { options } = grant;
-    if (nonce !== null && options.omitNonce !== true) claims["nonce"] = nonce;
+    if (options.nonce !== undefined) claims["nonce"] = options.nonce;
+    else if (nonce !== null && options.omitNonce !== true) claims["nonce"] = nonce;
     const key: CryptoKey =
       options.signWithWrongKey === true ? unpublished.privateKey : signing.privateKey;
     const now = Math.floor(Date.now() / 1000);

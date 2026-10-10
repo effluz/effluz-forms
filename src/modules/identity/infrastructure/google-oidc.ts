@@ -17,7 +17,7 @@ export interface GoogleOidcOptions {
   fetch?: typeof fetch;
 }
 
-type Refusal = "exchange_failed" | "invalid_token";
+type Refusal = "stale" | "exchange_failed" | "invalid_token";
 
 /** openid-client errors that mean the ID token itself is not acceptable. */
 const INVALID_TOKEN_CODES = new Set<string>([
@@ -43,11 +43,33 @@ function isLocalTestIssuer(issuer: string): boolean {
 }
 
 /**
+ * True when the library rejected the ID token's `nonce` claim. openid-client wraps
+ * oauth4webapi's OperationProcessingError (`.cause`), whose own `.cause` names the
+ * compared claim (`claim: "nonce"`). Only the claim name is read, never its value.
+ */
+function isNonceMismatch(error: client.ClientError): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (typeof current !== "object" || current === null) return false;
+    if ("claim" in current && current.claim === "nonce") return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
  * Maps whatever openid-client throws to a refusal reason. Nothing is
  * logged and no error detail leaves this function.
  */
 function reasonFor(error: unknown): Refusal {
+  if (error instanceof client.ResponseBodyError && error.error === "invalid_grant") {
+    // The code is expired, already used or bound to another attempt.
+    return "stale";
+  }
   if (error instanceof client.ClientError) {
+    if (error.code === "OAUTH_JWT_CLAIM_COMPARISON_FAILED" && isNonceMismatch(error)) {
+      return "stale";
+    }
     return error.code !== undefined && INVALID_TOKEN_CODES.has(error.code)
       ? "invalid_token"
       : "exchange_failed";
