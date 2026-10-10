@@ -40,13 +40,16 @@ function issuesFor(
     return { issues: field.required ? [issue("required")] : [] };
   }
   const shape = def.answerSchema.safeParse(raw);
-  if (!shape.success) return { issues: [issue("invalid_shape")] };
-  const normalized = def.normalize(shape.data, field.settings);
-  if (def.isEmpty(normalized)) {
-    if (def.id === "consent") return { issues: [issue("consent")] };
-    // An empty-but-present value such as checkbox false is still an answer when not required.
-    return { issues: field.required ? [issue("required")] : [], normalized };
+  if (!shape.success) {
+    // Consent is always required and always reports the consent code, never a shape error.
+    return { issues: [issue(def.id === "consent" ? "consent" : "invalid_shape")] };
   }
+  const normalized = def.normalize(shape.data, field.settings);
+  if (def.isEmpty(normalized) && field.required) {
+    return { issues: [issue(def.id === "consent" ? "consent" : "required")] };
+  }
+  // A non-required empty-but-present value such as checkbox false is still an answer,
+  // so the intrinsic check and the rules still run on it.
   const intrinsic = def.validate(normalized, field.settings);
   if (intrinsic.length > 0) {
     // Rules assume a well-formed answer, so they are skipped when the type's own check failed.
@@ -71,9 +74,15 @@ function issuesFor(
 export function validateSubmission(
   version: Version,
   registry: FieldTypeRegistry,
-  raw: Readonly<Record<string, unknown>>,
+  rawBody: Readonly<Record<string, unknown>>,
   ctx: SubmissionContext,
 ): SubmissionResult {
+  // The type promises an object, but the body comes off the wire, so guard it anyway.
+  const untrusted: unknown = rawBody;
+  const body: Readonly<Record<string, unknown>> =
+    typeof untrusted === "object" && untrusted !== null
+      ? (untrusted as Record<string, unknown>)
+      : {};
   const answers: Record<string, unknown> = {};
   const issues: ValidationIssue[] = [];
   let consent: { fieldKey: Key; textVersion: string } | undefined;
@@ -86,7 +95,7 @@ export function validateSubmission(
       if (!def.isInput) continue;
       const visible = field.visibility ? evaluateCondition(field.visibility, answers) : true;
       if (!visible) continue;
-      const own = Object.hasOwn(raw, field.key) ? raw[field.key] : undefined;
+      const own = Object.hasOwn(body, field.key) ? body[field.key] : undefined;
       const result = issuesFor(field, registry, own, ctx);
       issues.push(...result.issues);
       if (result.issues.length === 0 && result.normalized !== undefined) {

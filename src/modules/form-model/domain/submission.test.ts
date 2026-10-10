@@ -50,6 +50,12 @@ const r = parseDraft(
             label: { es: "Otra fecha" },
             validation: [{ rule: "min_date", value: "2027-01-01" }],
           },
+          {
+            key: "optin",
+            type: "checkbox",
+            label: { es: "Acepto" },
+            validation: [{ rule: "must_be_true" }],
+          },
           { key: "info", type: "section", label: {}, settings: { title: { es: "Info" } } },
           {
             key: "agree",
@@ -67,6 +73,22 @@ if (!r.ok) throw new Error(JSON.stringify(r.issues));
 const version = r.version;
 const ctx = { today: "2026-10-10" };
 const accepted = { accepted: true, textVersion: consentTextVersion(consentText) };
+
+const rb = parseDraft(
+  {
+    languages: "es",
+    confirmation: { screen: { es: "Gracias" } },
+    pages: [
+      {
+        key: "page1",
+        title: { es: "Datos" },
+        fields: [{ key: "reqbox", type: "checkbox", label: { es: "Casilla" }, required: true }],
+      },
+    ],
+  },
+  registry,
+);
+if (!rb.ok) throw new Error(JSON.stringify(rb.issues));
 
 describe("isAbsent", () => {
   it("treats undefined, null, blank and empty array as absent, but not 0 or false", () => {
@@ -188,6 +210,48 @@ describe("validateSubmission", () => {
     inherited["mail"] = "a@b.co";
     inherited["agree"] = accepted;
     const res = validateSubmission(version, registry, inherited, ctx);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.issues).toContainEqual({ code: "required", field: "name" });
+  });
+  it("runs rules on a present-but-empty answer of a non-required field", () => {
+    const base = { name: "Ana", mail: "a@b.co", agree: accepted };
+    const no = validateSubmission(version, registry, { ...base, optin: false }, ctx);
+    expect(no.ok).toBe(false);
+    if (!no.ok)
+      expect(no.issues.filter((i) => i.field === "optin")).toEqual([
+        { code: "must_be_true", field: "optin" },
+      ]);
+    const yes = validateSubmission(version, registry, { ...base, optin: true }, ctx);
+    expect(yes.ok).toBe(true);
+    if (yes.ok) expect(yes.answers["optin"]).toBe(true);
+  });
+  it("reports only required for a required checkbox answered false", () => {
+    const res = validateSubmission(rb.version, registry, { reqbox: false }, ctx);
+    expect(res).toEqual({ ok: false, issues: [{ code: "required", field: "reqbox" }] });
+  });
+  it("codes a declined or malformed consent answer as consent, not invalid_shape", () => {
+    for (const agree of [{ accepted: false, textVersion: accepted.textVersion }, "yes"]) {
+      const res = validateSubmission(
+        version,
+        registry,
+        { name: "Ana", mail: "a@b.co", agree },
+        ctx,
+      );
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.issues.filter((i) => i.field === "agree")).toEqual([
+          { code: "consent", field: "agree" },
+        ]);
+      }
+    }
+  });
+  it("treats a null body as empty instead of throwing", () => {
+    const res = validateSubmission(
+      version,
+      registry,
+      null as unknown as Record<string, unknown>,
+      ctx,
+    );
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.issues).toContainEqual({ code: "required", field: "name" });
   });
