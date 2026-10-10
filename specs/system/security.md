@@ -1,7 +1,8 @@
 # Security
 
 Owns: admin authentication, session handling, abuse protection, secrets, audit.
-Decision record: `decisions/0005-google-workspace-admin-auth.md`.
+Decision records: `decisions/0005-google-workspace-admin-auth.md`, and
+`decisions/0018-identity-implementation.md` for how it is built.
 
 ## Threat model in one paragraph
 
@@ -14,24 +15,95 @@ that.
 
 ## Admin authentication
 
-- Sign-in with Google through OpenID Connect. The app verifies the ID token
-  signature, audience, expiry, `email_verified`, and that the hosted-domain
-  claim equals `effluz.com`. Any other account, including personal Gmail, is
-  rejected with a neutral message.
-- The `AdminIdentity` port returns `{ email, name }` or a refusal. The
-  application layer never sees Google-specific objects.
+The step-by-step flow is in `use-cases/sign-in.md`.
+
+- Sign-in with Google through OpenID Connect, using `openid-client`: the
+  authorization code flow with PKCE (S256), `state` and `nonce`. The request
+  asks for the `openid email profile` scopes and `prompt=select_account`, so
+  the account chooser always appears and someone refused for a personal account
+  can pick another.
+- The library validates the ID token's issuer, audience, expiry and nonce. It
+  also verifies the token's signature against the issuer's published keys
+  (JWKS) through `enableNonRepudiationChecks`; `openid-client` does not do that
+  by default for a token received from the token endpoint. Symmetric
+  algorithms are rejected.
+- **The `hd` parameter is a hint, not a check.** It is sent only to steer
+  Google's chooser. Admission is decided afterwards, from the verified claims,
+  by the identity domain policy: the email is present and `email_verified` is
+  true, and the `hd` claim, compared case-insensitively, equals
+  `GOOGLE_ALLOWED_HOSTED_DOMAIN` (`effluz.com` in production). A missing or
+  blank `hd` claim, or a blank configured domain, never matches. Any other
+  account, including personal Gmail, is rejected with a neutral message.
+- The `AdminIdentity` port returns the verified claims or a refusal reason
+  (`state_mismatch`, `stale`, `exchange_failed`, `invalid_token`). The
+  application layer never sees Google-specific objects, and refusals carry no
+  claims, tokens or addresses.
+- **In-flight sign-ins are server-side.** Starting sign-in stores a
+  single-use row in `sign_in_attempt` (state, nonce, PKCE verifier, the
+  sanitized return path) and sets an opaque cookie that points at it:
+  `effluz_signin`, `Path=/admin/auth`, `HttpOnly`, `SameSite=Lax`,
+  `Max-Age=600`, `Secure` in production. The callback consumes the row in one
+  statement that deletes it whether or not it has expired and returns it only
+  if it is still live, so an attempt cannot be replayed. The row expires ten
+  minutes after it was created.
+- **A stale code or nonce restarts the flow once.** A missing or expired
+  attempt, a `state` mismatch, an authorization code that is expired or already
+  used, and a `nonce` that does not match are all treated as stale. The
+  callback redirects to sign-in with `retried=1`, which sets a second cookie,
+  `effluz_signin_retry` (same attributes and path). If the callback fails the
+  same way while that cookie is present, the person gets the error page. A
+  normal start clears the cookie. The automatic restart returns to `/admin`,
+  not to the path first requested. Every other failure (consent denied, token
+  endpoint failure, invalid token, Google unreachable) goes straight to the
+  error page, and the callback clears both cookies on every final outcome.
+- The return path is accepted only if it is `/admin` or starts with `/admin/`
+  or `/admin?`. Anything else, including `//`, backslashes, control
+  characters, `://`, encoded dots or slashes, and `..` segments, becomes
+  `/admin`.
 - One role: admin. Everyone who passes is an admin. Roles are an ADR away if
   ever needed.
 - Removing someone's access means removing them from the Workspace. There is
-  no local user table to drift from it.
+  no local user table to drift from it. Their existing sessions end with the
+  revocation command described under "Sessions".
 
 ## Sessions
 
-- Server-side session stored in Postgres, referenced by an opaque cookie:
-  `HttpOnly`, `Secure`, `SameSite=Lax`, scoped to the admin path.
-- Idle timeout of 8 hours, absolute lifetime of 7 days, rotation on sign-in.
-- Every state-changing admin request carries a CSRF token.
-- Sign-out destroys the server record, not just the cookie.
+- Server-side session stored in Postgres (`admin_session`), referenced by an
+  opaque cookie whose value is the random session id. Nothing else is in the
+  cookie. Its name is `SESSION_COOKIE_NAME` (default `effluz_admin_session`).
+- Cookie attributes: `Path=/admin; HttpOnly; SameSite=Lax; Max-Age=604800`
+  (seven days), plus `Secure` when `NODE_ENV` is `production`. The path means
+  the browser never sends it to public form routes.
+- Idle timeout of 8 hours, measured from `last_seen_at`, which a request
+  refreshes at most once a minute. Absolute lifetime of 7 days from creation.
+  A timestamp exactly on a limit is still valid, and when both limits have
+  passed the absolute one is reported. Expiry is enforced lazily: the first
+  request that finds an expired session deletes it and writes a
+  `session_expired` audit entry.
+- Rotation on sign-in: every sign-in creates a new session with a new id and a
+  new CSRF token. No earlier session id is reused.
+- **Gate.** Every `/admin` path outside `/admin/auth` is gated at the HTTP
+  level by the Next proxy, `src/proxy.ts`. With no active session it answers
+  a real `302` to `/admin/auth/signin?returnTo=<path>`, dropping Next's `_rsc`
+  query parameter. If the session cannot be checked (the database is down) it
+  redirects to the error page and never lets the request through. The gated
+  layout under `src/app/admin/(gated)/` checks the session again as defence in
+  depth; a redirect from the layout cannot change the HTTP status under
+  partial prerendering, which is why the proxy exists.
+- **CSRF.** Each session has a random token issued at sign-in and stored with
+  it. Every state-changing admin form embeds it in a hidden `csrf` field, and
+  the server compares it with the session's token in constant time. A mismatch
+  answers `403` and leaves the session alone. Today the only such form is
+  sign-out; every later state-changing admin route follows the same rule.
+- Sign-out destroys the server record, not just the cookie. A sign-out POST
+  that arrives without the session cookie changes nothing, writes no audit
+  entry and sets no cookie, so a cross-site post cannot clear someone's cookie
+  without the token. Signing out an unknown or expired session also ends in
+  the signed-out page with the cookie cleared; an expired one is deleted and
+  audited as `session_expired`.
+- **Revocation.** `pnpm sessions:revoke <address>` deletes every session of
+  an address and audits `sessions_revoked`. The procedure, including what it
+  does not do, is `ops/runbooks/revoke-sessions.md`.
 
 ## Public form abuse protection
 
@@ -88,8 +160,9 @@ untrusted input:
 
 - Environment variables only, as described in `architecture.md`.
 - Rotation procedure documented in `deployment.md` for: database password,
-  Dropbox refresh token, email provider key, Google client secret, session
-  signing key, backup encryption key.
+  Dropbox refresh token, email provider key, Google client secret, backup
+  encryption key. Sessions are opaque server-side ids, so there is no session
+  signing key to rotate.
 - A leaked secret is rotated first and investigated second.
 
 ## Audit log
@@ -98,10 +171,29 @@ An `audit_log` table records every staff action named in the Audit entries
 section of each use case under `specs/use-cases/`: sign-in and rejection,
 form lifecycle and settings, draft saves, submission listing, viewing,
 photo viewing, media download, text edits and reverts, correction
-suggestions, status changes, export, deletion, job retry and discard. Each row: actor email,
-action, target id, timestamp, IP. Append-only from the application role. Kept
-for one year. This is the only place where "who looked at a child's photo"
-can be answered, so it is not optional.
+suggestions, status changes, export, deletion, job retry and discard. Each
+row: actor email, action, target id, timestamp, IP, and an optional `details`
+object. This is the only place where "who looked at a child's photo" can be
+answered, so it is not optional.
+
+- **Append-only.** A row-level database trigger (`audit_log_no_update`)
+  rejects every `UPDATE` and `DELETE`; `TRUNCATE` is not covered. Kept for one
+  year; no purge exists yet, and since the trigger also blocks deletes, the
+  retention job will need a deliberate, reviewed exception when it is built.
+- **Written with the change it records.** A row joins the same unit of work as
+  the state change, so both commit or neither does. A rejected sign-in has no
+  state change and uses a unit of work of its own.
+- **Identity's actions:** `sign_in`, `sign_in_rejected`, `sign_out`,
+  `session_expired` and `sessions_revoked`. Other modules register their own.
+- **Details never carry an address.** Values are strings, numbers or booleans,
+  and the write throws if any string contains `@`. Today's details are the
+  attempted domain on `sign_in_rejected`, the expiry reason (`idle_expired` or
+  `absolute_expired`) on `session_expired`, and the number of sessions on
+  `sessions_revoked`. That last entry names the operator as actor and never the
+  person whose sessions were revoked.
+- **IP** is the first value of the `X-Forwarded-For` header, so the proxy must
+  set that header itself and never pass a client-supplied one through.
+  `sessions_revoked` rows have no IP.
 
 ## Data sent to third parties
 

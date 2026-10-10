@@ -8,11 +8,19 @@ more.
 
 - Structured JSON to stdout. Docker's log driver rotates files; nothing is
   shipped off the server in the first release.
-- Every log line carries: timestamp, level, service (`app` or `worker`),
-  request or job id, and a message. Submission ids are allowed; emails,
-  names, story text, filenames and file contents are not.
-- A single logging helper in `src/shared/infrastructure/` is the only way to
-  log. It redacts known PII field names defensively.
+- Every log line carries `time` (epoch milliseconds), `level` (the label),
+  `service` (`app` or `worker`), `version` (`APP_VERSION`) and `msg`. Lines
+  about a job also carry `jobId`, `jobType` and `attempt`. There is no request
+  id yet. Submission ids are allowed; emails, names, story text, filenames and
+  file contents are not.
+- A single logging helper, the pino adapter behind the `Logger` port in
+  `src/shared/infrastructure/logging/`, is the only way to log. It redacts the
+  field names in `REDACTED_FIELDS` (email, name, answers, text, body, story,
+  file names, passwords, tokens, secrets, authorization and cookie headers) at
+  the top level and up to three object levels down, array positions counting
+  as levels. That is a backstop: it matches key names only, never values or
+  message text, so callers must not pass personal data at all. See
+  `decisions/0019-logging.md`.
 - Levels: `error` means a human should look, `warn` means a retry or
   degradation happened, `info` is lifecycle, `debug` is off in production.
 

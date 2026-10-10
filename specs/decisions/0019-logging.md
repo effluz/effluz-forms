@@ -31,7 +31,8 @@ must serve the web app and the worker.
 - Modules depend on the port only, so the logging library can be replaced
   without touching them.
 - Redaction matches by key name. A personal-data value under an unlisted
-  key, or nested deeper than three levels, is not redacted. Reviews must
-  keep log calls free of answers, contact details and file names.
+  key, or nested deeper than three levels, is not redacted. Array positions
+  count as levels, and message text is never scanned. Reviews must keep log
+  calls free of answers, contact details and file names.
 - Adding a sensitive field name means adding it to `REDACTED_FIELDS` and
   the test that covers it.
