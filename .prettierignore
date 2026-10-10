@@ -1,3 +1,9 @@
 .next
 pnpm-lock.yaml
 coverage
+*.md
+specs/
+docs/
+design-system/
+.superpowers/
+.claude/
