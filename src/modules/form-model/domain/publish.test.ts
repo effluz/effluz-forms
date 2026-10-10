@@ -376,6 +376,24 @@ describe("checkDefinition reads field type hooks", () => {
     ]);
     expect(check(stub, [numberField])).toEqual([]);
   });
+  it("reports an exclusive role with the first holder's code and params", () => {
+    let calls = 0;
+    const stub = defineFieldType({
+      ...numberType,
+      exclusiveRoles: () => {
+        calls += 1;
+        return [
+          calls === 1
+            ? { role: "stub_role", code: "over_maximum", params: { detail: "first" } }
+            : { role: "stub_role", code: "unlabeled", params: { detail: "later" } },
+        ];
+      },
+    });
+    const two = [numberField, { ...numberField, key: "num2" }];
+    expect(check(stub, two)).toEqual([
+      { code: "over_maximum", path: "pages", params: { detail: "first" } },
+    ]);
+  });
   it("rejects a condition on a neverHidden field and counts a consentRecord as consent", () => {
     const stub = defineFieldType({
       ...numberType,

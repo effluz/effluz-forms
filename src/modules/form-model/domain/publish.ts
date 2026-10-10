@@ -119,7 +119,7 @@ export function checkDefinition(version: Version, registry: FieldTypeRegistry): 
         push(draft.code, `${fPath}/${draft.path}`, draft.params);
       for (const role of def.exclusiveRoles?.(field.settings) ?? []) {
         const seen = roles.get(role.role);
-        roles.set(role.role, { role, count: (seen?.count ?? 0) + 1 });
+        roles.set(role.role, { role: seen?.role ?? role, count: (seen?.count ?? 0) + 1 });
       }
       const cap = def.maxLength;
       if (cap !== undefined)
