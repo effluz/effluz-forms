@@ -19,7 +19,7 @@ describe("file_upload", () => {
     const s = { kinds: ["image" as const], maxFiles: 2, maxSizeMb: 10 };
     expect(fileUpload.normalize(["m_aaaaaaaa", "m_aaaaaaaa"], s)).toEqual(["m_aaaaaaaa"]);
     expect(fileUpload.validate(["m_aaaaaaaa", "m_bbbbbbbb", "m_cccccccc"], s)).toEqual([
-      "files_max",
+      { code: "files_max", params: { n: 2 } },
     ]);
   });
   it("exports the count and the ids joined", () => {

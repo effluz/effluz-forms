@@ -29,7 +29,10 @@ export const shortText = defineFieldType({
     "is_one_of",
   ],
   normalize: (a) => cleanText(a).replace(/\s*\n\s*/g, " "),
-  validate: (a) => (graphemeLength(a) > LIMITS.shortTextMax ? ["max_length"] : []),
+  validate: (a) =>
+    graphemeLength(a) > LIMITS.shortTextMax
+      ? [{ code: "max_length", params: { n: LIMITS.shortTextMax } }]
+      : [],
   isEmpty: (a) => a.trim().length === 0,
   exportHeaders: (label) => [label],
   exportCells: (a) => [a ?? ""],
@@ -38,5 +41,6 @@ export const shortText = defineFieldType({
     validAnswers: ["Ana María", "x"],
     invalidAnswers: [42, null, ["a"]],
     emptyAnswer: "",
+    overLimitAnswers: ["x".repeat(LIMITS.shortTextMax + 1)],
   },
 });

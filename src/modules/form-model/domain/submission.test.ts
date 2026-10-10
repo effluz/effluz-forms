@@ -174,6 +174,29 @@ const mustBeTrue = parseDraft(
 );
 if (!mustBeTrue.ok) throw new Error(JSON.stringify(mustBeTrue.issues));
 
+const files = parseDraft(
+  {
+    languages: "es",
+    confirmation: { screen: { es: "Gracias" } },
+    pages: [
+      {
+        key: "page1",
+        title: { es: "Datos" },
+        fields: [
+          {
+            key: "pics",
+            type: "file_upload",
+            label: { es: "Fotos" },
+            settings: { kinds: ["image"], maxFiles: 3 },
+          },
+        ],
+      },
+    ],
+  },
+  registry,
+);
+if (!files.ok) throw new Error(JSON.stringify(files.issues));
+
 describe("isAbsent", () => {
   it("treats undefined, null, blank and empty array as absent, but not 0 or false", () => {
     for (const a of [undefined, null, "", "  ", []]) expect(isAbsent(a)).toBe(true);
@@ -290,6 +313,23 @@ describe("validateSubmission", () => {
         field: "name",
         params: { n: 5000 },
       });
+  });
+  it("attaches the settings cap to an intrinsic files_max issue", () => {
+    const pics = ["m_aaaaaaaa", "m_bbbbbbbb", "m_cccccccc", "m_dddddddd"];
+    expect(validateSubmission(files.version, registry, { pics }, ctx)).toEqual({
+      ok: false,
+      issues: [{ code: "files_max", field: "pics", params: { n: 3 } }],
+    });
+  });
+  it("neither reports nor stores an invalid-shape answer of a hidden field", () => {
+    const res = validateSubmission(
+      version,
+      registry,
+      { name: "Ana", mail: "a@b.co", twins: false, names: 5, optin: true, agree: accepted },
+      ctx,
+    );
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(Object.hasOwn(res.answers, "names")).toBe(false);
   });
   it("reads only own properties of the raw answers", () => {
     const inherited = Object.create({ name: "Ana" }) as Record<string, unknown>;

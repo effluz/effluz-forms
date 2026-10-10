@@ -22,7 +22,8 @@ export const fileUpload = defineFieldType({
   allowedRules: ["min_files", "max_files"],
   allowedOperators: ["is_empty", "is_not_empty"],
   normalize: (a) => [...new Set(a)],
-  validate: (a, s) => (a.length > s.maxFiles ? ["files_max"] : []),
+  validate: (a, s) =>
+    a.length > s.maxFiles ? [{ code: "files_max", params: { n: s.maxFiles } }] : [],
   isEmpty: (a) => a.length === 0,
   exportHeaders: (label) => [`${label} (count)`, `${label} (files)`],
   exportCells: (a) => [String(a?.length ?? 0), (a ?? []).join("; ")],
@@ -34,5 +35,11 @@ export const fileUpload = defineFieldType({
     validAnswers: [["m_aaaaaaaa"], ["m_aaaaaaaa", "m_bbbbbbbb"]],
     invalidAnswers: ["m_aaaaaaaa", [1], ["short"]],
     emptyAnswer: [],
+    overLimitAnswers: [
+      Array.from(
+        { length: LIMITS.filesPerField + 1 },
+        (_, i) => `m_file${String(i).padStart(4, "0")}`,
+      ),
+    ],
   },
 });

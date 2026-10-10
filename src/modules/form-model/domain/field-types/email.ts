@@ -29,7 +29,8 @@ export const email = defineFieldType({
   normalize: (a) => cleanText(a).toLowerCase(),
   validate: (a) => {
     // The length cap runs before the regex so oversized input never reaches it.
-    if (graphemeLength(a) > EMAIL_MAX_LENGTH) return ["max_length"];
+    if (graphemeLength(a) > EMAIL_MAX_LENGTH)
+      return [{ code: "max_length", params: { n: EMAIL_MAX_LENGTH } }];
     return EMAIL.test(a) ? [] : ["email_syntax"];
   },
   isEmpty: (a) => a.trim().length === 0,
@@ -40,5 +41,6 @@ export const email = defineFieldType({
     validAnswers: ["family@example.com"],
     invalidAnswers: [5, null],
     emptyAnswer: "",
+    overLimitAnswers: ["a".repeat(EMAIL_MAX_LENGTH) + "@x.co"],
   },
 });

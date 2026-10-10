@@ -5,6 +5,9 @@ import { phone } from "./phone";
 import { shortText } from "./short-text";
 
 describe("short_text", () => {
+  it("composes a decomposed accent to NFC", () => {
+    expect(shortText.normalize("Mari\u0301a", {})).toBe("Mar\u00EDa");
+  });
   it("trims, NFC-normalizes and strips zero-width characters", () => {
     const raw = "  Ana\u200B María  ";
     expect(shortText.normalize(raw, {})).toBe("Ana María");
@@ -21,7 +24,9 @@ describe("short_text", () => {
     expect(shortText.normalize(persian, {})).toBe(persian);
   });
   it("rejects answers over the system maximum as max_length", () => {
-    expect(shortText.validate("x".repeat(5_001), {})).toEqual(["max_length"]);
+    expect(shortText.validate("x".repeat(5_001), {})).toEqual([
+      { code: "max_length", params: { n: 5_000 } },
+    ]);
     expect(shortText.validate("x".repeat(5_000), {})).toEqual([]);
   });
   it("reports blank as empty", () => {
@@ -36,6 +41,9 @@ describe("long_text", () => {
   });
   it("allows up to 20,000 characters and keeps internal newlines", () => {
     expect(longText.validate("x".repeat(20_000), { rows: 4 })).toEqual([]);
+    expect(longText.validate("x".repeat(20_001), { rows: 4 })).toEqual([
+      { code: "max_length", params: { n: 20_000 } },
+    ]);
     expect(longText.normalize("a\n\nb\n", { rows: 4 })).toBe("a\n\nb");
   });
 });
@@ -54,7 +62,7 @@ describe("email", () => {
   });
   it("caps length at 254 graphemes before the syntax check", () => {
     expect(email.validate("a".repeat(250) + "@x.co", { isSubmitterAddress: false })).toEqual([
-      "max_length",
+      { code: "max_length", params: { n: 254 } },
     ]);
     expect(email.validate("a".repeat(249) + "@x.co", { isSubmitterAddress: false })).toEqual([]);
   });
@@ -74,7 +82,9 @@ describe("phone", () => {
     expect(phone.validate("+507 6123 4567", {})).toEqual([]);
   });
   it("caps length at shortTextMax before counting digits", () => {
-    expect(phone.validate("1".repeat(5_001), {})).toEqual(["max_length"]);
+    expect(phone.validate("1".repeat(5_001), {})).toEqual([
+      { code: "max_length", params: { n: 5_000 } },
+    ]);
     expect(phone.validate("1".repeat(5_000), {})).toEqual([]);
   });
 });

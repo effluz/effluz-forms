@@ -59,10 +59,8 @@ function issuesFor(
   const intrinsic = def.validate(normalized, field.settings);
   if (intrinsic.length > 0) {
     // Rules assume a well-formed answer, so they are skipped when the type's own check failed.
-    const failed = intrinsic.map((code) =>
-      code === "max_length" && def.maxLength !== undefined
-        ? issue(code, { n: def.maxLength })
-        : issue(code),
+    const failed = intrinsic.map((o) =>
+      typeof o === "string" ? issue(o) : issue(o.code, o.params),
     );
     return { issues: dedupe(failed), normalized };
   }

@@ -25,7 +25,8 @@ export const phone = defineFieldType({
   normalize: (a) => cleanText(a).replace(/\s+/g, " "),
   validate: (a) => {
     // The length cap runs before the digit count so oversized input is refused early.
-    if (graphemeLength(a) > LIMITS.shortTextMax) return ["max_length"];
+    if (graphemeLength(a) > LIMITS.shortTextMax)
+      return [{ code: "max_length", params: { n: LIMITS.shortTextMax } }];
     return (a.match(/\d/g)?.length ?? 0) >= 6 ? [] : ["pattern"];
   },
   isEmpty: (a) => a.trim().length === 0,
@@ -36,5 +37,6 @@ export const phone = defineFieldType({
     validAnswers: ["+507 6123-4567"],
     invalidAnswers: [61234567, null],
     emptyAnswer: "",
+    overLimitAnswers: ["1".repeat(LIMITS.shortTextMax + 1)],
   },
 });

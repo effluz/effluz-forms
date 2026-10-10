@@ -18,7 +18,10 @@ export const longText = defineFieldType({
   maxLength: LIMITS.longTextMax,
   allowedOperators: ["contains", "not_contains", "is_empty", "is_not_empty"],
   normalize: (a) => cleanText(a).replace(/\r\n?/g, "\n"),
-  validate: (a) => (graphemeLength(a) > LIMITS.longTextMax ? ["max_length"] : []),
+  validate: (a) =>
+    graphemeLength(a) > LIMITS.longTextMax
+      ? [{ code: "max_length", params: { n: LIMITS.longTextMax } }]
+      : [],
   isEmpty: (a) => a.trim().length === 0,
   exportHeaders: (label) => [label],
   exportCells: (a) => [a ?? ""],
@@ -27,5 +30,6 @@ export const longText = defineFieldType({
     validAnswers: ["Our story\n\nbegan early."],
     invalidAnswers: [1, {}],
     emptyAnswer: "",
+    overLimitAnswers: ["x".repeat(LIMITS.longTextMax + 1)],
   },
 });
