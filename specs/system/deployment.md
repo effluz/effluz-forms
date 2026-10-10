@@ -82,10 +82,11 @@ Deploys are serialized by a GitHub Actions concurrency group.
 The status is `degraded`, and the response `503`, when the database is
 unreachable or the worker heartbeat is missing or older than five minutes.
 Dead jobs and an unwritable staging directory are reported but do not degrade
-the status. Each probe is bounded to 3 seconds; one that times out or fails
-counts as failed (database and staging `false`, heartbeat `null`, dead jobs
-`0`) and is logged as a warning with the probe name and error class only. An
-invalid configuration yields a degraded report, never an error page. The
+the status. Each probe is bounded to 3 seconds. A probe that fails or times
+out counts as failed (database and staging `false`, heartbeat `null`, dead
+jobs `0`). A probe that fails is logged as a warning with the probe name and
+error class only; one that times out is not logged. An invalid configuration
+yields a degraded report, never an error page. The
 response is never cached. It is public but reveals nothing sensitive.
 
 ## Runbooks

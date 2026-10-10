@@ -189,8 +189,9 @@ answered, so it is not optional.
   and the write throws if any string contains `@`. Today's details are the
   attempted domain on `sign_in_rejected`, the expiry reason (`idle_expired` or
   `absolute_expired`) on `session_expired`, and the number of sessions on
-  `sessions_revoked`. That last entry names the operator as actor and never the
-  person whose sessions were revoked.
+  `sessions_revoked`. That last entry names the operator as actor when the
+  command ran with `OPERATOR_EMAIL` set (otherwise the actor is empty) and
+  never the person whose sessions were revoked.
 - **IP** is the first value of the `X-Forwarded-For` header, so the proxy must
   set that header itself and never pass a client-supplied one through.
   `sessions_revoked` rows have no IP.

@@ -28,7 +28,8 @@ its jobs are either both committed or neither is.
 Rules:
 
 - A use case opens at most one unit of work and never nests them.
-- Nothing outside `infrastructure/` imports the database driver.
+- The database driver is imported only in `infrastructure/`, in the
+  composition root (type only) and in the health route's pool probe.
 - Read-only queries for the admin page may bypass the unit of work but still go
   through a repository.
 
@@ -98,9 +99,9 @@ Rules:
   whole run, so concurrent deploys queue instead of interleaving. It disables
   `statement_timeout` on its own session, so a slow migration or a wait for the
   lock is never cut off, and it discards that connection afterwards.
-- The ledger stores the id and name only. It does not checksum applied files,
-  and a pending id lower than one already applied is still applied. "Never
-  edit a migration" and "take the next number" are kept by review.
+- The ledger records the id, name and time of each migration, and has no
+  checksum. A pending id lower than one already applied is still applied.
+  "Never edit a migration" and "take the next number" are kept by review.
 - Run as a deploy step before the new app version starts, with
   `pnpm db:migrate` (`src/app/cli/migrate.ts`). The command loads the full
   application configuration, so it needs every required variable, not just
@@ -129,7 +130,9 @@ Rules:
   keeps the data volume.
 - `pnpm db:migrate` applies pending migrations to `DATABASE_URL`.
 - `pnpm test:integration` never touches the dev database. Its global setup
-  connects with `TEST_DATABASE_ADMIN_URL` (a role that can create databases),
-  creates a throwaway database named `effluz_test_<8 hex digits>`, runs every
-  migration into it, and drops it when the run ends. CI sets the same variable
-  against its Postgres service; see `ci-cd.md`.
+  connects with `TEST_DATABASE_ADMIN_URL` (a role that can create databases;
+  when unset it falls back to
+  `postgres://effluz:effluz@127.0.0.1:5432/postgres`), creates a throwaway
+  database named `effluz_test_<8 hex digits>`, runs every migration into it,
+  and drops it when the run ends. CI sets the same variable against its
+  Postgres service; see `ci-cd.md`.

@@ -2,6 +2,8 @@
 
 Status: accepted
 Date: 2026-10-10
+Amended 2026-10-10: the runner discovers module migration folders; ids form one
+global sequence.
 
 ## Context
 
