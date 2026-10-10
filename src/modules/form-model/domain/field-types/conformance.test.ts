@@ -5,12 +5,6 @@ import { buildDefaultRegistry } from "./index";
 
 const registry = buildDefaultRegistry();
 
-// Vitest rejects a file whose describe.each has no cases. This placeholder keeps the
-// file non-empty and asserts the registry is readable; the cases below are the real checks.
-it("registry is readable", () => {
-  expect(Array.isArray(registry.list())).toBe(true);
-});
-
 describe.each(registry.list().map((d) => [d.id, d] as const))("field type %s", (_id, def) => {
   const settings = def.fixtures.settings[0];
 

@@ -1,4 +1,5 @@
-import type { AnyFieldType } from "../field-type";
+import type { AnyFieldType, FieldTypeId } from "../field-type";
+import { OPERATORS, type OperatorDefinition } from "../operators";
 import { createRegistry, type FieldTypeRegistry } from "../registry";
 import { checkbox } from "./checkbox";
 import { consent } from "./consent";
@@ -18,16 +19,23 @@ export const defaultFieldTypes: readonly AnyFieldType[] = [
   longText,
   email,
   phone,
-  numberType,
-  date,
   singleChoice,
   multipleChoice,
   checkbox,
-  consent,
+  numberType,
+  date,
   fileUpload,
+  consent,
   section,
 ];
 
 export function buildDefaultRegistry(): FieldTypeRegistry {
   return createRegistry(defaultFieldTypes);
+}
+
+export function operatorsFor(
+  registry: FieldTypeRegistry,
+  typeId: FieldTypeId,
+): OperatorDefinition[] {
+  return registry.get(typeId).allowedOperators.map((id) => OPERATORS[id]);
 }
