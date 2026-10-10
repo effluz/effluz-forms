@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { adminMetadata } from "@/modules/identity/presentation/metadata";
+import { adminMetadata } from "@/shared/presentation/metadata";
 
 export const metadata = adminMetadata;
 

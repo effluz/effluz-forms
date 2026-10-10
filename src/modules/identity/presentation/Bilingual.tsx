@@ -1,20 +1,7 @@
-import { copy, fill, type CopyKey } from "./copy";
-import { styles } from "./styles";
+import { BilingualText } from "@/shared/presentation/Bilingual";
+import { copy, type CopyKey } from "./copy";
 
-/**
- * English text with the Spanish line beneath it, marked `lang="es"`. There is no
- * language preference yet, so both are always shown. Identical text is shown once.
- */
+/** The sign-in copy for `k` in both languages, through the shared `BilingualText`. */
 export function Bilingual({ k, vars = {} }: { k: CopyKey; vars?: Record<string, string> }) {
-  const en = fill(copy[k].en, vars);
-  const es = fill(copy[k].es, vars);
-  if (en === es) return <>{en}</>;
-  return (
-    <>
-      {en}
-      <span lang="es" className={styles.es}>
-        {es}
-      </span>
-    </>
-  );
+  return <BilingualText text={copy[k]} vars={vars} />;
 }

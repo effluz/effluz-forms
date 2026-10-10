@@ -255,10 +255,14 @@ builder (status names, New form dialog).
 | home.see_operations | See Operations | Ver Operaciones |
 | shell.wordmark | Effluz | Effluz |
 | shell.signed_in_as | Signed in as {name} | Sesión iniciada como {name} |
-| admin.home_placeholder | Admin area, coming soon | Área de administración, próximamente |
+| shell.skip_to_main | Skip to main content | Saltar al contenido principal |
+| shell.main_nav | Main navigation | Navegación principal |
+| shell.breadcrumb | Breadcrumb | Ruta de navegación |
+| shell.cancel | Cancel | Cancelar |
 
-`admin.home_placeholder` is the heading of the interim admin home and goes
-away when the forms list ships.
+`shell.main_nav` and `shell.breadcrumb` name the two navigation landmarks
+for assistive technology. `shell.cancel` is the cancel link of every
+confirmation dialog.
 
 ### Sign-in and access
 
@@ -303,6 +307,8 @@ admin area.
 | life.delete_body | This form has never been published and has no submissions. Deleting it cannot be undone. Type the link name to confirm. | Este formulario nunca se publicó y no tiene respuestas. Eliminarlo no se puede deshacer. Escribe el nombre del enlace para confirmar. |
 | life.banner_closed | This form is closed. People with the link see a closed message. | Este formulario está cerrado. Quienes tengan el enlace ven un mensaje de cierre. |
 | life.banner_archived | This form is archived. | Este formulario está archivado. |
+| form.error_transition | That action is no longer available for this form. Reload to see its current status. | Esa acción ya no está disponible para este formulario. Recarga para ver su estado actual. |
+| builder.placeholder | The builder is coming soon. Settings and sharing already work. | El constructor llegará pronto. La configuración y el enlace ya funcionan. |
 
 ### Submissions list
 
