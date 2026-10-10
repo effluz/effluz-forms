@@ -65,6 +65,45 @@ describe("exportColumns", () => {
   });
 });
 
+const textVersion = (fields: { key: string; label?: { en: string; es: string } }[]) =>
+  parse({
+    languages: "bilingual",
+    confirmation: { screen: { en: "x", es: "x" } },
+    pages: [
+      {
+        key: "page1",
+        title: { en: "p", es: "p" },
+        fields: fields.map((f) => ({
+          key: f.key,
+          type: "short_text",
+          label: f.label ?? { en: f.key, es: f.key },
+        })),
+      },
+    ],
+  });
+
+describe("exportColumns version order", () => {
+  it("lists the latest version's keys first, then older-only keys oldest first", () => {
+    const a = textVersion([{ key: "a_only" }]);
+    const b = textVersion([{ key: "b_only" }]);
+    const cur = textVersion([{ key: "cur_field" }]);
+    expect(exportColumns([a, b, cur], registry, "en").map((c) => c.key)).toEqual([
+      "cur_field",
+      "a_only",
+      "b_only",
+    ]);
+  });
+
+  it("labels a key from the newest version that still has it", () => {
+    const old = textVersion([{ key: "shared", label: { en: "Old label", es: "Etiqueta vieja" } }]);
+    const mid = textVersion([{ key: "shared", label: { en: "New label", es: "Etiqueta nueva" } }]);
+    const cur = textVersion([{ key: "cur_field" }]);
+    const cols = exportColumns([old, mid, cur], registry, "en");
+    expect(cols.map((c) => c.key)).toEqual(["cur_field", "shared"]);
+    expect(cols.find((c) => c.key === "shared")?.header).toBe("New label");
+  });
+});
+
 describe("exportRow", () => {
   const cols = exportColumns([v1, v2], registry, "en");
   it("fills from the submission's own version and blanks keys it lacks", () => {

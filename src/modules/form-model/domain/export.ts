@@ -14,36 +14,47 @@ export interface ExportColumn {
 /**
  * Builds the export column layout across form versions.
  *
- * `versions` is ordered oldest first: the LAST element is treated as the latest.
- * `exportColumns` reverses a copy of it, so callers must keep that contract.
+ * `versions` is ordered oldest to newest: the LAST element is the latest.
  *
  * Columns follow the union of input field keys: keys in the latest version come
- * first in their own order, and keys that exist only in older versions are
- * appended, oldest first. Headers use the label from the latest version that
- * has the key, resolved in `locale` with that version's fallback. Each key
- * expands to one column per export header its field type produces.
+ * first in their own order, then keys that exist only in older versions are
+ * appended, oldest version first, in each version's field order. A key's header
+ * uses the label from the newest version that has it, resolved in `locale` with
+ * that version's fallback. Each key expands to one column per export header its
+ * field type produces.
  */
 export function exportColumns(
   versions: readonly Version[],
   registry: FieldTypeRegistry,
   locale: Locale,
 ): ExportColumn[] {
-  const latestFirst = [...versions].reverse();
-  const ordered: { field: Field; version: Version }[] = [];
-  const seen = new Set<string>();
-  for (const version of latestFirst) {
-    for (const field of inputFields(version, registry)) {
-      if (seen.has(field.key)) continue;
-      seen.add(field.key);
-      ordered.push({ field, version });
-    }
+  const latest = versions[versions.length - 1];
+  if (!latest) return [];
+
+  // Oldest to newest, so the newest version that has a key overwrites older owners.
+  const owner = new Map<string, { field: Field; version: Version }>();
+  for (const version of versions) {
+    for (const field of inputFields(version, registry)) owner.set(field.key, { field, version });
   }
-  return ordered.flatMap(({ field, version }) => {
+
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  const add = (key: string) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    keys.push(key);
+  };
+  for (const field of inputFields(latest, registry)) add(field.key);
+  for (const version of versions.slice(0, -1))
+    for (const field of inputFields(version, registry)) add(field.key);
+
+  return keys.flatMap((key) => {
+    const entry = owner.get(key);
+    if (!entry) return [];
+    const { field, version } = entry;
     const def = registry.get(field.type);
     const label = resolveText(field.label, locale, version.languages) || field.key;
-    return def
-      .exportHeaders(label)
-      .map((header, cell) => ({ key: field.key, typeId: def.id, header, cell }));
+    return def.exportHeaders(label).map((header, cell) => ({ key, typeId: def.id, header, cell }));
   });
 }
 
