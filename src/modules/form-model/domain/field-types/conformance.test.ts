@@ -5,8 +5,8 @@ import { buildDefaultRegistry } from "./index";
 
 const registry = buildDefaultRegistry();
 
-// Vitest rejects a file whose describe.each has no cases, so the suite keeps one
-// real assertion until the first field type registers.
+// Vitest rejects a file whose describe.each has no cases. This placeholder keeps the
+// file non-empty and asserts the registry is readable; the cases below are the real checks.
 it("registry is readable", () => {
   expect(Array.isArray(registry.list())).toBe(true);
 });
@@ -22,41 +22,71 @@ describe.each(registry.list().map((d) => [d.id, d] as const))("field type %s", (
 
   it("parses all settings fixtures with its settings schema", () => {
     for (const s of def.fixtures.settings)
-      expect(def.settingsSchema.safeParse(s).success).toBe(true);
+      expect(
+        def.settingsSchema.safeParse(s).success,
+        `${def.id}: settings fixture ${JSON.stringify(s)}`,
+      ).toBe(true);
   });
 
   it("accepts valid answers and rejects invalid ones by shape", () => {
     for (const a of def.fixtures.validAnswers)
-      expect(def.answerSchema.safeParse(a).success).toBe(true);
+      expect(
+        def.answerSchema.safeParse(a).success,
+        `${def.id}: valid answer ${JSON.stringify(a)}`,
+      ).toBe(true);
     for (const a of def.fixtures.invalidAnswers)
-      expect(def.answerSchema.safeParse(a).success).toBe(false);
+      expect(
+        def.answerSchema.safeParse(a).success,
+        `${def.id}: invalid answer ${JSON.stringify(a)}`,
+      ).toBe(false);
   });
 
   it("normalizes idempotently and valid answers produce no intrinsic issues", () => {
     for (const a of def.fixtures.validAnswers) {
       const once = def.normalize(a, settings);
-      expect(def.normalize(once, settings)).toEqual(once);
-      expect(def.validate(once, settings)).toEqual([]);
+      expect(
+        def.answerSchema.safeParse(once).success,
+        `${def.id}: normalized answer ${JSON.stringify(once)} still parses`,
+      ).toBe(true);
+      expect(
+        def.normalize(once, settings),
+        `${def.id}: normalize is idempotent for ${JSON.stringify(a)}`,
+      ).toEqual(once);
+      expect(
+        def.validate(once, settings),
+        `${def.id}: normalized valid answer ${JSON.stringify(once)} has no intrinsic issues`,
+      ).toEqual([]);
     }
   });
 
   it("declares only known rules and operators", () => {
     for (const r of def.allowedRules)
-      expect(ruleSchema.options.some((o) => o.shape.rule.value === r)).toBe(true);
-    for (const o of def.allowedOperators) expect(operatorSchema.safeParse(o).success).toBe(true);
+      expect(
+        ruleSchema.options.some((o) => o.shape.rule.value === r),
+        `${def.id}: unknown rule ${r}`,
+      ).toBe(true);
+    for (const o of def.allowedOperators)
+      expect(operatorSchema.safeParse(o).success, `${def.id}: unknown operator ${o}`).toBe(true);
   });
 
   it("reports its empty fixture as empty and valid answers as non-empty", () => {
     if (def.fixtures.emptyAnswer !== undefined)
       expect(def.isEmpty(def.fixtures.emptyAnswer)).toBe(true);
-    if (def.isInput) for (const a of def.fixtures.validAnswers) expect(def.isEmpty(a)).toBe(false);
+    if (def.isInput)
+      for (const a of def.fixtures.validAnswers)
+        expect(def.isEmpty(a), `${def.id}: valid answer ${JSON.stringify(a)} is not empty`).toBe(
+          false,
+        );
   });
 
   it("exports the same number of cells as headers, for answers and for undefined", () => {
     const headers = def.exportHeaders("Label");
     expect(def.exportCells(undefined, settings, "en", "bilingual")).toHaveLength(headers.length);
     for (const a of def.fixtures.validAnswers)
-      expect(def.exportCells(a, settings, "es", "bilingual")).toHaveLength(headers.length);
+      expect(
+        def.exportCells(a, settings, "es", "bilingual"),
+        `${def.id}: export cells for valid answer ${JSON.stringify(a)}`,
+      ).toHaveLength(headers.length);
   });
 
   it("non-input types collect no personal data and allow no rules", () => {
