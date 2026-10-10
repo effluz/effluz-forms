@@ -4,10 +4,10 @@ export interface StaffIdentity {
 }
 
 export interface IdentityClaims {
-  email?: string;
-  emailVerified?: boolean;
-  hostedDomain?: string;
-  name?: string;
+  email?: string | undefined;
+  emailVerified?: boolean | undefined;
+  hostedDomain?: string | undefined;
+  name?: string | undefined;
 }
 
 export type Admission =
