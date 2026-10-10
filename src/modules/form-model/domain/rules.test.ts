@@ -59,6 +59,8 @@ describe("pattern safety", () => {
     "a*a*a*b",
     "a?b?c?",
     "a{999}",
+    "a{0,1000}",
+    "[a-z]{0,1000}",
     "[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}",
     "\\p{L}+( \\p{L}+)*",
     "[A-Z]{2}\\d{4}[A-Z]?",
@@ -92,7 +94,7 @@ describe("evaluateRule", () => {
     expect(evaluateRule({ rule: "pattern", value: "abc" }, "ABC", ctx)).toBe("pattern");
     expect(evaluateRule({ rule: "pattern", value: "abc", flags: "i" }, "ABC", ctx)).toBeUndefined();
   });
-  it.each(["a{1000}", "[a-z]{0,500}a", "(a|b){0,250}"])(
+  it.each(["a{1000}", "[a-z]{0,500}a", "(a|b){0,250}", "[a-z]{0,1000}"])(
     "the costliest accepted pattern %s stays fast on a long answer",
     (value) => {
       expect(ruleSchema.safeParse({ rule: "pattern", value }).success).toBe(true);

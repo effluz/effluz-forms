@@ -17,7 +17,7 @@ no I/O and no native code, as a second allowed `domain/` dependency.
   linear in pattern and input size.
 - Syntax is RE2's. Backreferences and lookarounds do not compile and are
   rejected when the rule is saved, as are repeat counts above 1,000.
-- A pattern is at most 200 characters and compiles to at most 1,100
+- A pattern is at most 200 characters and compiles to at most 2,200
   instructions (`MAX_PROGRAM_SIZE`), because RE2 matching costs input length
   times program size and counted repeats expand in the program.
 - The whole trimmed answer must match (RE2JS `testExact`), not a part of it.
@@ -31,7 +31,7 @@ no I/O and no native code, as a second allowed `domain/` dependency.
 - Expressiveness is restored except for backreferences and lookarounds.
   Nested quantifiers and long alternations are accepted.
 - Patterns with many wide counted repeats, such as `.{0,1000}` several times
-  over, are rejected when the rule is saved. `a{1000}` still fits.
+  over, are rejected when the rule is saved. A single `[a-z]{0,1000}` still fits.
 - ADR 0013 is superseded.
 - ADR 0012's list of third-party dependencies allowed in `domain/` is now
   zod and re2js.

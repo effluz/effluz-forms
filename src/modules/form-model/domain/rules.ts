@@ -9,9 +9,9 @@ const MAX_PATTERN_LENGTH = 200;
 /**
  * Most compiled instructions a pattern may have. RE2 matching costs input
  * length times program size and counted repeats expand in the program, so the
- * length cap alone does not bound cost. `a{1000}` (1,002) fits. See ADR 0015.
+ * length cap alone does not bound cost. `[a-z]{0,1000}` (2,002) fits. See ADR 0015.
  */
-export const MAX_PROGRAM_SIZE = 1_100;
+export const MAX_PROGRAM_SIZE = 2_200;
 
 /**
  * A pattern is safe when it is short, RE2 can compile it and its compiled
