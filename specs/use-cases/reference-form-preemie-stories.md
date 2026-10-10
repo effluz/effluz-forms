@@ -61,7 +61,12 @@ variant adds one to exercise the alt text validation.
 - `long_text` ¿Quiénes te ayudaron durante el proceso?, required
 - `long_text` Escribe tu historia (lo más breve posible), required. Help
   text is a bulleted list of what to include plus a link to an example post.
-  Requires the restricted rich-text subset in `help`.
+  Requires the restricted rich-text subset in `help`. The list items:
+  - Cuánto tiempo pasó en el hospital.
+  - Fue cesárea o parto natural.
+  - Qué fue lo que hizo que naciera antes de tiempo (si sabes la razón).
+  - Complicaciones que sufrió durante o después de su nacimiento.
+  - Edad actual y cómo se encuentra.
 - `single_choice` (radio) ¿Cómo llegaste a este formulario?: Instagram /
   Facebook / Por una amiga o amigo / Google o similar, required
 

@@ -31,6 +31,8 @@ places may use a restricted rich-text subset (paragraphs, line breaks, bold,
 italic, bulleted lists, numbered lists, links to `https` URLs) that the
 renderer sanitizes: page
 descriptions, field help, `section` descriptions, and confirmation copy.
+The subset is stored as the markdown syntax defined in `ui-ux/builder.md`;
+labels and options never contain it.
 Labels and options are always plain text.
 
 ## Structure of a version
@@ -90,6 +92,21 @@ missing any of these fails the conformance suite.
 Adding a type: see `CLAUDE.md`, "Adding a capability". Removing a type is not
 supported while any version uses it.
 
+### Export formats
+
+- `short_text`, `long_text`, `email`, `phone`, `date`: the answer, as one cell.
+- `number`: one cell, as a plain decimal string.
+- `single_choice`: one cell with the option label in the export locale.
+- `multiple_choice`: one cell with the option labels joined by "; ", in
+  option order.
+- `checkbox`: one cell, "yes" or "no" (Spanish "sí" or "no").
+- `consent`: two cells, "yes" (Spanish "sí") and the accepted text version.
+- `file_upload`: two cells, the file count and the media ids joined by "; ".
+- `section`: no columns.
+
+`multiple_choice` answers are normalized to option order with unknown keys
+kept so validation can report them.
+
 ## Validation
 
 Rules are declarative, attached per field, and chosen from the list the
@@ -98,11 +115,23 @@ submission. The client evaluates the same rules for immediate feedback and
 may not add or skip any.
 
 - `required` is a field property, not a rule, and is skipped for hidden fields.
+- `must_be_true` fails when the answer is false or absent, so omitting the
+  answer cannot bypass it even on a field that is not required.
 - Messages are built from the rule and the field label by the renderer, in
   the submitter's locale. Staff do not write error messages.
 - System maximums bound anything staff can set: text length, file size, file
   count, options per choice field, fields per page, pages per form. Values are
   in `specs/system/security.md`.
+- `pattern` rules accept a safe subset of regular expressions: literals,
+  escapes, character classes, anchors, quantifiers on single atoms, and
+  non-quantified groups with alternation. Quantified groups, backreferences
+  and lookarounds are rejected so a public submission cannot stall the server.
+  At most two quantifiers of any kind and at most four `|` per pattern. Pattern
+  rules apply only to answers of up to 1,000 characters; a field with a pattern
+  rule must therefore cap its length at 1,000 or below, which publish
+  validation enforces. The limit counts graphemes and UTF-16 code units, so
+  combining marks cannot bypass it. This subset is an interim measure; see
+  ADR 0013.
 
 ## Conditional logic
 
@@ -148,7 +177,9 @@ draft --publish--> published --close--> closed --archive--> archived
 Publishing validates the draft: at least one page with one input field, no
 unlabeled field, all translations present for bilingual forms, consent
 present when required, retention set, no dangling condition references,
-alt text present in each required language when a header image is set.
+alt text present in each required language when a header image is set, a
+pattern rule only on a field whose length is capped at 1,000 or below, at most
+one consent field, and the consent field is never conditional.
 
 ## Submissions
 
