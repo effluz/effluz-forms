@@ -9,6 +9,10 @@ const options = [
   { key: asKey("single"), label: { en: "One baby", es: "Un solo bebé" } },
   { key: asKey("twins"), label: { en: "Twins", es: "Gemelar" } },
 ];
+const labelTexts = [
+  { path: "options/0/label", text: options[0]?.label, blankCode: "option_unlabeled" },
+  { path: "options/1/label", text: options[1]?.label, blankCode: "option_unlabeled" },
+];
 
 describe("options", () => {
   it("requires unique keys and at most 50", () => {
@@ -40,6 +44,10 @@ describe("single_choice", () => {
     expect(singleChoice.exportCells(asKey("twins"), s, "es", "bilingual")).toEqual(["Gemelar"]);
     expect(singleChoice.exportCells(undefined, s, "es", "bilingual")).toEqual([""]);
   });
+  it("asks publish to check every option label and has no other publish checks", () => {
+    expect(singleChoice.localizedSettingsTexts?.(s)).toEqual(labelTexts);
+    expect(singleChoice.publishChecks?.({ required: false, validation: [] }, s)).toEqual([]);
+  });
 });
 
 describe("multiple_choice", () => {
@@ -68,6 +76,32 @@ describe("multiple_choice", () => {
   });
   it("empty array is empty", () => {
     expect(multipleChoice.isEmpty([])).toBe(true);
+  });
+  it("asks publish to check every option label", () => {
+    expect(multipleChoice.localizedSettingsTexts?.(s)).toEqual(labelTexts);
+  });
+  it("reports a selection count beyond the option count at validation", () => {
+    const field = (validation: { rule: "min_selected" | "max_selected"; value: number }[]) => ({
+      required: false,
+      validation,
+    });
+    expect(multipleChoice.publishChecks?.(field([{ rule: "min_selected", value: 3 }]), s)).toEqual([
+      {
+        code: "over_maximum",
+        path: "validation",
+        params: { detail: "min_selected 3 > 2 options" },
+      },
+    ]);
+    expect(multipleChoice.publishChecks?.(field([{ rule: "max_selected", value: 4 }]), s)).toEqual([
+      {
+        code: "over_maximum",
+        path: "validation",
+        params: { detail: "max_selected 4 > 2 options" },
+      },
+    ]);
+    expect(multipleChoice.publishChecks?.(field([{ rule: "max_selected", value: 2 }]), s)).toEqual(
+      [],
+    );
   });
 });
 

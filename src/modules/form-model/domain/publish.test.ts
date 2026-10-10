@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { type AnyFieldType, defineFieldType } from "./field-type";
 import { consentItems } from "./field-types/consent";
 import { buildDefaultRegistry } from "./field-types";
+import { numberType } from "./field-types/number";
+import { createRegistry } from "./registry";
 import { checkDefinition, collectsPersonalData, parseVersion, validateForPublish } from "./publish";
 import { parseDraft } from "./version";
 
@@ -319,6 +322,86 @@ describe("checkDefinition", () => {
       path: "headerImage/alt",
       params: { lang: "es" },
     });
+  });
+});
+
+describe("checkDefinition reads field type hooks", () => {
+  const withStub = (stub: AnyFieldType) =>
+    createRegistry(registry.list().map((d) => (d.id === stub.id ? stub : d)));
+  const numberField = { key: "num1", type: "number", label: { en: "N", es: "N" } };
+  const check = (stub: AnyFieldType, fields: unknown[]) => {
+    const reg = withStub(stub);
+    const r = parseDraft(withFields(fields), reg);
+    if (!r.ok) throw new Error(JSON.stringify(r.issues));
+    return checkDefinition(r.version, reg);
+  };
+
+  it("checks localizedSettingsTexts at the field's settings path", () => {
+    const stub = defineFieldType({
+      ...numberType,
+      localizedSettingsTexts: () => [
+        { path: "unit", text: {}, blankCode: "unlabeled" },
+        { path: "note", text: undefined, blankCode: null },
+        { path: "hint", text: { en: "Hint" }, blankCode: null },
+      ],
+    });
+    expect(check(stub, [nameField, numberField])).toEqual([
+      { code: "unlabeled", path: "pages/0/fields/1/settings/unit" },
+      {
+        code: "missing_translation",
+        path: "pages/0/fields/1/settings/hint",
+        params: { lang: "es" },
+      },
+    ]);
+  });
+  it("prefixes publishChecks paths with the field path", () => {
+    const stub = defineFieldType({
+      ...numberType,
+      publishChecks: (field) =>
+        field.validation.length > 0 ? [{ code: "over_maximum", path: "validation" }] : [],
+    });
+    const ruled = { ...numberField, validation: [{ rule: "max_value", value: 1 }] };
+    expect(check(stub, [nameField, ruled])).toEqual([
+      { code: "over_maximum", path: "pages/0/fields/1/validation" },
+    ]);
+  });
+  it("reports an exclusive role held twice once, at pages, with its params", () => {
+    const stub = defineFieldType({
+      ...numberType,
+      exclusiveRoles: () => [{ role: "stub_role", code: "over_maximum", params: { detail: "x" } }],
+    });
+    const three = [numberField, { ...numberField, key: "num2" }, { ...numberField, key: "num3" }];
+    expect(check(stub, three)).toEqual([
+      { code: "over_maximum", path: "pages", params: { detail: "x" } },
+    ]);
+    expect(check(stub, [numberField])).toEqual([]);
+  });
+  it("rejects a condition on a neverHidden field and counts alwaysRequired as consent", () => {
+    const stub = defineFieldType({ ...numberType, neverHidden: true, alwaysRequired: true });
+    const gatedNumber = { ...numberField, visibility: { field: "name", op: "is_not_empty" } };
+    expect(check(stub, [nameField, mailField, gatedNumber])).toEqual([
+      { code: "consent_missing", path: "pages/0/fields/2" },
+    ]);
+  });
+  it("caps length rules at any type's declared maxLength", () => {
+    const v = parse(
+      withFields([
+        {
+          key: "phone",
+          type: "phone",
+          label: { en: "Phone", es: "Teléfono" },
+          validation: [{ rule: "max_length", value: 6000 }],
+        },
+        consentField,
+      ]),
+    );
+    expect(checkDefinition(v, registry)).toEqual([
+      {
+        code: "over_maximum",
+        path: "pages/0/fields/0/validation",
+        params: { detail: "max_length 6000 > 5000" },
+      },
+    ]);
   });
 });
 

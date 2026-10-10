@@ -27,6 +27,20 @@ export const fileUpload = defineFieldType({
   isEmpty: (a) => a.length === 0,
   exportHeaders: (label) => [`${label} (count)`, `${label} (files)`],
   exportCells: (a) => [String(a?.length ?? 0), (a ?? []).join("; ")],
+  publishChecks: (field, s) =>
+    field.validation.flatMap((rule) =>
+      (rule.rule === "min_files" || rule.rule === "max_files") && rule.value > s.maxFiles
+        ? [
+            {
+              code: "over_maximum" as const,
+              path: "validation",
+              params: {
+                detail: `${rule.rule} ${String(rule.value)} > ${String(s.maxFiles)} files`,
+              },
+            },
+          ]
+        : [],
+    ),
   fixtures: {
     settings: [
       { kinds: ["image"], maxFiles: 10, maxSizeMb: 10 },

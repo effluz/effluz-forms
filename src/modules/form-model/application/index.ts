@@ -2,7 +2,14 @@
 export { buildDefaultRegistry, fieldTypes, operatorsFor } from "../domain/field-types";
 export type { FieldTypeRegistry } from "../domain/registry";
 export { createRegistry, UnknownFieldTypeError } from "../domain/registry";
-export type { FieldTypeDefinition, FieldTypeId, ValidationOutcome } from "../domain/field-type";
+export type {
+  ExclusiveRole,
+  FieldTypeDefinition,
+  FieldTypeId,
+  PublishIssueDraft,
+  SettingsText,
+  ValidationOutcome,
+} from "../domain/field-type";
 export { defineFieldType, fieldTypeIds } from "../domain/field-type";
 export { LIMITS } from "../domain/limits";
 export { keySchema, asKey } from "../domain/keys";

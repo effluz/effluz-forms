@@ -35,9 +35,10 @@ function issuesFor(
   const issue = (code: ValidationCode, params?: ValidationIssue["params"]): ValidationIssue =>
     params ? { code, field: key, params } : { code, field: key };
 
+  const demanded = field.required || def.alwaysRequired === true;
+  const requiredCode = def.requiredCode ?? "required";
   if (isAbsent(raw)) {
-    if (def.id === "consent") return { issues: [issue("consent")] };
-    if (field.required) return { issues: [issue("required")] };
+    if (demanded) return { issues: [issue(requiredCode)] };
     // Omitting a must_be_true answer must not bypass the rule that sending false fails.
     if (field.validation.some((r) => r.rule === "must_be_true"))
       return { issues: [issue("must_be_true")] };
@@ -45,13 +46,13 @@ function issuesFor(
   }
   const shape = def.answerSchema.safeParse(raw);
   if (!shape.success) {
-    // Consent is always required and always reports the consent code, never a shape error.
-    return { issues: [issue(def.id === "consent" ? "consent" : "invalid_shape")] };
+    // An always-required type reports its own code, never a shape error (consent, for one).
+    return {
+      issues: [issue(def.alwaysRequired ? (def.requiredCode ?? "invalid_shape") : "invalid_shape")],
+    };
   }
   const normalized = def.normalize(shape.data, field.settings);
-  if (def.isEmpty(normalized) && field.required) {
-    return { issues: [issue(def.id === "consent" ? "consent" : "required")] };
-  }
+  if (def.isEmpty(normalized) && demanded) return { issues: [issue(requiredCode)] };
   // A non-required answer that normalizes to blank (or an empty list) is no answer at all.
   if (def.isEmpty(normalized) && isAbsent(normalized)) return { issues: [] };
   // A non-required empty-but-present value such as checkbox false is still an answer,
@@ -96,9 +97,9 @@ export function validateSubmission(
     for (const field of page.fields) {
       const def = registry.get(field.type);
       if (!def.isInput) continue;
-      // Consent is always visible, so a condition can never skip the agreement.
+      // A never-hidden type (consent) cannot be skipped by any condition.
       const visible =
-        def.id === "consent" ||
+        def.neverHidden === true ||
         (pageVisible && (field.visibility ? evaluateCondition(field.visibility, answers) : true));
       if (!visible) continue;
       const own = Object.hasOwn(body, field.key) ? body[field.key] : undefined;
@@ -106,11 +107,8 @@ export function validateSubmission(
       issues.push(...result.issues);
       if (result.issues.length === 0 && result.normalized !== undefined) {
         answers[field.key] = result.normalized;
-        if (def.id === "consent")
-          consent = {
-            fieldKey: field.key,
-            textVersion: (result.normalized as { textVersion: string }).textVersion,
-          };
+        if (def.consentRecord)
+          consent = { fieldKey: field.key, ...def.consentRecord(result.normalized) };
       }
     }
   }

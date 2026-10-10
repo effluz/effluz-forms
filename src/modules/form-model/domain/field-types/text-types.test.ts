@@ -70,6 +70,12 @@ describe("email", () => {
     expect(email.collectsPersonalData).toBe(true);
     expect(phone.collectsPersonalData).toBe(true);
   });
+  it("holds the submitter address role only when marked as the submitter address", () => {
+    expect(email.exclusiveRoles?.({ isSubmitterAddress: true })).toEqual([
+      { role: "submitter_address", code: "submitter_email_dup" },
+    ]);
+    expect(email.exclusiveRoles?.({ isSubmitterAddress: false })).toEqual([]);
+  });
 });
 
 describe("phone", () => {

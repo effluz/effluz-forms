@@ -36,6 +36,8 @@ export const email = defineFieldType({
   isEmpty: (a) => a.trim().length === 0,
   exportHeaders: (label) => [label],
   exportCells: (a) => [a ?? ""],
+  exclusiveRoles: (s) =>
+    s.isSubmitterAddress ? [{ role: "submitter_address", code: "submitter_email_dup" }] : [],
   fixtures: {
     settings: [{ isSubmitterAddress: false }, { isSubmitterAddress: true }],
     validAnswers: ["family@example.com"],

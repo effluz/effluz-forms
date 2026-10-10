@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { defineFieldType } from "../field-type";
 import { asKey, type Key, keySchema } from "../keys";
-import { optionLabel, optionsSchema } from "./choice-shared";
+import {
+  optionLabel,
+  optionLabelTexts,
+  optionsSchema,
+  selectionCountChecks,
+} from "./choice-shared";
 
 export const multipleChoice = defineFieldType({
   id: "multiple_choice",
@@ -25,6 +30,8 @@ export const multipleChoice = defineFieldType({
   exportCells: (a, s, locale, languages) => [
     (a ?? []).map((k) => optionLabel(s.options, k, locale, languages)).join("; "),
   ],
+  localizedSettingsTexts: (s) => optionLabelTexts(s.options),
+  publishChecks: (field, s) => selectionCountChecks(field.validation, s.options),
   fixtures: {
     settings: [
       {

@@ -44,6 +44,19 @@ export const consent = defineFieldType({
   isEmpty: () => false,
   exportHeaders: (label) => [label, `${label} (text version)`],
   exportCells: (a, _s, locale) => (a ? [YES[locale], a.textVersion] : ["", ""]),
+  localizedSettingsTexts: (s) => [{ path: "text", text: s.text, blankCode: "unlabeled" }],
+  publishChecks: (_field, s) =>
+    isConsentChecklistComplete(s)
+      ? []
+      : [{ code: "consent_checklist", path: "settings/coveredItems" }],
+  exclusiveRoles: () => [
+    { role: "consent", code: "over_maximum", params: { detail: "more than one consent field" } },
+  ],
+  // Hiding or skipping the agreement would collect data without consent.
+  alwaysRequired: true,
+  requiredCode: "consent",
+  neverHidden: true,
+  consentRecord: (a) => ({ textVersion: a.textVersion }),
   fixtures: (() => {
     const text = { en: "I agree.", es: "Acepto." };
     return {

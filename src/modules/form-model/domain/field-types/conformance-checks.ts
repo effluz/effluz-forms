@@ -1,4 +1,5 @@
 import type { AnyFieldType, ValidationOutcome } from "../field-type";
+import { publishCodes, validationCodes } from "../issues";
 import { operatorSchema } from "../operators";
 import { ruleSchema } from "../rules";
 
@@ -27,6 +28,9 @@ function deepEqual(a: unknown, b: unknown): boolean {
 
 const isLimitCode = (code: string) => code.startsWith("max_") || code.endsWith("_max");
 const codeOf = (o: ValidationOutcome) => (typeof o === "string" ? o : o.code);
+const isPath = (p: unknown) => typeof p === "string" && p.length > 0;
+const isPublishCode = (c: unknown) => (publishCodes as readonly unknown[]).includes(c);
+const TEXT_VERSION = /^[0-9a-f]{16}$/;
 
 /**
  * The per-type checks of the field type conformance suite. Each check returns
@@ -137,6 +141,50 @@ const checks: readonly { name: string; run: (def: AnyFieldType) => string | unde
           return `over-limit answer yields no limit outcome: ${show(outcomes)}`;
         const bad = limits.find((o) => typeof o === "string" || typeof o.params["n"] !== "number");
         if (bad !== undefined) return `limit outcome without numeric params.n: ${show(bad)}`;
+      }
+      return undefined;
+    },
+  },
+  {
+    name: "publish hooks return well-formed results",
+    run: (def) => {
+      for (const s of def.fixtures.settings) {
+        for (const t of def.localizedSettingsTexts?.(s) ?? []) {
+          if (!isPath(t.path)) return `settings text with path ${show(t.path)}`;
+          if (t.blankCode !== null && !isPublishCode(t.blankCode))
+            return `settings text ${t.path} with blankCode ${show(t.blankCode)}`;
+          const text: unknown = t.text;
+          if (text !== undefined && (typeof text !== "object" || text === null))
+            return `settings text ${t.path} is not a localized text: ${show(text)}`;
+        }
+        for (const d of def.publishChecks?.({ required: false, validation: [] }, s) ?? [])
+          if (!isPath(d.path) || !isPublishCode(d.code)) return `publish check ${show(d)}`;
+        for (const r of def.exclusiveRoles?.(s) ?? [])
+          if (!isPath(r.role) || !isPublishCode(r.code)) return `exclusive role ${show(r)}`;
+      }
+      return undefined;
+    },
+  },
+  {
+    name: "alwaysRequired types declare a requiredCode and never report empty",
+    run: (def) => {
+      if (!def.alwaysRequired) return undefined;
+      if (def.requiredCode === undefined) return "alwaysRequired without requiredCode";
+      if (!(validationCodes as readonly string[]).includes(def.requiredCode))
+        return `unknown requiredCode ${def.requiredCode}`;
+      const a: unknown = def.fixtures.validAnswers.find((v) => def.isEmpty(v));
+      return a === undefined ? undefined : `valid answer ${show(a)} reported empty`;
+    },
+  },
+  {
+    name: "consentRecord returns a text version",
+    run: (def) => {
+      if (!def.consentRecord) return undefined;
+      const settings: unknown = def.fixtures.settings[0];
+      for (const a of def.fixtures.validAnswers) {
+        const record = def.consentRecord(def.normalize(a, settings));
+        if (!TEXT_VERSION.test(record.textVersion))
+          return `consent record ${show(record)} for ${show(a)}`;
       }
       return undefined;
     },

@@ -1,6 +1,6 @@
 # 0014. Interim: publish and submission validation branch on a few type ids
 
-Status: accepted
+Status: superseded by 0016
 Date: 2026-10-10
 
 ## Context

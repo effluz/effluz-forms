@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { consentTextVersion } from "./consent-text";
+import { defineFieldType } from "./field-type";
 import { buildDefaultRegistry } from "./field-types";
+import { numberType } from "./field-types/number";
+import { createRegistry } from "./registry";
 import { isAbsent, validateSubmission } from "./submission";
 import { parseDraft } from "./version";
 
@@ -424,5 +427,55 @@ describe("validateSubmission", () => {
   it("treats a non-required answer that normalizes to blank as absent", () => {
     const res = validateSubmission(opt.version, registry, { nick: "\u200B" }, ctx);
     expect(res).toEqual({ ok: true, answers: {} });
+  });
+});
+
+describe("validateSubmission reads field type hooks", () => {
+  const stub = defineFieldType({
+    ...numberType,
+    alwaysRequired: true,
+    requiredCode: "number_min",
+    neverHidden: true,
+    consentRecord: (a) => ({ textVersion: String(a) }),
+  });
+  const reg = createRegistry(registry.list().map((d) => (d.id === stub.id ? stub : d)));
+  const parsed = parseDraft(
+    {
+      languages: "es",
+      confirmation: { screen: { es: "Gracias" } },
+      pages: [
+        {
+          key: "page1",
+          title: { es: "Datos" },
+          fields: [
+            { key: "flag", type: "checkbox", label: { es: "Casilla" } },
+            {
+              key: "num1",
+              type: "number",
+              label: { es: "N\u00FAmero" },
+              visibility: { field: "flag", op: "equals", value: true },
+            },
+          ],
+        },
+      ],
+    },
+    reg,
+  );
+  if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues));
+  const v = parsed.version;
+
+  it("demands an alwaysRequired, neverHidden answer with its requiredCode", () => {
+    for (const body of [{}, { flag: false }, { flag: false, num1: "seven" }])
+      expect(validateSubmission(v, reg, body, ctx)).toEqual({
+        ok: false,
+        issues: [{ code: "number_min", field: "num1" }],
+      });
+  });
+  it("returns the consentRecord of a valid answer", () => {
+    expect(validateSubmission(v, reg, { num1: 7 }, ctx)).toEqual({
+      ok: true,
+      answers: { num1: 7 },
+      consent: { fieldKey: "num1", textVersion: "7" },
+    });
   });
 });
