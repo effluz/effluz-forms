@@ -14,6 +14,22 @@ import { section } from "./section";
 import { shortText } from "./short-text";
 import { singleChoice } from "./single-choice";
 
+/** Every field type definition of the first release, by id. */
+export const fieldTypes = {
+  short_text: shortText,
+  long_text: longText,
+  email,
+  phone,
+  number: numberType,
+  date,
+  single_choice: singleChoice,
+  multiple_choice: multipleChoice,
+  checkbox,
+  consent,
+  file_upload: fileUpload,
+  section,
+} as const satisfies Record<FieldTypeId, AnyFieldType>;
+
 export const defaultFieldTypes: readonly AnyFieldType[] = [
   shortText,
   longText,
