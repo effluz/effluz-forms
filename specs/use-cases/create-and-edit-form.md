@@ -13,6 +13,9 @@ draft.
 
 ## Main flow: create
 
+0. The editor chooses Blank or Duplicate an existing form. Duplicate copies
+   the source's latest draft and its settings except slug, dates and
+   recipients, with new field keys.
 1. The editor enters a working title (both languages, or one if the form is
    marked single-language) and picks the language mode.
 2. The system generates a slug from the title, which the editor may change
@@ -27,6 +30,9 @@ draft.
    type. Each new field gets a system key and an empty bilingual label.
 2. The editor edits labels, help, required, type-specific settings and
    validation rules in a field panel. Both languages are shown side by side.
+   When one language is filled and the other empty, the editor may request
+   a machine translation suggestion, which is applied only on accept and
+   stays tagged as unreviewed until an editor confirms it.
 3. The editor reorders fields and pages by drag and drop or keyboard
    commands, and moves a field between pages.
 4. The editor sets visibility conditions on a field or page by choosing an
@@ -55,6 +61,8 @@ draft.
 - **Slug taken, or reserved** (`admin`, `api`, `health`, `f`). Inline error.
 - **Session expired during editing.** Unsaved changes are kept in the browser
   and offered for restore after sign-in.
+- **Translation service unavailable.** The suggestion button reports it;
+  editing continues. Nothing else depends on the service.
 
 ## Rules
 

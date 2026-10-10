@@ -45,7 +45,7 @@ magnitude or a second server appears.
              +-------------+
 
   External: Dropbox (durable media)   SMTP2GO (email)   Google (admin sign-in)
-            Error tracker             Uptime monitor
+            DeepL (translation suggestions)   Error tracker   Uptime monitor
 ```
 
 All services run as one Docker Compose stack on an InterServer VPS. The `app`
@@ -76,7 +76,7 @@ this table and go through each module's public application API.
 | `identity` | Staff sign-in, sessions, audit log | `shared` |
 | `media` | `MediaStorage` port and adapters, photo processing, media records | `shared` |
 | `notifications` | Email templates and the `EmailSender` port; job handlers for email | `shared` |
-| `definitions` | Forms, drafts, versions, lifecycle, operational settings, QR codes | `form-model`, `identity` |
+| `definitions` | Forms, drafts, versions, lifecycle, operational settings, QR codes, translation suggestions | `form-model`, `identity` |
 | `submissions` | Public rendering of a published version, server validation, intake transaction, enqueuing jobs | `form-model`, `definitions`, `media`, `notifications` |
 | `review` | Listing, viewing, exporting and deleting submissions; dead job retry | `form-model`, `definitions`, `submissions`, `media`, `identity` |
 
@@ -101,6 +101,7 @@ or a module's public API:
 | `Clock`, `IdGenerator` | Determinism in tests | System | n/a |
 
 | `FieldTypeRegistry` | Look up a field type's validator, normalizer, exporter | In-code registry in `form-model` | `form-definition.md` |
+| `Translator` | Suggest a translation of staff-authored text; available to `definitions` only | DeepL API | `decisions/0010` |
 
 Repositories belong to the module that owns the aggregate (`definitions` owns
 forms and versions, `submissions` owns submissions) and are defined as ports
@@ -188,6 +189,7 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 | CI/CD | GitHub Actions, images in GitHub Container Registry | accepted | `decisions/0007` |
 | Application | Next.js and React, framework confined to presentation and composition root | accepted | `decisions/0008` |
 | Product shape | Staff-authored, versioned form definitions; modules by capability | accepted | `decisions/0009` |
+| Translation suggestions | DeepL behind a `Translator` port, staff text only | accepted | `decisions/0010` |
 | Error tracking | Sentry with PII scrubbing | proposed | `system/observability.md` |
 | Bot challenge | Cloudflare Turnstile on the final step | proposed | `system/security.md` |
 
@@ -199,6 +201,7 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 | Dropbox | Personal account `tluzcando@gmail.com` | App folder for durable media and encrypted backups |
 | SMTP2GO | Effluz account, sender domain `forms.effluz.com` | Transactional email |
 | InterServer | Effluz account | The VPS, United States region |
+| DeepL | Effluz account, API key | Translation suggestions in the builder |
 | GitHub | `effluz/effluz-forms` | Code, CI/CD, container registry |
 
 Credentials for all of these live in the team password manager, never in the
