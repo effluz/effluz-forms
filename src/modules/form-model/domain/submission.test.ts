@@ -90,6 +90,29 @@ const rb = parseDraft(
 );
 if (!rb.ok) throw new Error(JSON.stringify(rb.issues));
 
+const opt = parseDraft(
+  {
+    languages: "es",
+    confirmation: { screen: { es: "Gracias" } },
+    pages: [
+      {
+        key: "page1",
+        title: { es: "Datos" },
+        fields: [
+          {
+            key: "nick",
+            type: "short_text",
+            label: { es: "Apodo" },
+            validation: [{ rule: "min_length", value: 2 }],
+          },
+        ],
+      },
+    ],
+  },
+  registry,
+);
+if (!opt.ok) throw new Error(JSON.stringify(opt.issues));
+
 describe("isAbsent", () => {
   it("treats undefined, null, blank and empty array as absent, but not 0 or false", () => {
     for (const a of [undefined, null, "", "  ", []]) expect(isAbsent(a)).toBe(true);
@@ -274,5 +297,9 @@ describe("validateSubmission", () => {
     );
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.issues).toContainEqual({ code: "consent", field: "agree" });
+  });
+  it("treats a non-required answer that normalizes to blank as absent", () => {
+    const res = validateSubmission(opt.version, registry, { nick: "\u200B" }, ctx);
+    expect(res).toEqual({ ok: true, answers: {} });
   });
 });

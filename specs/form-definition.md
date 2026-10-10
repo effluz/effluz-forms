@@ -157,7 +157,9 @@ draft --publish--> published --close--> closed --archive--> archived
 Publishing validates the draft: at least one page with one input field, no
 unlabeled field, all translations present for bilingual forms, consent
 present when required, retention set, no dangling condition references,
-alt text present in each required language when a header image is set.
+alt text present in each required language when a header image is set, a
+pattern rule only on a field whose length is capped at 1,000 or below, and at
+most one consent field.
 
 ## Submissions
 

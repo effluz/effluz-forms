@@ -48,6 +48,8 @@ function issuesFor(
   if (def.isEmpty(normalized) && field.required) {
     return { issues: [issue(def.id === "consent" ? "consent" : "required")] };
   }
+  // A non-required answer that normalizes to blank (or an empty list) is no answer at all.
+  if (def.isEmpty(normalized) && isAbsent(normalized)) return { issues: [] };
   // A non-required empty-but-present value such as checkbox false is still an answer,
   // so the intrinsic check and the rules still run on it.
   const intrinsic = def.validate(normalized, field.settings);
