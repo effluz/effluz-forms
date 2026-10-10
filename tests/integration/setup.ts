@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import pg from "pg";
 import type { TestProject } from "vitest/node";
 import { loadMigrations, MIGRATION_DIRS, migrate } from "@/shared/infrastructure/postgres/migrate";
+import { createPool } from "@/shared/infrastructure/postgres/pool";
 
 const DEFAULT_ADMIN_URL = "postgres://effluz:effluz@127.0.0.1:5432/postgres";
 
@@ -21,7 +22,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
   const databaseUrl = url.toString();
 
   try {
-    const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 });
+    const pool = createPool(databaseUrl, { max: 1, statementTimeoutMs: 0 });
     try {
       await migrate(pool, loadMigrations(MIGRATION_DIRS));
     } finally {

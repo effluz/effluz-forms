@@ -10,7 +10,7 @@ async function main(): Promise<void> {
     level: config.logLevel,
     version: config.appVersion,
   });
-  const pool = createPool(config.databaseUrl, { max: 1 });
+  const pool = createPool(config.databaseUrl, { max: 1, statementTimeoutMs: 0, logger: log });
   try {
     const { applied } = await migrate(pool, loadMigrations(MIGRATION_DIRS), log);
     log.info("migrations complete", { applied: applied.length });

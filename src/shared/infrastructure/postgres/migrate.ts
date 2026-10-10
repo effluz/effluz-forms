@@ -63,10 +63,12 @@ export async function migrate(
 ): Promise<{ applied: string[] }> {
   const client = await pool.connect();
   const applied: string[] = [];
+  let failure: Error | undefined;
   try {
+    // Lock first: two first-time runners must not race on creating the ledger.
+    await client.query("select pg_advisory_lock($1)", [LOCK_KEY]);
     await client.query(`create table if not exists schema_migration (
       id text primary key, name text not null, applied_at timestamptz not null default now())`);
-    await client.query("select pg_advisory_lock($1)", [LOCK_KEY]);
     const done = new Set(
       (await client.query<{ id: string }>("select id from schema_migration")).rows.map((r) => r.id),
     );
@@ -83,13 +85,18 @@ export async function migrate(
         applied.push(m.id);
         log?.info("migration applied", { migration: `${m.id}_${m.name}` });
       } catch (e) {
-        await client.query("rollback");
+        // A dead connection must not mask the original error.
+        await client.query("rollback").catch(() => undefined);
         throw e;
       }
     }
+  } catch (e) {
+    failure = e instanceof Error ? e : new Error(String(e));
+    throw e;
   } finally {
     await client.query("select pg_advisory_unlock($1)", [LOCK_KEY]).catch(() => undefined);
-    client.release();
+    // Passing the error discards the client instead of returning a possibly broken one.
+    client.release(failure);
   }
   return { applied };
 }
