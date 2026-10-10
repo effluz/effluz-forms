@@ -39,3 +39,6 @@ next-env.d.ts
 .vitest/
 coverage/
 playwright-report/
+
+# boundary-test probes
+src/modules/probe-*/
