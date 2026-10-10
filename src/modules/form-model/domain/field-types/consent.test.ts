@@ -31,4 +31,32 @@ describe("consent", () => {
       consent.exportCells({ accepted: true, textVersion: v }, full, "en", "bilingual"),
     ).toEqual(["yes", v]);
   });
+  it("asks publish to check its text", () => {
+    expect(consent.localizedSettingsTexts?.(full)).toEqual([
+      { path: "text", text, blankCode: "unlabeled" },
+    ]);
+  });
+  it("reports an incomplete checklist at settings/coveredItems", () => {
+    const field = { required: false, validation: [] };
+    expect(consent.publishChecks?.(field, full)).toEqual([]);
+    expect(consent.publishChecks?.(field, { text, coveredItems: consentItems.slice(1) })).toEqual([
+      { code: "consent_checklist", path: "settings/coveredItems" },
+    ]);
+  });
+  it("allows one consent field per form", () => {
+    expect(consent.exclusiveRoles?.(full)).toEqual([
+      { role: "consent", code: "over_maximum", params: { detail: "more than one consent field" } },
+    ]);
+  });
+  it("is always required, reports the consent code and is never hidden", () => {
+    expect(consent.alwaysRequired).toBe(true);
+    expect(consent.requiredCode).toBe("consent");
+    expect(consent.neverHidden).toBe(true);
+  });
+  it("records the accepted text version", () => {
+    const v = consentTextVersion(text);
+    expect(consent.consentRecord?.({ accepted: true, textVersion: v })).toEqual({
+      textVersion: v,
+    });
+  });
 });

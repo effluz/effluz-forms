@@ -122,16 +122,10 @@ may not add or skip any.
 - System maximums bound anything staff can set: text length, file size, file
   count, options per choice field, fields per page, pages per form. Values are
   in `specs/system/security.md`.
-- `pattern` rules accept a safe subset of regular expressions: literals,
-  escapes, character classes, anchors, quantifiers on single atoms, and
-  non-quantified groups with alternation. Quantified groups, backreferences
-  and lookarounds are rejected so a public submission cannot stall the server.
-  At most two quantifiers of any kind and at most four `|` per pattern. Pattern
-  rules apply only to answers of up to 1,000 characters; a field with a pattern
-  rule must therefore cap its length at 1,000 or below, which publish
-  validation enforces. The limit counts graphemes and UTF-16 code units, so
-  combining marks cannot bypass it. This subset is an interim measure; see
-  ADR 0013.
+- `pattern` rules are matched by a linear-time engine using RE2 syntax.
+  Backreferences and lookarounds are not supported and are rejected when the
+  rule is saved. Patterns are at most 200 characters and compile to a bounded
+  program size, so no pattern can stall the server.
 
 ## Conditional logic
 
@@ -177,8 +171,7 @@ draft --publish--> published --close--> closed --archive--> archived
 Publishing validates the draft: at least one page with one input field, no
 unlabeled field, all translations present for bilingual forms, consent
 present when required, retention set, no dangling condition references,
-alt text present in each required language when a header image is set, a
-pattern rule only on a field whose length is capped at 1,000 or below, at most
+alt text present in each required language when a header image is set, at most
 one consent field, and the consent field is never conditional.
 
 ## Submissions

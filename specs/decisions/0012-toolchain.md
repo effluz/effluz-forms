@@ -20,7 +20,8 @@ the module graph of `architecture.md`. Prettier for formatting.
 
 Zod is permitted in `domain/` layers as the schema language. It is a
 framework-free library with no I/O; the types it infers are the domain
-types. No other third-party dependency is allowed in `domain/`.
+types. The one other allowed third-party dependency in `domain/` is re2js
+(ADR 0015); no others are allowed.
 
 ## Consequences
 

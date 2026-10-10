@@ -36,6 +36,20 @@ describe("file_upload", () => {
   it("collects personal data", () => {
     expect(fileUpload.collectsPersonalData).toBe(true);
   });
+  it("reports a file-count rule beyond the settings cap at validation", () => {
+    const s = { kinds: ["image" as const], maxFiles: 3, maxSizeMb: 10 };
+    const field = (validation: { rule: "min_files" | "max_files"; value: number }[]) => ({
+      required: false,
+      validation,
+    });
+    expect(fileUpload.publishChecks?.(field([{ rule: "min_files", value: 4 }]), s)).toEqual([
+      { code: "over_maximum", path: "validation", params: { detail: "min_files 4 > 3 files" } },
+    ]);
+    expect(fileUpload.publishChecks?.(field([{ rule: "max_files", value: 5 }]), s)).toEqual([
+      { code: "over_maximum", path: "validation", params: { detail: "max_files 5 > 3 files" } },
+    ]);
+    expect(fileUpload.publishChecks?.(field([{ rule: "max_files", value: 3 }]), s)).toEqual([]);
+  });
 });
 
 describe("section", () => {
@@ -47,5 +61,18 @@ describe("section", () => {
     expect(section.exportCells(undefined, { title: { en: "Info" } }, "en", "bilingual")).toEqual(
       [],
     );
+  });
+  it("asks publish to check its title and its optional description", () => {
+    const title = { en: "Info", es: "Información" };
+    expect(section.localizedSettingsTexts?.({ title })).toEqual([
+      { path: "title", text: title, blankCode: "unlabeled" },
+      { path: "description", text: undefined, blankCode: null },
+    ]);
+    const description = { en: "More" };
+    expect(section.localizedSettingsTexts?.({ title, description })[1]).toEqual({
+      path: "description",
+      text: description,
+      blankCode: null,
+    });
   });
 });

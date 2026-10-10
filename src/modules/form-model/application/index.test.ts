@@ -7,8 +7,11 @@ import {
   fieldTypes,
   graphemeLength,
   optionSchema,
+  type ExclusiveRole,
   type Option,
+  type PublishIssueDraft,
   type RuleContext,
+  type SettingsText,
   type ValidationOutcome,
 } from "./index";
 
@@ -30,5 +33,18 @@ describe("form-model public API", () => {
     const ctx: RuleContext = { today: "2026-10-10" };
     const outcome: ValidationOutcome = { code: "max_length", params: { n: 5 } };
     expect([ctx.today, outcome]).toHaveLength(2);
+  });
+  it("exposes the field type hook types and the hooks on the definitions", () => {
+    const text: SettingsText = { path: "title", text: { en: "Info" }, blankCode: "unlabeled" };
+    const draft: PublishIssueDraft = { code: "consent_checklist", path: "settings/coveredItems" };
+    const role: ExclusiveRole = { role: "submitter_address", code: "submitter_email_dup" };
+    expect(fieldTypes.section.localizedSettingsTexts?.({ title: { en: "Info" } })[0]).toEqual(text);
+    expect(
+      fieldTypes.consent.publishChecks?.(
+        { required: false, validation: [] },
+        { text: { en: "x" }, coveredItems: [] },
+      ),
+    ).toEqual([draft]);
+    expect(fieldTypes.email.exclusiveRoles?.({ isSubmitterAddress: true })).toEqual([role]);
   });
 });

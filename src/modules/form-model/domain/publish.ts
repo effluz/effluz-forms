@@ -4,11 +4,10 @@ import {
   requiredLocales,
 } from "@/shared/domain/localized-text";
 import { referencedKeys, type Condition } from "./condition";
-import { isConsentChecklistComplete } from "./field-types/consent";
+import type { ExclusiveRole } from "./field-type";
 import type { PublishIssue } from "./issues";
 import { LIMITS } from "./limits";
 import type { FieldTypeRegistry } from "./registry";
-import { PATTERN_MAX_INPUT } from "./rules";
 import {
   fieldIndex,
   inputFields,
@@ -91,8 +90,8 @@ export function checkDefinition(version: Version, registry: FieldTypeRegistry): 
     }
   };
 
-  let submitterEmails = 0;
-  let consentFields = 0;
+  // Exclusive roles in order of first appearance, with the first holder's code and params.
+  const roles = new Map<string, { role: ExclusiveRole; count: number }>();
 
   version.pages.forEach((page, pi) => {
     const pPath = `pages/${String(pi)}`;
@@ -104,84 +103,40 @@ export function checkDefinition(version: Version, registry: FieldTypeRegistry): 
     page.fields.forEach((field: Field, fi) => {
       const fPath = `${pPath}/fields/${String(fi)}`;
       const def = registry.get(field.type);
-      const settings = field.settings as Record<string, unknown>;
       if (def.isInput) requireText(field.label, `${fPath}/label`, "unlabeled");
       optionalText(field.help, `${fPath}/help`);
       if (field.visibility)
         checkCondition(field.visibility, index.get(field.key)?.order ?? 0, `${fPath}/visibility`);
 
-      if (def.id === "section") {
-        requireText(settings["title"] as LocalizedText, `${fPath}/settings/title`, "unlabeled");
-        optionalText(
-          settings["description"] as LocalizedText | undefined,
-          `${fPath}/settings/description`,
-        );
+      // A never-hidden field cannot be conditional; consent is the only such type (ADR 0016).
+      if (def.neverHidden && (field.visibility || page.visibility)) push("consent_missing", fPath);
+      for (const entry of def.localizedSettingsTexts?.(field.settings) ?? []) {
+        const path = `${fPath}/settings/${entry.path}`;
+        if (entry.blankCode) requireText(entry.text, path, entry.blankCode);
+        else optionalText(entry.text, path);
       }
-      if (def.id === "single_choice" || def.id === "multiple_choice") {
-        const options = settings["options"] as { key: string; label: LocalizedText }[];
-        options.forEach((o, oi) => {
-          requireText(o.label, `${fPath}/settings/options/${String(oi)}/label`, "option_unlabeled");
-        });
-        for (const rule of field.validation)
-          if (
-            (rule.rule === "min_selected" || rule.rule === "max_selected") &&
-            rule.value > options.length
-          )
-            push("over_maximum", `${fPath}/validation`, {
-              detail: `${rule.rule} ${String(rule.value)} > ${String(options.length)} options`,
-            });
+      for (const draft of def.publishChecks?.(field, field.settings) ?? [])
+        push(draft.code, `${fPath}/${draft.path}`, draft.params);
+      for (const role of def.exclusiveRoles?.(field.settings) ?? []) {
+        const seen = roles.get(role.role);
+        roles.set(role.role, { role: seen?.role ?? role, count: (seen?.count ?? 0) + 1 });
       }
-      if (def.id === "email" && settings["isSubmitterAddress"] === true) submitterEmails++;
-      if (def.id === "consent") {
-        consentFields++;
-        // A consent field is never conditional: hiding it would skip the agreement.
-        if (field.visibility || page.visibility) push("consent_missing", fPath);
-        requireText(settings["text"] as LocalizedText, `${fPath}/settings/text`, "unlabeled");
-        if (
-          !isConsentChecklistComplete(settings as Parameters<typeof isConsentChecklistComplete>[0])
-        )
-          push("consent_checklist", `${fPath}/settings/coveredItems`);
-      }
-      if (def.id === "short_text" || def.id === "long_text") {
-        const cap = def.id === "short_text" ? LIMITS.shortTextMax : LIMITS.longTextMax;
+      const cap = def.maxLength;
+      if (cap !== undefined)
         for (const rule of field.validation)
           if ((rule.rule === "min_length" || rule.rule === "max_length") && rule.value > cap)
             push("over_maximum", `${fPath}/validation`, {
               detail: `${rule.rule} ${String(rule.value)} > ${String(cap)}`,
             });
-      }
-      if (def.id === "file_upload") {
-        const maxFiles = settings["maxFiles"] as number;
-        for (const rule of field.validation)
-          if ((rule.rule === "min_files" || rule.rule === "max_files") && rule.value > maxFiles)
-            push("over_maximum", `${fPath}/validation`, {
-              detail: `${rule.rule} ${String(rule.value)} > ${String(maxFiles)} files`,
-            });
-      }
-      // A pattern rule only matches answers up to PATTERN_MAX_INPUT, so the length must be
-      // capped, unless the type's own hard cap already is (email's 254).
-      const typeCapsPatternInput =
-        def.maxLength !== undefined && def.maxLength <= PATTERN_MAX_INPUT;
-      if (
-        def.allowedRules.includes("pattern") &&
-        !typeCapsPatternInput &&
-        field.validation.some((r) => r.rule === "pattern")
-      ) {
-        const bounded = field.validation.some(
-          (r) => r.rule === "max_length" && r.value <= PATTERN_MAX_INPUT,
-        );
-        if (!bounded)
-          push("over_maximum", `${fPath}/validation`, {
-            detail: `pattern requires max_length <= ${String(PATTERN_MAX_INPUT)}`,
-          });
-      }
     });
   });
 
-  if (submitterEmails > 1) push("submitter_email_dup", "pages");
-  if (consentFields > 1) push("over_maximum", "pages", { detail: "more than one consent field" });
-  if (consentFields === 0 && collectsPersonalData(version, registry))
-    push("consent_missing", "pages");
+  for (const { role, count } of roles.values())
+    if (count > 1) push(role.code, "pages", role.params);
+  const hasConsent = inputFields(version, registry).some(
+    (f) => registry.get(f.type).consentRecord !== undefined,
+  );
+  if (!hasConsent && collectsPersonalData(version, registry)) push("consent_missing", "pages");
   return issues;
 }
 

@@ -18,6 +18,10 @@ export const section = defineFieldType({
   isEmpty: () => true,
   exportHeaders: () => [],
   exportCells: () => [],
+  localizedSettingsTexts: (s) => [
+    { path: "title", text: s.title, blankCode: "unlabeled" },
+    { path: "description", text: s.description, blankCode: null },
+  ],
   fixtures: {
     settings: [{ title: { en: "Information", es: "Información" } }],
     validAnswers: [undefined],

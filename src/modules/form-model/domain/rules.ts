@@ -1,3 +1,4 @@
+import { RE2JS } from "re2js";
 import { z } from "zod";
 import type { IssueParams, ValidationCode } from "./issues";
 
@@ -5,145 +6,26 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const count = z.number().int().min(0);
 
 const MAX_PATTERN_LENGTH = 200;
-const MAX_REPEAT = 1000;
-const MAX_GROUP_DEPTH = 2;
-const MAX_QUANTIFIERS = 2;
-// Unquantified alternation alone can be exponential (a chain of 30 two-way
-// groups takes over 2 s), so the number of "|" is bounded too.
-const MAX_ALTERNATIVES = 4;
-/** Longest answer, in graphemes, that a pattern rule will match against. */
-export const PATTERN_MAX_INPUT = 1000;
+/**
+ * Most compiled instructions a pattern may have. RE2 matching costs input
+ * length times program size and counted repeats expand in the program, so the
+ * length cap alone does not bound cost. `[a-z]{0,1000}` (2,002) fits. See ADR 0015.
+ */
+export const MAX_PROGRAM_SIZE = 2_200;
 
 /**
- * Whitelist scanner for the safe regex subset. Walks the pattern once and
- * rejects every construct outside the subset. Quantified groups, backreferences
- * and lookarounds are excluded so a public submission cannot stall the server.
+ * A pattern is safe when it is short, RE2 can compile it and its compiled
+ * program is small. RE2 has no backreferences or lookarounds, so those fail to
+ * compile, and matching runs in time linear in input size times program size.
+ * See ADR 0015.
  */
-class PatternScanner {
-  private pos = 0;
-  private quantifiers = 0;
-  private alternatives = 0;
-  private readonly source: string;
-
-  constructor(source: string) {
-    this.source = source;
-  }
-
-  run(): boolean {
-    return this.alternation(0) && this.pos === this.source.length;
-  }
-
-  private peek(offset = 0): string {
-    return this.source.charAt(this.pos + offset);
-  }
-
-  private alternation(depth: number): boolean {
-    for (;;) {
-      if (!this.sequence(depth)) return false;
-      if (this.peek() !== "|") return true;
-      if (++this.alternatives > MAX_ALTERNATIVES) return false;
-      this.pos++;
-    }
-  }
-
-  private sequence(depth: number): boolean {
-    while (this.pos < this.source.length) {
-      const c = this.peek();
-      if (c === "|" || c === ")") return true;
-      if (c === "^" || c === "$") {
-        this.pos++;
-        continue;
-      }
-      if (c === "(") {
-        // Groups take no quantifier; a quantifier after ")" fails in atom().
-        if (!this.group(depth)) return false;
-        continue;
-      }
-      if (!this.atom(c) || !this.quantifier()) return false;
-    }
-    return true;
-  }
-
-  private group(depth: number): boolean {
-    if (depth + 1 > MAX_GROUP_DEPTH) return false;
-    if (this.source.startsWith("(?:", this.pos)) {
-      this.pos += 3;
-    } else if (this.peek(1) === "?") {
-      // Lookarounds and named groups.
-      return false;
-    } else {
-      this.pos += 1;
-    }
-    if (!this.alternation(depth + 1) || this.peek() !== ")") return false;
-    this.pos++;
-    return true;
-  }
-
-  private atom(c: string): boolean {
-    if (c === "\\") {
-      const escaped = this.peek(1);
-      // Backreferences (\1 to \9) and named backreferences (\k) are rejected.
-      if (escaped === "" || /[1-9k]/.test(escaped)) return false;
-      this.pos += 2;
-      return true;
-    }
-    if (c === "[") return this.characterClass();
-    if (c === ".") {
-      this.pos++;
-      return true;
-    }
-    // A quantifier or stray bracket where an atom belongs is malformed.
-    if (/[*+?{}\]]/.test(c)) return false;
-    this.pos++;
-    return true;
-  }
-
-  private characterClass(): boolean {
-    this.pos++;
-    if (this.peek() === "^") this.pos++;
-    while (this.pos < this.source.length) {
-      const c = this.peek();
-      if (c === "]") {
-        this.pos++;
-        return true;
-      }
-      this.pos += c === "\\" ? 2 : 1;
-    }
-    return false;
-  }
-
-  private quantifier(): boolean {
-    const c = this.peek();
-    if (c === "{") {
-      const repeat = /\{(\d+)(?:(,)(\d*))?\}/y;
-      repeat.lastIndex = this.pos;
-      const match = repeat.exec(this.source);
-      if (!match) return false;
-      const bounds = [Number(match[1]), match[3] ? Number(match[3]) : 0];
-      if (bounds.some((bound) => bound > MAX_REPEAT)) return false;
-      this.pos += match[0].length;
-    } else if (c === "*" || c === "+" || c === "?") {
-      this.pos++;
-    } else {
-      return true;
-    }
-    // Every quantifier counts once, bounded or not.
-    if (++this.quantifiers > MAX_QUANTIFIERS) return false;
-    // One optional lazy modifier belongs to the same quantifier.
-    if (this.peek() === "?") this.pos++;
-    return true;
-  }
-}
-
 function safeRegex(source: string): boolean {
   if (source.length > MAX_PATTERN_LENGTH) return false;
-  if (!new PatternScanner(source).run()) return false;
   try {
-    new RegExp(source, "u");
+    return RE2JS.compile(source).programSize() <= MAX_PROGRAM_SIZE;
   } catch {
     return false;
   }
-  return true;
 }
 
 export const ruleSchema = z.discriminatedUnion("rule", [
@@ -199,11 +81,9 @@ export function evaluateRule(
         : undefined;
     case "pattern":
       if (typeof answer !== "string") return undefined;
-      // Oversized input is refused before any regex is built or run. Combining
-      // marks add code units without adding graphemes, so both are bounded.
-      if (answer.length > PATTERN_MAX_INPUT || graphemeLength(answer) > PATTERN_MAX_INPUT)
-        return "pattern";
-      return new RegExp(`^(?:${rule.value})$`, `u${rule.flags ?? ""}`).test(answer.trim())
+      return RE2JS.compile(rule.value, rule.flags === "i" ? RE2JS.CASE_INSENSITIVE : 0).testExact(
+        answer.trim(),
+      )
         ? undefined
         : "pattern";
     case "min_value":

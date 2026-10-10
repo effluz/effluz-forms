@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { defineFieldType } from "../field-type";
 import { asKey, keySchema } from "../keys";
-import { optionLabel, optionsSchema } from "./choice-shared";
+import {
+  optionLabel,
+  optionLabelTexts,
+  optionsSchema,
+  selectionCountChecks,
+} from "./choice-shared";
 
 const settings = z.object({
   options: optionsSchema,
@@ -33,6 +38,8 @@ export const singleChoice = defineFieldType({
   exportCells: (a, s, locale, languages) => [
     a === undefined ? "" : optionLabel(s.options, a, locale, languages),
   ],
+  localizedSettingsTexts: (s) => optionLabelTexts(s.options),
+  publishChecks: (field, s) => selectionCountChecks(field.validation, s.options),
   fixtures: {
     settings: [
       {

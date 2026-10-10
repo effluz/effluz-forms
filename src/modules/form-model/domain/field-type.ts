@@ -1,8 +1,8 @@
 import type { z } from "zod";
-import type { Languages, Locale } from "@/shared/domain/localized-text";
-import type { IssueParams, ValidationCode } from "./issues";
+import type { Languages, Locale, LocalizedText } from "@/shared/domain/localized-text";
+import type { IssueParams, PublishCode, ValidationCode } from "./issues";
 import type { OperatorId } from "./operators";
-import type { RuleId } from "./rules";
+import type { Rule, RuleId } from "./rules";
 
 export const fieldTypeIds = [
   "short_text",
@@ -22,6 +22,34 @@ export type FieldTypeId = (typeof fieldTypeIds)[number];
 
 /** A type's own check result: a bare code, or a code with message parameters. */
 export type ValidationOutcome = ValidationCode | { code: ValidationCode; params: IssueParams };
+
+/** A staff-authored text inside a field's settings that publish validation checks. */
+export interface SettingsText {
+  /** Relative to the field's settings, e.g. "title" or "options/2/label". */
+  path: string;
+  /** Undefined is skipped for an optional text and counts as blank for a required one. */
+  text: LocalizedText | undefined;
+  /**
+   * Reported when the text is blank in every required language. Null marks an
+   * optional text: it is skipped when absent, and only missing_translation
+   * applies when it is partially filled.
+   */
+  blankCode: PublishCode | null;
+}
+
+/** A publish issue from a type's own checks; the path is relative to the field. */
+export interface PublishIssueDraft {
+  code: PublishCode;
+  path: string;
+  params?: IssueParams;
+}
+
+/** A role at most one field per form may hold; a second holder reports `code` at "pages". */
+export interface ExclusiveRole {
+  role: string;
+  code: PublishCode;
+  params?: IssueParams;
+}
 
 export interface FieldTypeFixtures<S, A> {
   settings: S[];
@@ -49,6 +77,28 @@ export interface FieldTypeDefinition<S = unknown, A = unknown> {
   exportHeaders(label: string): string[];
   exportCells(answer: A | undefined, settings: S, locale: Locale, languages: Languages): string[];
   fixtures: FieldTypeFixtures<S, A>;
+
+  // Optional hooks, read generically by publish and submission validation (ADR 0016).
+  /** Staff-authored texts inside settings that publish validation must check. */
+  localizedSettingsTexts?(settings: S): SettingsText[];
+  /** Type-specific publish checks beyond texts. */
+  publishChecks?(
+    field: { required: boolean; validation: readonly Rule[] },
+    settings: S,
+  ): PublishIssueDraft[];
+  /** Form-wide exclusivity: each returned role may appear at most once per form. */
+  exclusiveRoles?(settings: S): ExclusiveRole[];
+  /** The answer is demanded even when the field is not marked required. */
+  alwaysRequired?: true;
+  /**
+   * Code for a demanded answer that is absent or empty, and for a malformed
+   * answer of an always-required type. Defaults: "required", "invalid_shape".
+   */
+  requiredCode?: ValidationCode;
+  /** Visibility conditions never hide this field; publish rejects any condition on it. */
+  neverHidden?: true;
+  /** Extracts the consent record from a normalized answer. */
+  consentRecord?(answer: A): { textVersion: string };
 }
 
 export function defineFieldType<S, A>(def: FieldTypeDefinition<S, A>): FieldTypeDefinition<S, A> {
