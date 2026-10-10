@@ -30,6 +30,11 @@ describe("pattern safety", () => {
     // RE2 caps repeat counts at 1000 and rejects anything above at compile time.
     "a{1001}",
     "a".repeat(201),
+    // Counted repeats expand in the compiled program, and RE2 costs input times
+    // program size, so a short pattern can still be too expensive (ADR 0015).
+    "a{0,1000}a{0,1000}a{0,1000}a{0,1000}b",
+    ".{0,1000}".repeat(22),
+    "[a-z]{0,500}".repeat(4),
   ])("rejects %s", (value) => {
     expect(ruleSchema.safeParse({ rule: "pattern", value }).success).toBe(false);
   });
@@ -53,7 +58,9 @@ describe("pattern safety", () => {
     "((a(b)))",
     "a*a*a*b",
     "a?b?c?",
-    "a{0,1000}a{0,1000}a{0,1000}a{0,1000}b",
+    "a{999}",
+    "[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}",
+    "\\p{L}+( \\p{L}+)*",
     "[A-Z]{2}\\d{4}[A-Z]?",
     "[^@\\s]+@[^@\\s]+\\.[a-z]{2,}",
     "(Mon|Tue|Wed|Thu|Fri)",
@@ -85,6 +92,15 @@ describe("evaluateRule", () => {
     expect(evaluateRule({ rule: "pattern", value: "abc" }, "ABC", ctx)).toBe("pattern");
     expect(evaluateRule({ rule: "pattern", value: "abc", flags: "i" }, "ABC", ctx)).toBeUndefined();
   });
+  it.each(["a{1000}", "[a-z]{0,500}a", "(a|b){0,250}"])(
+    "the costliest accepted pattern %s stays fast on a long answer",
+    (value) => {
+      expect(ruleSchema.safeParse({ rule: "pattern", value }).success).toBe(true);
+      const started = performance.now();
+      evaluateRule({ rule: "pattern", value }, "a".repeat(5_000), ctx);
+      expect(performance.now() - started).toBeLessThan(100);
+    },
+  );
   it("a catastrophic pattern fails fast instead of stalling", () => {
     const started = performance.now();
     const result = evaluateRule(

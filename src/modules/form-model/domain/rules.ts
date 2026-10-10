@@ -6,20 +6,26 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const count = z.number().int().min(0);
 
 const MAX_PATTERN_LENGTH = 200;
+/**
+ * Most compiled instructions a pattern may have. RE2 matching costs input
+ * length times program size and counted repeats expand in the program, so the
+ * length cap alone does not bound cost. `a{1000}` (1,002) fits. See ADR 0015.
+ */
+export const MAX_PROGRAM_SIZE = 1_100;
 
 /**
- * A pattern is safe when it is short and RE2 can compile it. RE2 has no
- * backreferences or lookarounds, so those fail to compile, and matching runs in
- * time linear in pattern and input size. See ADR 0015.
+ * A pattern is safe when it is short, RE2 can compile it and its compiled
+ * program is small. RE2 has no backreferences or lookarounds, so those fail to
+ * compile, and matching runs in time linear in input size times program size.
+ * See ADR 0015.
  */
 function safeRegex(source: string): boolean {
   if (source.length > MAX_PATTERN_LENGTH) return false;
   try {
-    RE2JS.compile(source);
+    return RE2JS.compile(source).programSize() <= MAX_PROGRAM_SIZE;
   } catch {
     return false;
   }
-  return true;
 }
 
 export const ruleSchema = z.discriminatedUnion("rule", [

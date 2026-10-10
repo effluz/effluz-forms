@@ -122,10 +122,10 @@ may not add or skip any.
 - System maximums bound anything staff can set: text length, file size, file
   count, options per choice field, fields per page, pages per form. Values are
   in `specs/system/security.md`.
-- `pattern` rules are matched by a linear-time engine using RE2 syntax, so no
-  pattern can stall the server. Backreferences and lookarounds are not
-  supported and are rejected when the rule is saved. Patterns are at most 200
-  characters.
+- `pattern` rules are matched by a linear-time engine using RE2 syntax.
+  Backreferences and lookarounds are not supported and are rejected when the
+  rule is saved. Patterns are at most 200 characters and compile to a bounded
+  program size, so no pattern can stall the server.
 
 ## Conditional logic
 
