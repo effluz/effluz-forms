@@ -36,7 +36,8 @@ export function evaluateCondition(
 ): boolean {
   if ("all" in condition) return condition.all.every((c) => evaluateCondition(c, answers));
   if ("any" in condition) return condition.any.some((c) => evaluateCondition(c, answers));
-  return OPERATORS[condition.op].evaluate(answers[condition.field], condition.value);
+  const answer = Object.hasOwn(answers, condition.field) ? answers[condition.field] : undefined;
+  return OPERATORS[condition.op].evaluate(answer, condition.value);
 }
 
 /** Every field key referenced anywhere in the condition, in order of appearance. */

@@ -60,4 +60,7 @@ describe("evaluateCondition", () => {
   it("treats a missing field as undefined, not as an error", () => {
     expect(evaluateCondition({ field: "nope", op: "is_empty" } as Condition, answers)).toBe(true);
   });
+  it("does not read inherited properties as answers", () => {
+    expect(evaluateCondition({ field: "constructor", op: "is_empty" } as Condition, {})).toBe(true);
+  });
 });
