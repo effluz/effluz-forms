@@ -10,7 +10,11 @@ vi.mock("@/app/container", async (importOriginal) => ({
 import { loadConfig, type AppConfig } from "@/app/config";
 import { buildContainer, getContainer } from "@/app/container";
 import { sessionCookieMaxAgeSeconds } from "@/modules/identity/application";
-import { makeDeps, type FakeIdentityDeps } from "@/modules/identity/application/testing/fakes";
+import {
+  fakeUuid,
+  makeDeps,
+  type FakeIdentityDeps,
+} from "@/modules/identity/application/testing/fakes";
 import type { Logger } from "@/shared/application/ports/logger";
 import { GET as callback } from "./callback/route";
 import { GET as signin } from "./signin/route";
@@ -87,7 +91,7 @@ describe("GET /admin/auth/signin", () => {
     expect(res.status).toBe(302);
     expect(res.headers.get("Location")).toBe(deps.identity.start.authorizationUrl);
     expect(setCookie(res, "effluz_signin")).toBe(
-      "effluz_signin=id-1; Path=/admin/auth; HttpOnly; SameSite=Lax; Max-Age=600",
+      `effluz_signin=${fakeUuid(1)}; Path=/admin/auth; HttpOnly; SameSite=Lax; Max-Age=600`,
     );
     expect(deps.identity.beginCalls).toEqual([`${BASE}/admin/auth/callback`]);
   });
@@ -132,6 +136,24 @@ describe("GET /admin/auth/callback", () => {
       action: "sign_in",
       ip: "203.0.113.7",
     });
+  });
+
+  it("replaces the session the browser already had", async () => {
+    const first = await start("/admin");
+    deps.identity.script(workspaceClaims());
+    await callback(callbackRequest(first));
+    const [previous] = deps.sessions.all();
+    if (previous === undefined) throw new Error("no session created");
+
+    const second = await start("/admin");
+    deps.identity.script(workspaceClaims());
+    const res = await callback(callbackRequest(`${SESSION}=${previous.id}; ${second}`));
+
+    const sessions = deps.sessions.all();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]?.id).not.toBe(previous.id);
+    expect(setCookie(res, SESSION)).toMatch(new RegExp(`^${SESSION}=${sessions[0]?.id ?? ""};`));
+    expect(deps.audit.entries.map((e) => e.entry.action)).toEqual(["sign_in", "sign_in"]);
   });
 
   it("marks the session cookie Secure when the config asks for it", async () => {

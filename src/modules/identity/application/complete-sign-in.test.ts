@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import { completeSignIn } from "./complete-sign-in";
 import { makeDeps, type FakeIdentityDeps } from "./testing/fakes";
 
+const ATTEMPT_ID = "22222222-2222-4222-8222-222222222222";
 const META = { ip: "203.0.113.7" };
 const CALLBACK = "https://forms.example.com/admin/auth/callback?code=c&state=state-1";
 
 function seedAttempt(deps: FakeIdentityDeps, returnTo = "/admin/forms/1") {
   deps.attempts.seed({
-    id: "attempt-1",
+    id: ATTEMPT_ID,
     state: "state-1",
     nonce: "nonce-1",
     codeVerifier: "verifier-1",
@@ -35,7 +36,7 @@ describe("completeSignIn", () => {
     deps.identity.script(workspaceClaims());
 
     const result = await completeSignIn(deps, {
-      attemptId: "attempt-1",
+      attemptId: ATTEMPT_ID,
       callbackUrl: CALLBACK,
       meta: META,
     });
@@ -64,11 +65,83 @@ describe("completeSignIn", () => {
     ]);
   });
 
+  it("replaces the browser's previous session without auditing it", async () => {
+    const deps = makeDeps();
+    const previousId = "33333333-3333-4333-8333-333333333333";
+    deps.sessions.seed({
+      id: previousId,
+      email: "staff.member@effluz.com",
+      name: "Staff Member",
+      csrfToken: "csrf-old",
+      createdAt: deps.clock.now(),
+      lastSeenAt: deps.clock.now(),
+    });
+    seedAttempt(deps);
+    deps.identity.script(workspaceClaims());
+
+    const result = await completeSignIn(deps, {
+      attemptId: ATTEMPT_ID,
+      previousSessionId: previousId,
+      callbackUrl: CALLBACK,
+      meta: META,
+    });
+
+    if (result.outcome !== "signed_in") throw new Error("expected signed_in");
+    expect(deps.sessions.has(previousId)).toBe(false);
+    expect(deps.sessions.all().map((s) => s.id)).toEqual([result.session.id]);
+    expect(deps.audit.entries.map((e) => e.entry.action)).toEqual(["sign_in"]);
+  });
+
+  it.each([
+    ["unknown", "44444444-4444-4444-8444-444444444444"],
+    ["malformed", "gone"],
+    ["absent", null],
+  ])("signs in normally when the previous session id is %s", async (_name, previousId) => {
+    const deps = makeDeps();
+    seedAttempt(deps);
+    deps.identity.script(workspaceClaims());
+    const result = await completeSignIn(deps, {
+      attemptId: ATTEMPT_ID,
+      previousSessionId: previousId,
+      callbackUrl: CALLBACK,
+      meta: META,
+    });
+    expect(result.outcome).toBe("signed_in");
+    expect(deps.sessions.all()).toHaveLength(1);
+    expect(deps.audit.entries.map((e) => e.entry.action)).toEqual(["sign_in"]);
+  });
+
+  it("keeps the previous session when sign-in is denied", async () => {
+    const deps = makeDeps();
+    const previousId = "33333333-3333-4333-8333-333333333333";
+    deps.sessions.seed({
+      id: previousId,
+      email: "staff.member@effluz.com",
+      name: "Staff Member",
+      csrfToken: "csrf-old",
+      createdAt: deps.clock.now(),
+      lastSeenAt: deps.clock.now(),
+    });
+    seedAttempt(deps);
+    deps.identity.script({
+      ok: true,
+      claims: { email: "someone@gmail.com", emailVerified: true, hostedDomain: "gmail.com" },
+    });
+    const result = await completeSignIn(deps, {
+      attemptId: ATTEMPT_ID,
+      previousSessionId: previousId,
+      callbackUrl: CALLBACK,
+      meta: META,
+    });
+    expect(result).toEqual({ outcome: "denied" });
+    expect(deps.sessions.has(previousId)).toBe(true);
+  });
+
   it("passes the stored attempt secrets and the same redirect uri used at start", async () => {
     const deps = makeDeps();
     seedAttempt(deps);
     deps.identity.script(workspaceClaims());
-    await completeSignIn(deps, { attemptId: "attempt-1", callbackUrl: CALLBACK, meta: META });
+    await completeSignIn(deps, { attemptId: ATTEMPT_ID, callbackUrl: CALLBACK, meta: META });
 
     expect(deps.identity.completeCalls).toEqual([
       {
@@ -87,11 +160,11 @@ describe("completeSignIn", () => {
     const deps = makeDeps();
     seedAttempt(deps);
     deps.identity.script(workspaceClaims());
-    await completeSignIn(deps, { attemptId: "attempt-1", callbackUrl: CALLBACK, meta: META });
+    await completeSignIn(deps, { attemptId: ATTEMPT_ID, callbackUrl: CALLBACK, meta: META });
     deps.identity.script(workspaceClaims());
 
     const second = await completeSignIn(deps, {
-      attemptId: "attempt-1",
+      attemptId: ATTEMPT_ID,
       callbackUrl: CALLBACK,
       meta: META,
     });
@@ -118,7 +191,7 @@ describe("completeSignIn", () => {
     seedAttempt(deps);
     deps.clock.advance(10 * 60 * 1000);
     const result = await completeSignIn(deps, {
-      attemptId: "attempt-1",
+      attemptId: ATTEMPT_ID,
       callbackUrl: CALLBACK,
       meta: META,
     });
@@ -140,7 +213,7 @@ describe("completeSignIn", () => {
     });
 
     const result = await completeSignIn(deps, {
-      attemptId: "attempt-1",
+      attemptId: ATTEMPT_ID,
       callbackUrl: CALLBACK,
       meta: META,
     });
@@ -168,7 +241,7 @@ describe("completeSignIn", () => {
     deps.identity.script({ ok: true, claims: { emailVerified: true } });
 
     const result = await completeSignIn(deps, {
-      attemptId: "attempt-1",
+      attemptId: ATTEMPT_ID,
       callbackUrl: CALLBACK,
       meta: { ip: null },
     });
@@ -189,7 +262,7 @@ describe("completeSignIn", () => {
     seedAttempt(deps);
     deps.identity.script({ ok: false, reason: "invalid_token" });
     const result = await completeSignIn(deps, {
-      attemptId: "attempt-1",
+      attemptId: ATTEMPT_ID,
       callbackUrl: CALLBACK,
       meta: META,
     });
@@ -203,7 +276,7 @@ describe("completeSignIn", () => {
     seedAttempt(deps);
     deps.identity.script({ ok: false, reason: "exchange_failed" });
     const result = await completeSignIn(deps, {
-      attemptId: "attempt-1",
+      attemptId: ATTEMPT_ID,
       callbackUrl: CALLBACK,
       meta: META,
     });
@@ -216,7 +289,7 @@ describe("completeSignIn", () => {
     seedAttempt(deps);
     deps.identity.script({ ok: false, reason: "stale" });
     const result = await completeSignIn(deps, {
-      attemptId: "attempt-1",
+      attemptId: ATTEMPT_ID,
       callbackUrl: CALLBACK,
       meta: META,
     });
@@ -230,12 +303,12 @@ describe("completeSignIn", () => {
     seedAttempt(deps);
     deps.identity.script({ ok: false, reason: "invalid_token" });
     const first = await completeSignIn(deps, {
-      attemptId: "attempt-1",
+      attemptId: ATTEMPT_ID,
       callbackUrl: CALLBACK,
       meta: META,
     });
     const second = await completeSignIn(deps, {
-      attemptId: "attempt-1",
+      attemptId: ATTEMPT_ID,
       callbackUrl: CALLBACK,
       meta: META,
     });
@@ -249,7 +322,7 @@ describe("completeSignIn", () => {
     seedAttempt(deps);
     deps.identity.script({ ok: false, reason: "state_mismatch" });
     const result = await completeSignIn(deps, {
-      attemptId: "attempt-1",
+      attemptId: ATTEMPT_ID,
       callbackUrl: CALLBACK,
       meta: META,
     });

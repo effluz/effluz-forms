@@ -40,6 +40,12 @@ describe("PgSignInAttemptStore", () => {
     expect(await store.consume(randomUUID(), new Date())).toBeNull();
   });
 
+  it("returns null for an id that is not a UUID instead of failing", async () => {
+    await store.create(attempt());
+    expect(await store.consume("gone", new Date("2026-10-10T12:05:00.000Z"))).toBeNull();
+    expect(await count()).toBe(1);
+  });
+
   it("returns null for an attempt older than 10 minutes and deletes it", async () => {
     const a = attempt();
     await store.create(a);

@@ -18,9 +18,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   if (pathname === "/admin/auth" || pathname.startsWith("/admin/auth/")) return NextResponse.next();
 
   let logger: Logger | undefined;
+  let publicBaseUrl: string | undefined;
   try {
     const container = getContainer();
     logger = container.logger;
+    publicBaseUrl = container.config.publicBaseUrl;
     const sessionId = request.cookies.get(container.config.session.cookieName)?.value || null;
     const current = await currentSession(container.identity, {
       sessionId,
@@ -33,11 +35,12 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     );
   } catch (e) {
     // Never let a request through when the session cannot be checked (database down).
-    // Without a container (invalid configuration) a stand-alone logger still records it.
+    // Without a container (invalid configuration) a stand-alone logger still records
+    // it, and the request's own URL is the only origin left to redirect on.
     (logger ?? fallbackLogger()).warn("admin gate failed", {
       error: e instanceof Error ? e.name : "Error",
     });
-    return NextResponse.redirect(new URL(ERROR_PATH, request.url), 302);
+    return NextResponse.redirect(new URL(ERROR_PATH, publicBaseUrl ?? request.url), 302);
   }
 }
 

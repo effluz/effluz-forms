@@ -52,6 +52,30 @@ describe("createLogger", () => {
     expect(line).toContain("[Redacted]");
   });
 
+  it("drops caller fields that would override the line's own keys", () => {
+    const { lines, stream } = capture();
+    const reserved = { service: "x", version: "x", level: "x", time: "x", msg: "x" };
+    const log = createLogger({
+      service: "app",
+      level: "info",
+      version: "1.0",
+      destination: stream,
+    });
+    log.info("direct", { ...reserved, jobId: "j1" });
+    log.child({ ...reserved, requestId: "r1" }).warn("child", { level: "x" });
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({
+      service: "app",
+      version: "1.0",
+      level: "info",
+      msg: "direct",
+    });
+    expect(lines[0]?.["jobId"]).toBe("j1");
+    expect(lines[1]).toMatchObject({ service: "app", version: "1.0", level: "warn", msg: "child" });
+    expect(lines[1]?.["requestId"]).toBe("r1");
+    for (const line of lines) expect(typeof line["time"]).toBe("number");
+  });
+
   it("respects the level and child fields", () => {
     const { lines, stream } = capture();
     const log = createLogger({

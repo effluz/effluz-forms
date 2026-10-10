@@ -4,8 +4,11 @@
  * - `makeDeps(overrides?)` builds a full `IdentityDeps` wired to the fakes below
  *   and returns the concrete fakes too, so tests can seed and inspect them.
  * - `FixedClock`: `set(date)`, `advance(ms)`; starts at 2026-10-10T09:00:00Z.
- * - `SequentialIdGenerator`: `id-1`, `id-2`, ...
+ * - `SequentialIdGenerator`: UUID-shaped ids ending in 1, 2, ..., see `fakeUuid(n)`.
  * - `InMemorySessionRepository`: `seed(session)`, `all()`, `has(id)`.
+ * - Like the Postgres adapters, the session and attempt fakes treat an id that is
+ *   not a UUID as absent (reads return null, writes keyed by it do nothing), and
+ *   refuse to store a row under one.
  * - `InMemoryAuditLog`: `entries` as `{ entry, at }`.
  * - `InMemorySignInAttemptStore`: `seed(attempt)`, `size()`; honours the 10-minute expiry.
  * - `ScriptedAdminIdentity`: `script(completion)` queues the next completion;
@@ -52,13 +55,25 @@ export class FixedClock implements Clock {
   }
 }
 
+/** The `n`th id `SequentialIdGenerator` returns: `00000000-0000-4000-8000-000000000001` for 1. */
+export function fakeUuid(n: number): string {
+  return `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+}
+
 export class SequentialIdGenerator implements IdGenerator {
   private counter = 0;
 
   newId(): string {
     this.counter += 1;
-    return `id-${String(this.counter)}`;
+    return fakeUuid(this.counter);
   }
+}
+
+// Mirrors infrastructure/uuid.ts, which this layer may not import.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function requireUuid(id: string): void {
+  if (!UUID.test(id)) throw new Error("fake store: id must be a UUID, as the uuid column requires");
 }
 
 function plainUnitOfWork(): UnitOfWork {
@@ -83,6 +98,7 @@ export class InMemorySessionRepository implements SessionRepository {
   private readonly rows = new Map<string, Session>();
 
   seed(session: Session): void {
+    requireUuid(session.id);
     this.rows.set(session.id, { ...session });
   }
 
@@ -95,16 +111,19 @@ export class InMemorySessionRepository implements SessionRepository {
   }
 
   create(_uow: UnitOfWork, session: Session): Promise<void> {
+    requireUuid(session.id);
     this.rows.set(session.id, { ...session });
     return Promise.resolve();
   }
 
   findById(id: string): Promise<Session | null> {
+    if (!UUID.test(id)) return Promise.resolve(null);
     const row = this.rows.get(id);
     return Promise.resolve(row ? { ...row } : null);
   }
 
   touch(id: string, lastSeenAt: Date): Promise<void> {
+    if (!UUID.test(id)) return Promise.resolve();
     const row = this.rows.get(id);
     if (row) this.rows.set(id, { ...row, lastSeenAt: new Date(lastSeenAt.getTime()) });
     return Promise.resolve();
@@ -143,6 +162,7 @@ export class InMemorySignInAttemptStore implements SignInAttemptStore {
   private readonly rows = new Map<string, SignInAttempt>();
 
   seed(attempt: SignInAttempt): void {
+    requireUuid(attempt.id);
     this.rows.set(attempt.id, { ...attempt });
   }
 
@@ -151,11 +171,13 @@ export class InMemorySignInAttemptStore implements SignInAttemptStore {
   }
 
   create(attempt: SignInAttempt): Promise<void> {
+    requireUuid(attempt.id);
     this.rows.set(attempt.id, { ...attempt });
     return Promise.resolve();
   }
 
   consume(id: string, now: Date): Promise<SignInAttempt | null> {
+    if (!UUID.test(id)) return Promise.resolve(null);
     const row = this.rows.get(id);
     if (!row) return Promise.resolve(null);
     this.rows.delete(id);

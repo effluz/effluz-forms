@@ -19,6 +19,7 @@ import { makeDeps, type FakeIdentityDeps } from "@/modules/identity/application/
 import type { Logger } from "@/shared/application/ports/logger";
 import { config as proxyConfig, proxy } from "./proxy";
 
+const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 const BASE = "https://forms.example.com";
 const config = loadConfig({
   NODE_ENV: "test",
@@ -47,7 +48,7 @@ beforeEach(() => {
 
 function seedSession(lastSeenAt = deps.clock.now()) {
   deps.sessions.seed({
-    id: "session-1",
+    id: SESSION_ID,
     email: "staff.member@effluz.com",
     name: "Staff Member",
     csrfToken: "csrf-1",
@@ -56,10 +57,13 @@ function seedSession(lastSeenAt = deps.clock.now()) {
   });
 }
 
-function request(path: string, cookie?: string): NextRequest {
+/** The origin the app sees behind the reverse proxy, unlike the public one. */
+const INTERNAL = "http://10.0.0.5:3000";
+
+function request(path: string, cookie?: string, origin = BASE): NextRequest {
   const headers = new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.1" });
   if (cookie !== undefined) headers.set("cookie", cookie);
-  return new NextRequest(`${BASE}${path}`, { headers });
+  return new NextRequest(`${origin}${path}`, { headers });
 }
 
 /** Proxy passes the request on with this internal header. */
@@ -115,9 +119,9 @@ describe("admin proxy gate", () => {
 
   it("redirects and removes an expired session, auditing the client IP", async () => {
     seedSession(new Date(deps.clock.now().getTime() - 9 * 60 * 60 * 1000));
-    const res = await proxy(request("/admin", `${COOKIE}=session-1`));
+    const res = await proxy(request("/admin", `${COOKIE}=${SESSION_ID}`));
     expect(res.status).toBe(302);
-    expect(deps.sessions.has("session-1")).toBe(false);
+    expect(deps.sessions.has(SESSION_ID)).toBe(false);
     expect(deps.audit.entries.at(-1)?.entry).toMatchObject({
       action: "session_expired",
       ip: "203.0.113.7",
@@ -126,7 +130,7 @@ describe("admin proxy gate", () => {
 
   it("lets an active session through", async () => {
     seedSession();
-    const res = await proxy(request("/admin/forms", `${COOKIE}=session-1`));
+    const res = await proxy(request("/admin/forms", `${COOKIE}=${SESSION_ID}`));
     expect(passesThrough(res)).toBe(true);
     expect(res.headers.get("location")).toBeNull();
   });
@@ -144,19 +148,19 @@ describe("admin proxy gate", () => {
     expect(getContainer).not.toHaveBeenCalled();
   });
 
-  it("sends the request to the error page when the container cannot be built", async () => {
+  it("sends the request to the error page on the request's own origin when the container cannot be built", async () => {
     vi.mocked(getContainer).mockImplementation(() => {
       throw new Error("Invalid configuration: DATABASE_URL");
     });
-    const res = await proxy(request("/admin/forms"));
+    const res = await proxy(request("/admin/forms", undefined, INTERNAL));
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe(`${BASE}/admin/auth/error`);
+    expect(res.headers.get("location")).toBe(`${INTERNAL}/admin/auth/error`);
     expect(fallbackWarn).toHaveBeenCalledWith("admin gate failed", { error: "Error" });
   });
 
   it("sends the request to the error page when the session lookup fails, logging only the class", async () => {
     deps.sessions.findById = () => Promise.reject(new TypeError("connect ECONNREFUSED"));
-    const res = await proxy(request("/admin", `${COOKIE}=session-1`));
+    const res = await proxy(request("/admin", `${COOKIE}=${SESSION_ID}`, INTERNAL));
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe(`${BASE}/admin/auth/error`);
     expect(warn).toHaveBeenCalledWith("admin gate failed", { error: "TypeError" });

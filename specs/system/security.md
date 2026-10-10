@@ -26,7 +26,9 @@ The step-by-step flow is in `use-cases/sign-in.md`.
   also verifies the token's signature against the issuer's published keys
   (JWKS) through `enableNonRepudiationChecks`; `openid-client` does not do that
   by default for a token received from the token endpoint. Symmetric
-  algorithms are rejected.
+  algorithms are rejected. The issuer is `GOOGLE_ISSUER` (default
+  `https://accounts.google.com`), and in production the configuration refuses
+  one that is not `https`.
 - **The `hd` parameter is a hint, not a check.** It is sent only to steer
   Google's chooser. Admission is decided afterwards, from the verified claims,
   by the identity domain policy: the email is present and `email_verified` is
@@ -57,9 +59,10 @@ The step-by-step flow is in `use-cases/sign-in.md`.
   endpoint failure, invalid token, Google unreachable) goes straight to the
   error page, and the callback clears both cookies on every final outcome.
 - The return path is accepted only if it is `/admin` or starts with `/admin/`
-  or `/admin?`. Anything else, including `//`, backslashes, control
-  characters, `://`, encoded dots or slashes, and `..` segments, becomes
-  `/admin`.
+  or `/admin?`, and is not under the auth routes (`/admin/auth` itself, or a
+  path starting with `/admin/auth/`, `/admin/auth?` or `/admin/auth#`).
+  Anything else, including `//`, backslashes, control characters, `://`,
+  encoded dots or slashes, and `..` segments, becomes `/admin`.
 - One role: admin. Everyone who passes is an admin. Roles are an ADR away if
   ever needed.
 - Removing someone's access means removing them from the Workspace. There is
@@ -81,12 +84,19 @@ The step-by-step flow is in `use-cases/sign-in.md`.
   request that finds an expired session deletes it and writes a
   `session_expired` audit entry.
 - Rotation on sign-in: every sign-in creates a new session with a new id and a
-  new CSRF token. No earlier session id is reused.
+  new CSRF token. No earlier session id is reused. If the callback request
+  carries a session cookie, that session is deleted in the same transaction
+  that creates the new one, without an audit entry of its own, so signing in
+  again replaces the browser's session instead of leaving it behind.
+- A session or attempt cookie whose value is not a UUID names no row: it is
+  treated exactly like an unknown id, never as a database error.
 - **Gate.** Every `/admin` path outside `/admin/auth` is gated at the HTTP
   level by the Next proxy, `src/proxy.ts`. With no active session it answers
   a real `302` to `/admin/auth/signin?returnTo=<path>`, dropping Next's `_rsc`
   query parameter. If the session cannot be checked (the database is down) it
-  redirects to the error page and never lets the request through. The gated
+  redirects to the error page and never lets the request through. Redirects
+  are built on `PUBLIC_BASE_URL`; only when the configuration itself is
+  invalid does the error redirect fall back to the request's own URL. The gated
   layout under `src/app/admin/(gated)/` checks the session again as defence in
   depth; a redirect from the layout cannot change the HTTP status under
   partial prerendering, which is why the proxy exists.

@@ -57,6 +57,19 @@ describe("sanitizeReturnTo", () => {
     expect(sanitizeReturnTo("/admin?next=https://evil.example")).toBe("/admin");
   });
 
+  it("rejects the auth routes, so sign-in never returns into itself", () => {
+    for (const path of [
+      "/admin/auth",
+      "/admin/auth/",
+      "/admin/auth/signin?returnTo=%2Fadmin",
+      "/admin/auth/signed-out",
+      "/admin/auth?x=1",
+      "/admin/auth#top",
+    ])
+      expect(sanitizeReturnTo(path)).toBe("/admin");
+    expect(sanitizeReturnTo("/admin/authors")).toBe("/admin/authors");
+  });
+
   it("keeps a dotted name that is not a parent-directory segment", () => {
     expect(sanitizeReturnTo("/admin/a..b/c")).toBe("/admin/a..b/c");
   });

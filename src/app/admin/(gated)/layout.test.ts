@@ -33,6 +33,7 @@ import { buildContainer, getContainer } from "@/app/container";
 import { makeDeps, type FakeIdentityDeps } from "@/modules/identity/application/testing/fakes";
 import GatedLayout from "./layout";
 
+const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 const BASE = "https://forms.example.com";
 const config = loadConfig({
   NODE_ENV: "test",
@@ -59,7 +60,7 @@ beforeEach(() => {
 
 function seedSession(lastSeenAt = deps.clock.now()) {
   deps.sessions.seed({
-    id: "session-1",
+    id: SESSION_ID,
     email: "staff.member@effluz.com",
     name: "Staff Member",
     csrfToken: "csrf-1",
@@ -90,14 +91,14 @@ describe("admin session gate", () => {
 
   it("redirects and removes an expired session", async () => {
     seedSession(new Date(deps.clock.now().getTime() - 9 * 60 * 60 * 1000));
-    request.cookies.set(COOKIE, "session-1");
+    request.cookies.set(COOKIE, SESSION_ID);
     await expect(render()).rejects.toThrow("REDIRECT /admin/auth/signin");
-    expect(deps.sessions.has("session-1")).toBe(false);
+    expect(deps.sessions.has(SESSION_ID)).toBe(false);
   });
 
   it("renders the shell with the signed-in name, the CSRF token and the page", async () => {
     seedSession();
-    request.cookies.set(COOKIE, "session-1");
+    request.cookies.set(COOKIE, SESSION_ID);
     const html = await render();
     expect(html).toContain("Signed in as Staff Member");
     expect(html).toContain('name="csrf" value="csrf-1"');

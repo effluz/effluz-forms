@@ -71,7 +71,7 @@ function main(): void {
   });
 
   worker.start();
-  logger.info("worker started", { workerId, concurrency: config.worker.concurrency });
+  logger.info("worker started", { workerId });
 }
 
 try {

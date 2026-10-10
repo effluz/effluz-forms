@@ -1,14 +1,17 @@
 import { callbackRedirectUri, type IdentityDeps } from "./deps";
 
 /**
- * Keeps only same-site admin paths so the post-sign-in redirect cannot leave the app.
+ * Keeps only same-site admin paths outside the auth routes, so the post-sign-in
+ * redirect cannot leave the app or loop back into sign-in.
  * See specs/use-cases/sign-in.md, "Main flow".
  */
 export function sanitizeReturnTo(input: string | null | undefined): string {
   if (!input) return "/admin";
   const inAdmin = input === "/admin" || input.startsWith("/admin/") || input.startsWith("/admin?");
+  const inAuth = input === "/admin/auth" || /^\/admin\/auth[/?#]/.test(input);
   if (
     !inAdmin ||
+    inAuth ||
     input.startsWith("//") ||
     // eslint-disable-next-line no-control-regex -- control characters are exactly what is rejected
     /[\\\u0000-\u001f]/.test(input) ||

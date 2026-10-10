@@ -41,6 +41,7 @@ export async function GET(request: Request): Promise<Response> {
   try {
     result = await completeSignIn(identity, {
       attemptId: readCookie(cookieHeader, ATTEMPT_COOKIE),
+      previousSessionId: readCookie(cookieHeader, config.session.cookieName),
       callbackUrl: request.url,
       meta: { ip: clientIp(request.headers) },
     });

@@ -3,6 +3,7 @@ import { txOf } from "@/shared/infrastructure/postgres/tx";
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 import type { SessionRepository } from "../application/ports/session-repository";
 import type { Session } from "../domain/session";
+import { isUuid } from "./uuid";
 
 interface SessionRow {
   id: string;
@@ -13,7 +14,10 @@ interface SessionRow {
   last_seen_at: Date;
 }
 
-/** Postgres adapter for admin sessions; see specs/system/security.md, "Sessions". */
+/**
+ * Postgres adapter for admin sessions; see specs/system/security.md, "Sessions".
+ * Ids come from cookies, so one that is not a UUID names no session.
+ */
 export class PgSessionRepository implements SessionRepository {
   constructor(private readonly pool: Pool) {}
 
@@ -33,6 +37,7 @@ export class PgSessionRepository implements SessionRepository {
   }
 
   async findById(id: string): Promise<Session | null> {
+    if (!isUuid(id)) return null;
     const { rows } = await this.pool.query<SessionRow>(
       `select id, email, name, csrf_token, created_at, last_seen_at
          from admin_session where id = $1`,
@@ -51,6 +56,7 @@ export class PgSessionRepository implements SessionRepository {
   }
 
   async touch(id: string, lastSeenAt: Date): Promise<void> {
+    if (!isUuid(id)) return;
     await this.pool.query(
       "update admin_session set last_seen_at = $2, updated_at = now() where id = $1",
       [id, lastSeenAt],
@@ -58,6 +64,7 @@ export class PgSessionRepository implements SessionRepository {
   }
 
   async delete(uow: UnitOfWork, id: string): Promise<void> {
+    if (!isUuid(id)) return;
     await txOf(uow).client.query("delete from admin_session where id = $1", [id]);
   }
 

@@ -32,21 +32,31 @@ const REDACT_PATHS = REDACTED_FIELDS.flatMap((field) => [
   `*.*.*.${field}`,
 ]);
 
+/** Keys every line sets itself; a caller field with one of these names is dropped. */
+export const RESERVED_FIELDS: readonly string[] = ["service", "version", "level", "time", "msg"];
+
+function withoutReserved(fields: LogFields | undefined): LogFields {
+  if (fields === undefined) return {};
+  return Object.fromEntries(
+    Object.entries(fields).filter(([key]) => !RESERVED_FIELDS.includes(key)),
+  );
+}
+
 function wrap(p: PinoLogger): Logger {
   return {
     debug: (msg: string, fields?: LogFields) => {
-      p.debug(fields ?? {}, msg);
+      p.debug(withoutReserved(fields), msg);
     },
     info: (msg: string, fields?: LogFields) => {
-      p.info(fields ?? {}, msg);
+      p.info(withoutReserved(fields), msg);
     },
     warn: (msg: string, fields?: LogFields) => {
-      p.warn(fields ?? {}, msg);
+      p.warn(withoutReserved(fields), msg);
     },
     error: (msg: string, fields?: LogFields) => {
-      p.error(fields ?? {}, msg);
+      p.error(withoutReserved(fields), msg);
     },
-    child: (fields: LogFields) => wrap(p.child(fields)),
+    child: (fields: LogFields) => wrap(p.child(withoutReserved(fields))),
   };
 }
 

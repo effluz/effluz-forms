@@ -1,5 +1,6 @@
 import type { Pool } from "pg";
 import type { SignInAttempt, SignInAttemptStore } from "../application/ports/sign-in-attempt-store";
+import { isUuid } from "./uuid";
 
 interface AttemptRow {
   id: string;
@@ -31,6 +32,8 @@ export class PgSignInAttemptStore implements SignInAttemptStore {
   }
 
   async consume(id: string, now: Date): Promise<SignInAttempt | null> {
+    // The id comes from a cookie; one that is not a UUID names no attempt.
+    if (!isUuid(id)) return null;
     // One statement: the row is deleted whether or not it has expired, but only a
     // live one is returned, so an expired attempt cannot be replayed or linger.
     const { rows } = await this.pool.query<AttemptRow>(

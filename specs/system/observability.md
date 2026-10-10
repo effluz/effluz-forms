@@ -9,10 +9,11 @@ more.
 - Structured JSON to stdout. Docker's log driver rotates files; nothing is
   shipped off the server in the first release.
 - Every log line carries `time` (epoch milliseconds), `level` (the label),
-  `service` (`app` or `worker`), `version` (`APP_VERSION`) and `msg`. Lines
-  about a job also carry `jobId`, `jobType` and `attempt`. There is no request
-  id yet. Submission ids are allowed; emails, names, story text, filenames and
-  file contents are not.
+  `service` (`app` or `worker`), `version` (`APP_VERSION`) and `msg`; a
+  caller field with one of those five names is dropped, so it cannot override
+  them. Lines about a job also carry `jobId`, `jobType` and `attempt`. There
+  is no request id yet. Submission ids are allowed; emails, names, story text,
+  filenames and file contents are not.
 - A single logging helper, the pino adapter behind the `Logger` port in
   `src/shared/infrastructure/logging/`, is the only way to log. It redacts the
   field names in `REDACTED_FIELDS` (email, name, answers, text, body, story,

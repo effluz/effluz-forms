@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import { constantTimeEqual, signOut } from "./sign-out";
 import { makeDeps, type FakeIdentityDeps } from "./testing/fakes";
 
+const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 const META = { ip: "203.0.113.7" };
 
 function seed(deps: FakeIdentityDeps) {
   const now = deps.clock.now();
   deps.sessions.seed({
-    id: "session-1",
+    id: SESSION_ID,
     email: "staff@example.com",
     name: "Staff",
     csrfToken: "csrf-token-1",
@@ -22,19 +23,19 @@ describe("signOut", () => {
     seed(deps);
 
     const result = await signOut(deps, {
-      sessionId: "session-1",
+      sessionId: SESSION_ID,
       csrfToken: "csrf-token-1",
       meta: META,
     });
 
     expect(result).toBe("signed_out");
-    expect(deps.sessions.has("session-1")).toBe(false);
+    expect(deps.sessions.has(SESSION_ID)).toBe(false);
     expect(deps.audit.entries).toEqual([
       {
         entry: {
           action: "sign_out",
           actorEmail: "staff@example.com",
-          targetId: "session-1",
+          targetId: SESSION_ID,
           ip: "203.0.113.7",
         },
         at: deps.clock.now(),
@@ -47,13 +48,13 @@ describe("signOut", () => {
     seed(deps);
 
     const result = await signOut(deps, {
-      sessionId: "session-1",
+      sessionId: SESSION_ID,
       csrfToken: "csrf-token-2",
       meta: META,
     });
 
     expect(result).toBe("csrf_mismatch");
-    expect(deps.sessions.has("session-1")).toBe(true);
+    expect(deps.sessions.has(SESSION_ID)).toBe(true);
     expect(deps.audit.entries).toHaveLength(0);
   });
 
@@ -63,19 +64,19 @@ describe("signOut", () => {
     deps.clock.advance(8 * 60 * 60 * 1000 + 1);
 
     const result = await signOut(deps, {
-      sessionId: "session-1",
+      sessionId: SESSION_ID,
       csrfToken: "csrf-token-1",
       meta: META,
     });
 
     expect(result).toBe("no_session");
-    expect(deps.sessions.has("session-1")).toBe(false);
+    expect(deps.sessions.has(SESSION_ID)).toBe(false);
     expect(deps.audit.entries).toEqual([
       {
         entry: {
           action: "session_expired",
           actorEmail: "staff@example.com",
-          targetId: "session-1",
+          targetId: SESSION_ID,
           ip: "203.0.113.7",
           details: { reason: "idle_expired" },
         },

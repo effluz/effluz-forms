@@ -33,6 +33,15 @@ describe("PgSessionRepository", () => {
     expect(await repo.findById(randomUUID())).toBeNull();
   });
 
+  it("treats an id that is not a UUID as absent instead of failing", async () => {
+    const s = session();
+    await uowf.run((uow) => repo.create(uow, s));
+    expect(await repo.findById("gone")).toBeNull();
+    await expect(repo.touch("gone", new Date())).resolves.toBeUndefined();
+    await expect(uowf.run((uow) => repo.delete(uow, "gone"))).resolves.toBeUndefined();
+    expect(await repo.findById(s.id)).toEqual(s);
+  });
+
   it("does not keep a session created in a rolled back unit of work", async () => {
     const s = session();
     await expect(

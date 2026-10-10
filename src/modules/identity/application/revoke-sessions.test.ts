@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { revokeSessionsForEmail } from "./revoke-sessions";
-import { makeDeps } from "./testing/fakes";
+import { fakeUuid, makeDeps } from "./testing/fakes";
 
 describe("revokeSessionsForEmail", () => {
   it("deletes the address's sessions and audits the count without the address", async () => {
     const deps = makeDeps();
     const now = deps.clock.now();
     for (const [id, email] of [
-      ["s1", "leaver@example.com"],
-      ["s2", "leaver@example.com"],
-      ["s3", "other@example.com"],
+      [fakeUuid(101), "leaver@example.com"],
+      [fakeUuid(102), "leaver@example.com"],
+      [fakeUuid(103), "other@example.com"],
     ] as const) {
       deps.sessions.seed({
         id,
@@ -27,7 +27,7 @@ describe("revokeSessionsForEmail", () => {
     });
 
     expect(removed).toBe(2);
-    expect(deps.sessions.all().map((s) => s.id)).toEqual(["s3"]);
+    expect(deps.sessions.all().map((s) => s.id)).toEqual([fakeUuid(103)]);
     expect(deps.audit.entries).toEqual([
       {
         entry: {

@@ -55,13 +55,17 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     throw new Error(`Invalid configuration: ${names}`);
   }
   const e = parsed.data;
-  if (e.NODE_ENV === "production" && !e.PUBLIC_BASE_URL.startsWith("https://"))
+  const publicBaseUrl = originOf(e.PUBLIC_BASE_URL);
+  if (publicBaseUrl === null) throw new Error("Invalid configuration: PUBLIC_BASE_URL");
+  if (e.NODE_ENV === "production" && !publicBaseUrl.startsWith("https://"))
     throw new Error("Invalid configuration: PUBLIC_BASE_URL must be https in production");
+  if (e.NODE_ENV === "production" && !e.GOOGLE_ISSUER.startsWith("https://"))
+    throw new Error("Invalid configuration: GOOGLE_ISSUER must be https in production");
   return {
     nodeEnv: e.NODE_ENV,
     service: e.SERVICE,
     appVersion: e.APP_VERSION,
-    publicBaseUrl: e.PUBLIC_BASE_URL,
+    publicBaseUrl,
     databaseUrl: e.DATABASE_URL,
     logLevel: e.LOG_LEVEL,
     stagingDir: e.STAGING_DIR,
@@ -84,4 +88,14 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
       leaseSeconds: e.WORKER_LEASE_SECONDS,
     },
   };
+}
+
+/**
+ * The origin of a bare base URL (no trailing slash), or null when the value has
+ * a path, a query or a fragment, which every derived URL would silently lose.
+ */
+function originOf(value: string): string | null {
+  const url = new URL(value);
+  if (url.pathname !== "/" || /[?#]/.test(value)) return null;
+  return url.origin;
 }

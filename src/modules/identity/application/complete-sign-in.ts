@@ -15,13 +15,20 @@ export type CompleteSignInResult =
 
 /**
  * Finishes sign-in: consumes the attempt (single use), completes with the provider,
- * applies the admission policy and, in one unit of work, creates a fresh session
- * and audits `sign_in`. See specs/use-cases/sign-in.md and
+ * applies the admission policy and, in one unit of work, creates a fresh session,
+ * removes the browser's previous session if it still exists (not audited) and
+ * audits `sign_in`. See specs/use-cases/sign-in.md and
  * specs/system/security.md, "Admin authentication" and "Sessions".
  */
 export async function completeSignIn(
   deps: IdentityDeps,
-  input: { attemptId: string | null; callbackUrl: string; meta: RequestMeta },
+  input: {
+    attemptId: string | null;
+    /** The session cookie the callback request carried, if any; it is replaced. */
+    previousSessionId?: string | null;
+    callbackUrl: string;
+    meta: RequestMeta;
+  },
 ): Promise<CompleteSignInResult> {
   if (input.attemptId === null) return { outcome: "retry" };
   const attempt = await deps.attempts.consume(input.attemptId, deps.clock.now());
@@ -67,7 +74,9 @@ export async function completeSignIn(
     createdAt: now,
     lastSeenAt: now,
   };
+  const previousSessionId = input.previousSessionId ?? null;
   await deps.uow.run(async (uow) => {
+    if (previousSessionId !== null) await deps.sessions.delete(uow, previousSessionId);
     await deps.sessions.create(uow, session);
     await deps.audit.record(
       uow,

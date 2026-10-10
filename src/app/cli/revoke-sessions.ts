@@ -1,7 +1,7 @@
 import { loadConfig } from "@/app/config";
 import { buildContainer } from "@/app/container";
 import { revokeSessionsForEmail } from "@/modules/identity/application";
-import { parseArgs } from "./revoke-sessions-args";
+import { operatorEmail, parseArgs } from "./revoke-sessions-args";
 
 /**
  * Operator command: deletes every admin session of an address.
@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   try {
     const count = await revokeSessionsForEmail(container.identity, {
       email: args.email,
-      actorEmail: process.env.OPERATOR_EMAIL ?? null,
+      actorEmail: operatorEmail(process.env),
     });
     console.log(`Revoked ${String(count)} sessions`);
   } finally {

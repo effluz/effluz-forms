@@ -45,6 +45,37 @@ describe("loadConfig", () => {
     });
     expect(c.session.secure).toBe(true);
   });
+  it("refuses a plain-http GOOGLE_ISSUER in production and names only the variable", () => {
+    const prod: NodeJS.ProcessEnv = {
+      ...base,
+      NODE_ENV: "production",
+      PUBLIC_BASE_URL: "https://forms.example.com",
+    };
+    expect(() => loadConfig({ ...prod, GOOGLE_ISSUER: "http://issuer.example.com" })).toThrow(
+      /GOOGLE_ISSUER/,
+    );
+    expect(() => loadConfig({ ...prod, GOOGLE_ISSUER: "http://issuer.example.com" })).not.toThrow(
+      /issuer\.example/,
+    );
+    expect(loadConfig({ ...base, GOOGLE_ISSUER: "http://127.0.0.1:9999" }).google.issuer).toBe(
+      "http://127.0.0.1:9999",
+    );
+  });
+  it("stores PUBLIC_BASE_URL as an origin without a trailing slash", () => {
+    expect(loadConfig(base).publicBaseUrl).toBe("http://localhost:3000");
+    expect(
+      loadConfig({ ...base, PUBLIC_BASE_URL: "https://forms.example.com/" }).publicBaseUrl,
+    ).toBe("https://forms.example.com");
+  });
+  it.each([
+    ["a path", "https://forms.example.com/forms"],
+    ["a query", "https://forms.example.com/?x=1"],
+    ["an empty query", "https://forms.example.com/?"],
+    ["a fragment", "https://forms.example.com/#top"],
+  ])("rejects a PUBLIC_BASE_URL with %s and names only the variable", (_name, value) => {
+    expect(() => loadConfig({ ...base, PUBLIC_BASE_URL: value })).toThrow(/PUBLIC_BASE_URL/);
+    expect(() => loadConfig({ ...base, PUBLIC_BASE_URL: value })).not.toThrow(/forms\.example/);
+  });
   it("rejects an empty APP_VERSION or SESSION_COOKIE_NAME and names it", () => {
     expect(() => loadConfig({ ...base, APP_VERSION: "" })).toThrow(/APP_VERSION/);
     expect(() => loadConfig({ ...base, SESSION_COOKIE_NAME: "" })).toThrow(/SESSION_COOKIE_NAME/);
