@@ -27,7 +27,7 @@ describe("loadConfig", () => {
     expect(c.worker).toEqual({
       concurrency: 4,
       pollIntervalMs: 1000,
-      leaseSeconds: 60,
+      leaseSeconds: 90,
     });
   });
   it("fails fast on a missing variable and names it without echoing values", () => {

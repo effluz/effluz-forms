@@ -36,7 +36,7 @@ function main(): void {
       workerId,
       concurrency: config.worker.concurrency,
       pollIntervalMs: config.worker.pollIntervalMs,
-      jobTimeoutMs: 60_000,
+      jobTimeoutMs: (config.worker.leaseSeconds - 15) * 1000,
       handlers: { "jobs.cleanup": createCleanupHandler(store) },
       recurring: [{ type: "jobs.cleanup", period: "daily" }],
     },

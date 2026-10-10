@@ -7,7 +7,7 @@ import type {
 } from "@/shared/application/ports/job-queue";
 import type { Logger } from "@/shared/application/ports/logger";
 import type { UnitOfWorkFactory } from "@/shared/application/ports/unit-of-work";
-import type { ClaimedJob, PgJobStore } from "./pg-job-store";
+import { scrubError, type ClaimedJob, type PgJobStore } from "./pg-job-store";
 
 export interface RecurringJob {
   type: string;
@@ -31,6 +31,9 @@ export interface WorkerDeps {
   clock: Clock;
   logger: Logger;
 }
+
+/** Headroom between a job's timeout and its lease, covering clock skew and the outcome write. */
+const LEASE_MARGIN_MS = 10_000;
 
 function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
@@ -63,7 +66,15 @@ export class Worker {
   constructor(
     private readonly deps: WorkerDeps,
     private readonly opts: WorkerOptions,
-  ) {}
+  ) {
+    // The timeout timer starts after the claim stamps `locked_at`, so the job
+    // must be given up on well before another worker may reclaim it.
+    const leaseMs = deps.store.leaseSeconds * 1000;
+    if (opts.jobTimeoutMs <= 0 || opts.jobTimeoutMs + LEASE_MARGIN_MS > leaseMs)
+      throw new Error(
+        `Invalid worker options: jobTimeoutMs (${String(opts.jobTimeoutMs)}) plus ${String(LEASE_MARGIN_MS)} ms must fit inside the lease (${String(leaseMs)} ms)`,
+      );
+  }
 
   /** One poll. Returns the number of jobs run. Handler failures never escape. */
   async tick(): Promise<number> {
@@ -105,7 +116,7 @@ export class Worker {
     } catch (e) {
       // Database trouble: log the message only and try again next interval.
       this.deps.logger.error("worker poll failed", {
-        message: e instanceof Error ? e.message : "unknown error",
+        message: e instanceof Error ? scrubError(e.message) : "unknown error",
       });
     }
     if (this.running) this.schedule(ran >= this.opts.concurrency ? 0 : this.opts.pollIntervalMs);
@@ -130,11 +141,20 @@ export class Worker {
   private async run(job: ClaimedJob): Promise<void> {
     const log = this.deps.logger.child({ jobId: job.id, jobType: job.type, attempt: job.attempts });
     const { store } = this.deps;
+    const { workerId } = this.opts;
     try {
+      if (job.attempts > job.maxAttempts) {
+        // Reclaimed after its lease expired on the final attempt: do not run it again.
+        const outcome = await store.markDead(job, workerId, "lease expired on final attempt");
+        if (outcome === "lost") log.warn("lease lost");
+        else log.error("job failed", { outcome });
+        return;
+      }
       const handler = this.opts.handlers[job.type];
       if (!handler) {
-        await store.fail(job.id, `no handler for ${job.type}`, job.attempts, job.maxAttempts);
-        log.error("no handler registered");
+        const outcome = await store.fail(job, workerId, `no handler for ${job.type}`);
+        if (outcome === "lost") log.warn("lease lost");
+        else log.error("no handler registered", { outcome });
         return;
       }
       const ctx: JobHandlerContext = {
@@ -152,21 +172,17 @@ export class Worker {
           `job timed out after ${String(this.opts.jobTimeoutMs)} ms`,
         );
       } catch (e) {
-        const outcome = await store.fail(
-          job.id,
-          e instanceof Error ? e.message : String(e),
-          job.attempts,
-          job.maxAttempts,
-        );
-        if (outcome === "dead") log.error("job failed", { outcome });
+        const outcome = await store.fail(job, workerId, e instanceof Error ? e.message : String(e));
+        if (outcome === "lost") log.warn("lease lost");
+        else if (outcome === "dead") log.error("job failed", { outcome });
         else log.warn("job failed", { outcome });
         return;
       }
-      await store.succeed(job.id);
+      if ((await store.succeed(job, workerId)) === "lost") log.warn("lease lost");
     } catch (e) {
       // The outcome could not be recorded. The lease expiry will release the job.
       log.error("could not record job outcome", {
-        message: e instanceof Error ? e.message : "unknown error",
+        message: e instanceof Error ? scrubError(e.message) : "unknown error",
       });
     }
   }

@@ -152,6 +152,44 @@ describe("Worker", () => {
     expect(lines.some((l) => l.level === "error" && l.msg === "job failed")).toBe(true);
   });
 
+  it("does not run a job reclaimed after its lease expired on the final attempt, and marks it dead", async () => {
+    const id = crypto.randomUUID();
+    await pool.query(
+      `insert into job (id, type, status, attempts, max_attempts, locked_at, locked_by)
+       values ($1, 'x.ok', 'running', 2, 2, $2, 'crashed-worker')`,
+      [id, new Date(NOW.getTime() - 120_000)],
+    );
+    let called = false;
+    await makeWorker({
+      "x.ok": async () => {
+        await Promise.resolve();
+        called = true;
+      },
+    }).tick();
+    expect(called).toBe(false);
+    expect(await job(id)).toMatchObject({
+      status: "dead",
+      last_error: "lease expired on final attempt",
+    });
+  });
+
+  it("logs 'lease lost' and leaves the row alone when another worker reclaimed the job", async () => {
+    const id = await enqueue("x.steal");
+    const worker = makeWorker({
+      "x.steal": async () => {
+        // Simulate another worker having reclaimed the job during the run.
+        await pool.query("update job set locked_by = 'other', attempts = attempts + 1");
+      },
+    });
+    await worker.tick();
+    expect(lines.some((l) => l.level === "warn" && l.msg === "lease lost")).toBe(true);
+    const r = await pool.query<{ status: string; locked_by: string }>(
+      "select status, locked_by from job where id = $1",
+      [id],
+    );
+    expect(r.rows[0]).toEqual({ status: "running", locked_by: "other" });
+  });
+
   it("enqueues a recurring job once per day bucket across ticks", async () => {
     const worker = makeWorker(
       { "jobs.cleanup": async () => Promise.resolve() },

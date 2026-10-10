@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Clock } from "@/shared/application/ports/clock";
-import { PgJobStore } from "@/shared/infrastructure/jobs/pg-job-store";
+import { PgJobStore, type ClaimedJob } from "@/shared/infrastructure/jobs/pg-job-store";
 import { testPool, truncateAll } from "../db";
 
 const NOW = new Date("2026-10-10T12:00:00Z");
@@ -147,9 +147,9 @@ describe("PgJobStore", () => {
   describe("succeed", () => {
     it("marks the job succeeded, sets finished_at and clears the lock", async () => {
       const id = await seed();
-      await store.claim("w1", 1);
+      const [job] = await store.claim("w1", 1);
       clock.set(new Date("2026-10-10T12:00:05Z"));
-      await store.succeed(id);
+      expect(await store.succeed(job as ClaimedJob, "w1")).toBe("succeeded");
       const r = await row(id);
       expect(r.status).toBe("succeeded");
       expect(r.finished_at?.toISOString()).toBe("2026-10-10T12:00:05.000Z");
@@ -161,8 +161,8 @@ describe("PgJobStore", () => {
   describe("fail", () => {
     it("below max attempts schedules a retry in the future and truncates the error", async () => {
       const id = await seed();
-      await store.claim("w1", 1);
-      const outcome = await store.fail(id, "x".repeat(900), 1, 8);
+      const [job] = await store.claim("w1", 1);
+      const outcome = await store.fail(job as ClaimedJob, "w1", "x".repeat(900));
       expect(outcome).toBe("retry");
       const r = await row(id);
       expect(r.status).toBe("failed");
@@ -174,9 +174,9 @@ describe("PgJobStore", () => {
     });
 
     it("at max attempts marks the job dead with finished_at", async () => {
-      const id = await seed({ maxAttempts: 2 });
-      await store.claim("w1", 1);
-      const outcome = await store.fail(id, "boom", 2, 2);
+      const id = await seed({ maxAttempts: 2, attempts: 1 });
+      const [job] = await store.claim("w1", 1);
+      const outcome = await store.fail(job as ClaimedJob, "w1", "boom");
       expect(outcome).toBe("dead");
       const r = await row(id);
       expect(r.status).toBe("dead");
@@ -186,9 +186,54 @@ describe("PgJobStore", () => {
 
     it("redacts email-like tokens from the stored error", async () => {
       const id = await seed();
-      await store.claim("w1", 1);
-      await store.fail(id, "send to jane.doe@example.com failed", 1, 8);
+      const [job] = await store.claim("w1", 1);
+      await store.fail(job as ClaimedJob, "w1", "send to jane.doe@example.com failed");
       expect((await row(id)).last_error).toBe("send to [redacted] failed");
+    });
+  });
+
+  describe("markDead", () => {
+    it("marks a claimed job dead with the given error", async () => {
+      const id = await seed();
+      const [job] = await store.claim("w1", 1);
+      expect(await store.markDead(job as ClaimedJob, "w1", "gave up")).toBe("dead");
+      const r = await row(id);
+      expect(r.status).toBe("dead");
+      expect(r.last_error).toBe("gave up");
+      expect(r.finished_at?.toISOString()).toBe(NOW.toISOString());
+      expect(r.locked_by).toBeNull();
+    });
+  });
+
+  describe("fencing", () => {
+    it("a worker whose lease expired cannot fail, kill or succeed the job another worker reclaimed", async () => {
+      const id = await seed();
+      const [first] = await store.claim("w1", 1);
+      clock.set(new Date(NOW.getTime() + (LEASE + 1) * 1000));
+      const [second] = await store.claim("w2", 1);
+      expect(second?.id).toBe(id);
+      expect(second?.attempts).toBe(2);
+
+      expect(await store.fail(first as ClaimedJob, "w1", "late")).toBe("lost");
+      expect(await store.markDead(first as ClaimedJob, "w1", "late")).toBe("lost");
+      expect(await store.succeed(first as ClaimedJob, "w1")).toBe("lost");
+      const mid = await row(id);
+      expect(mid.status).toBe("running");
+      expect(mid.locked_by).toBe("w2");
+      expect(mid.attempts).toBe(2);
+      expect(mid.last_error).toBeNull();
+
+      expect(await store.succeed(second as ClaimedJob, "w2")).toBe("succeeded");
+      expect((await row(id)).status).toBe("succeeded");
+    });
+
+    it("an outcome for the right worker but a stale attempt count is lost", async () => {
+      const id = await seed();
+      const [first] = await store.claim("w1", 1);
+      clock.set(new Date(NOW.getTime() + (LEASE + 1) * 1000));
+      await store.claim("w1", 1);
+      expect(await store.succeed(first as ClaimedJob, "w1")).toBe("lost");
+      expect((await row(id)).attempts).toBe(2);
     });
   });
 

@@ -20,8 +20,8 @@ export interface JobCounts {
 
 const MAX_ERROR_LENGTH = 500;
 
-/** Scrubs email-like tokens and truncates, so `last_error` never carries personal data. */
-function scrubError(error: string): string {
+/** Scrubs email-like tokens and truncates, so `last_error` and logs never carry personal data. */
+export function scrubError(error: string): string {
   return error.replace(/\S+@\S+/g, "[redacted]").slice(0, MAX_ERROR_LENGTH);
 }
 
@@ -35,11 +35,15 @@ function ageSeconds(now: Date, then: Date): number {
  * from the injected clock. See specs/system/jobs.md.
  */
 export class PgJobStore {
+  readonly leaseSeconds: number;
+
   constructor(
     private readonly pool: Pool,
     private readonly clock: Clock,
-    private readonly opts: { leaseSeconds: number },
-  ) {}
+    opts: { leaseSeconds: number },
+  ) {
+    this.leaseSeconds = opts.leaseSeconds;
+  }
 
   /**
    * Claims up to `limit` due jobs in `run_at` order, skipping rows other workers
@@ -48,7 +52,7 @@ export class PgJobStore {
    */
   async claim(workerId: string, limit: number): Promise<ClaimedJob[]> {
     const now = this.clock.now();
-    const leaseCutoff = new Date(now.getTime() - this.opts.leaseSeconds * 1000);
+    const leaseCutoff = new Date(now.getTime() - this.leaseSeconds * 1000);
     const res = await this.pool.query<{
       id: string;
       type: string;
@@ -81,47 +85,55 @@ export class PgJobStore {
       }));
   }
 
-  async succeed(id: string): Promise<void> {
-    await this.pool.query(
+  /**
+   * The claim is a fencing token: an outcome applies only while the row is still
+   * `running`, locked by `workerId` and at the attempt number `claim` returned.
+   * A worker whose lease expired and whose job another worker reclaimed gets
+   * "lost" and changes nothing.
+   */
+  async succeed(job: ClaimedJob, workerId: string): Promise<"succeeded" | "lost"> {
+    const res = await this.pool.query(
       `update job
-          set status = 'succeeded', finished_at = $2, locked_at = null, locked_by = null, updated_at = now()
-        where id = $1`,
-      [id, this.clock.now()],
+          set status = 'succeeded', finished_at = $4, locked_at = null, locked_by = null, updated_at = now()
+        where id = $1 and status = 'running' and locked_by = $2 and attempts = $3`,
+      [job.id, workerId, job.attempts, this.clock.now()],
     );
+    return res.rowCount === 1 ? "succeeded" : "lost";
   }
 
   /**
-   * Records a failed run. `attempts` is the value `claim` returned. Below
-   * `maxAttempts` the job is retried after a backoff; otherwise it is dead.
+   * Records a failed run of a claimed job. Below `maxAttempts` the job is
+   * retried after a backoff; otherwise it is dead. Fenced like `succeed`.
    */
-  async fail(
-    id: string,
-    error: string,
-    attempts: number,
-    maxAttempts: number,
-  ): Promise<"retry" | "dead"> {
+  async fail(job: ClaimedJob, workerId: string, error: string): Promise<"retry" | "dead" | "lost"> {
+    if (job.attempts >= job.maxAttempts) return this.markDead(job, workerId, error);
     const now = this.clock.now();
-    const message = scrubError(error);
-    if (attempts >= maxAttempts) {
-      await this.pool.query(
-        `update job
-            set status = 'dead', last_error = $2, finished_at = $3, locked_at = null, locked_by = null, updated_at = now()
-          where id = $1`,
-        [id, message, now],
-      );
-      return "dead";
-    }
-    const runAt = new Date(now.getTime() + backoffMs(attempts));
-    await this.pool.query(
+    const runAt = new Date(now.getTime() + backoffMs(job.attempts));
+    const res = await this.pool.query(
       `update job
-          set status = 'failed', last_error = $2, run_at = $3, locked_at = null, locked_by = null, updated_at = now()
-        where id = $1`,
-      [id, message, runAt],
+          set status = 'failed', last_error = $4, run_at = $5, locked_at = null, locked_by = null, updated_at = now()
+        where id = $1 and status = 'running' and locked_by = $2 and attempts = $3`,
+      [job.id, workerId, job.attempts, scrubError(error), runAt],
     );
-    return "retry";
+    return res.rowCount === 1 ? "retry" : "lost";
   }
 
-  /** True when any job, in any status, carries this unique key. Used by the scheduler. */
+  /** Marks a claimed job dead without further retries. Fenced like `succeed`. */
+  async markDead(job: ClaimedJob, workerId: string, error: string): Promise<"dead" | "lost"> {
+    const res = await this.pool.query(
+      `update job
+          set status = 'dead', last_error = $4, finished_at = $5, locked_at = null, locked_by = null, updated_at = now()
+        where id = $1 and status = 'running' and locked_by = $2 and attempts = $3`,
+      [job.id, workerId, job.attempts, scrubError(error), this.clock.now()],
+    );
+    return res.rowCount === 1 ? "dead" : "lost";
+  }
+
+  /**
+   * True when any job, in any status, carries this unique key. Used by the scheduler.
+   * The check-then-insert race between two workers is accepted: handlers are
+   * idempotent, so a duplicate recurring run is harmless.
+   */
   async hasUniqueKey(uniqueKey: string): Promise<boolean> {
     const res = await this.pool.query("select 1 from job where unique_key = $1 limit 1", [
       uniqueKey,
