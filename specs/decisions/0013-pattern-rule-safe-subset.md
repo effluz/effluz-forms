@@ -1,6 +1,6 @@
 # 0013. Pattern rules use a whitelisted safe regex subset
 
-Status: accepted
+Status: superseded by 0015
 Date: 2026-10-10
 
 ## Context

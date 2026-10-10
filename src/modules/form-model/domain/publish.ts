@@ -8,7 +8,6 @@ import { isConsentChecklistComplete } from "./field-types/consent";
 import type { PublishIssue } from "./issues";
 import { LIMITS } from "./limits";
 import type { FieldTypeRegistry } from "./registry";
-import { PATTERN_MAX_INPUT } from "./rules";
 import {
   fieldIndex,
   inputFields,
@@ -157,23 +156,6 @@ export function checkDefinition(version: Version, registry: FieldTypeRegistry): 
             push("over_maximum", `${fPath}/validation`, {
               detail: `${rule.rule} ${String(rule.value)} > ${String(maxFiles)} files`,
             });
-      }
-      // A pattern rule only matches answers up to PATTERN_MAX_INPUT, so the length must be
-      // capped, unless the type's own hard cap already is (email's 254).
-      const typeCapsPatternInput =
-        def.maxLength !== undefined && def.maxLength <= PATTERN_MAX_INPUT;
-      if (
-        def.allowedRules.includes("pattern") &&
-        !typeCapsPatternInput &&
-        field.validation.some((r) => r.rule === "pattern")
-      ) {
-        const bounded = field.validation.some(
-          (r) => r.rule === "max_length" && r.value <= PATTERN_MAX_INPUT,
-        );
-        if (!bounded)
-          push("over_maximum", `${fPath}/validation`, {
-            detail: `pattern requires max_length <= ${String(PATTERN_MAX_INPUT)}`,
-          });
       }
     });
   });

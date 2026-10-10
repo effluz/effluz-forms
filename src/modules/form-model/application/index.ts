@@ -13,7 +13,7 @@ export { OPERATORS, operatorSchema } from "../domain/operators";
 export type { OperatorId } from "../domain/operators";
 export { conditionSchema, evaluateCondition, referencedKeys } from "../domain/condition";
 export type { Condition, Clause } from "../domain/condition";
-export { ruleSchema, PATTERN_MAX_INPUT, graphemeLength } from "../domain/rules";
+export { ruleSchema, graphemeLength } from "../domain/rules";
 export type { Rule, RuleId, RuleContext } from "../domain/rules";
 export { versionSchema, parseDraft, inputFields, fieldIndex } from "../domain/version";
 export type { Version, Page, Field, ParseIssue, ParseResult } from "../domain/version";

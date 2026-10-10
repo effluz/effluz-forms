@@ -21,26 +21,15 @@ describe("ruleSchema", () => {
 
 describe("pattern safety", () => {
   it.each([
-    "(a+)+",
-    "(a|aa)+",
-    "(a|a)*",
-    "(abc)+",
     "(a)\\1",
     "(?=a)b",
+    "(?!a)b",
+    "(?<=a)b",
+    "\\k<n>",
     "(",
-    "((a(b)))",
+    // RE2 caps repeat counts at 1000 and rejects anything above at compile time.
     "a{1001}",
     "a".repeat(201),
-    // Three or more quantifiers: over the limit of two.
-    "a{0,1000}a{0,1000}a{0,1000}a{0,1000}b",
-    "a*a*a*b",
-    "a?b?c?",
-    "\\d{2,}\\d{2,}\\d{2,}",
-    "[A-Z]{2}\\d{4}[A-Z]?",
-    "[^@\\s]+@[^@\\s]+\\.[a-z]{2,}",
-    "a*b?c{1,3}",
-    // Five alternation bars: over the limit of four.
-    "(a|aa)(a|aa)(a|aa)(a|aa)(a|aa)b",
   ])("rejects %s", (value) => {
     expect(ruleSchema.safeParse({ rule: "pattern", value }).success).toBe(false);
   });
@@ -50,12 +39,25 @@ describe("pattern safety", () => {
     "\\d{3}-\\d{4}",
     "(abc|def)",
     "\\(\\d+\\)",
-    // Escaped parens are literals, not a group, so the quantifier is allowed.
     "\\(\\d+\\)+",
     "[a-z]+@[a-z]+",
     "\\+?\\d{7,15}",
     "a*b?",
     "a{1000}",
+    "a".repeat(200),
+    // Formerly rejected by the interim subset (ADR 0013); linear time under RE2.
+    "(a+)+",
+    "(a|aa)+",
+    "(a|a)*",
+    "(abc)+",
+    "((a(b)))",
+    "a*a*a*b",
+    "a?b?c?",
+    "a{0,1000}a{0,1000}a{0,1000}a{0,1000}b",
+    "[A-Z]{2}\\d{4}[A-Z]?",
+    "[^@\\s]+@[^@\\s]+\\.[a-z]{2,}",
+    "(Mon|Tue|Wed|Thu|Fri)",
+    "(a|aa)(a|aa)(a|aa)(a|aa)(a|aa)b",
   ])("accepts %s", (value) => {
     expect(ruleSchema.safeParse({ rule: "pattern", value }).success).toBe(true);
   });
@@ -75,11 +77,23 @@ describe("evaluateRule", () => {
       evaluateRule({ rule: "pattern", value: "[a-z]+", flags: "i" }, "ABC", ctx),
     ).toBeUndefined();
   });
-  it("pattern rules refuse answers over 1000 characters", () => {
-    expect(evaluateRule({ rule: "pattern", value: ".*" }, "a".repeat(1001), ctx)).toBe("pattern");
-    expect(evaluateRule({ rule: "pattern", value: ".*" }, "a".repeat(1000), ctx)).toBeUndefined();
-    // 1000 graphemes but 2000 code units: combining marks cannot bypass the cap.
-    expect(evaluateRule({ rule: "pattern", value: ".*" }, "á".repeat(1000), ctx)).toBe("pattern");
+  it("pattern matching trims the answer and has no input length bound", () => {
+    expect(evaluateRule({ rule: "pattern", value: "[a-z]+" }, "  abc ", ctx)).toBeUndefined();
+    expect(evaluateRule({ rule: "pattern", value: ".*" }, "a".repeat(5000), ctx)).toBeUndefined();
+  });
+  it("only the i flag changes case sensitivity", () => {
+    expect(evaluateRule({ rule: "pattern", value: "abc" }, "ABC", ctx)).toBe("pattern");
+    expect(evaluateRule({ rule: "pattern", value: "abc", flags: "i" }, "ABC", ctx)).toBeUndefined();
+  });
+  it("a catastrophic pattern fails fast instead of stalling", () => {
+    const started = performance.now();
+    const result = evaluateRule(
+      { rule: "pattern", value: "(a|aa)+" },
+      "a".repeat(10_000) + "b",
+      ctx,
+    );
+    expect(result).toBe("pattern");
+    expect(performance.now() - started).toBeLessThan(500);
   });
   it("number rules", () => {
     expect(evaluateRule({ rule: "min_value", value: 10 }, 9, ctx)).toBe("number_min");
