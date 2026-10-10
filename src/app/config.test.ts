@@ -49,6 +49,12 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...base, APP_VERSION: "" })).toThrow(/APP_VERSION/);
     expect(() => loadConfig({ ...base, SESSION_COOKIE_NAME: "" })).toThrow(/SESSION_COOKIE_NAME/);
   });
+  it("rejects a worker lease below 30 seconds and names the variable", () => {
+    expect(() => loadConfig({ ...base, WORKER_LEASE_SECONDS: "20" })).toThrow(
+      /WORKER_LEASE_SECONDS/,
+    );
+    expect(loadConfig({ ...base, WORKER_LEASE_SECONDS: "30" }).worker.leaseSeconds).toBe(30);
+  });
   it("rejects an unknown SERVICE or LOG_LEVEL", () => {
     expect(() => loadConfig({ ...base, SERVICE: "cron" })).toThrow(/SERVICE/);
     expect(() => loadConfig({ ...base, LOG_LEVEL: "verbose" })).toThrow(/LOG_LEVEL/);

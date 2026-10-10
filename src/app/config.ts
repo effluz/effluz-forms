@@ -16,7 +16,7 @@ const envSchema = z.object({
   GOOGLE_ISSUER: z.url().default("https://accounts.google.com"),
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(4),
   WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(100).default(1000),
-  WORKER_LEASE_SECONDS: z.coerce.number().int().min(10).default(90),
+  WORKER_LEASE_SECONDS: z.coerce.number().int().min(30).default(90),
 });
 
 export interface AppConfig {
