@@ -4,6 +4,9 @@ import type { PublishCode } from "../issues";
 import { checkbox } from "./checkbox";
 import { conformanceChecks } from "./conformance-checks";
 import { consent } from "./consent";
+import { fileUpload } from "./file-upload";
+import { multipleChoice } from "./multiple-choice";
+import { shortText } from "./short-text";
 
 const failing = (def: Parameters<typeof conformanceChecks>[0]) =>
   conformanceChecks(def)
@@ -38,6 +41,18 @@ describe("conformanceChecks", () => {
       "alwaysRequired types declare a requiredCode and never report empty",
     ]);
   });
+  it("judges always-required emptiness on the normalized answer", () => {
+    const broken = defineFieldType({
+      ...consent,
+      normalize: (a) => ({ ...a, textVersion: "0000000000000000" }),
+      validate: () => [],
+      isEmpty: (a) => a.textVersion === "0000000000000000",
+      consentRecord: () => ({ textVersion: "0123456789abcdef" }),
+    });
+    expect(failing(broken)).toEqual([
+      "alwaysRequired types declare a requiredCode and never report empty",
+    ]);
+  });
   it("fails the publish hooks check for a malformed settings text or role", () => {
     const blankPath = defineFieldType({
       ...checkbox,
@@ -49,6 +64,36 @@ describe("conformanceChecks", () => {
       exclusiveRoles: () => [{ role: "x", code: "nope" as PublishCode }],
     });
     expect(failing(unknownCode)).toEqual(["publish hooks return well-formed results"]);
+  });
+  it("fails the publish hooks check for a draft on a clean field", () => {
+    const empty = defineFieldType({
+      ...checkbox,
+      publishChecks: () => [{ code: "no_input", path: "" }],
+    });
+    expect(failing(empty)).toEqual(["publish hooks return well-formed results"]);
+    const wellFormed = defineFieldType({
+      ...checkbox,
+      publishChecks: () => [{ code: "no_input", path: "validation" }],
+    });
+    expect(failing(wellFormed)).toEqual(["publish hooks return well-formed results"]);
+  });
+  it("fails the publish hooks check for a malformed draft on an extreme rule value", () => {
+    const broken = defineFieldType({
+      ...shortText,
+      publishChecks: (field) =>
+        field.validation.length > 0 ? [{ code: "over_maximum", path: "" }] : [],
+    });
+    expect(failing(broken)).toEqual(["publish hooks return well-formed results"]);
+    const unknownCode = defineFieldType({
+      ...shortText,
+      publishChecks: (field) =>
+        field.validation.length > 0 ? [{ code: "nope" as PublishCode, path: "validation" }] : [],
+    });
+    expect(failing(unknownCode)).toEqual(["publish hooks return well-formed results"]);
+  });
+  it("passes a type whose publish check reports an extreme rule value well", () => {
+    expect(failing(fileUpload)).toEqual([]);
+    expect(failing(multipleChoice)).toEqual([]);
   });
   it("fails the consent record check when the text version is not 16 hex digits", () => {
     const broken = defineFieldType({ ...consent, consentRecord: () => ({ textVersion: "v1" }) });

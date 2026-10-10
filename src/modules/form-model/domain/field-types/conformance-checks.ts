@@ -1,7 +1,7 @@
 import type { AnyFieldType, ValidationOutcome } from "../field-type";
 import { publishCodes, validationCodes } from "../issues";
 import { operatorSchema } from "../operators";
-import { ruleSchema } from "../rules";
+import { type Rule, ruleSchema } from "../rules";
 
 export interface ConformanceCheck {
   name: string;
@@ -31,6 +31,20 @@ const codeOf = (o: ValidationOutcome) => (typeof o === "string" ? o : o.code);
 const isPath = (p: unknown) => typeof p === "string" && p.length > 0;
 const isPublishCode = (c: unknown) => (publishCodes as readonly unknown[]).includes(c);
 const TEXT_VERSION = /^[0-9a-f]{16}$/;
+
+const NUMERIC_RULES = [
+  "min_length",
+  "max_length",
+  "min_value",
+  "max_value",
+  "min_selected",
+  "max_selected",
+  "min_files",
+  "max_files",
+] as const;
+type NumericRule = (typeof NUMERIC_RULES)[number];
+const isNumericRule = (r: string): r is NumericRule =>
+  (NUMERIC_RULES as readonly string[]).includes(r);
 
 /**
  * The per-type checks of the field type conformance suite. Each check returns
@@ -157,8 +171,16 @@ const checks: readonly { name: string; run: (def: AnyFieldType) => string | unde
           if (text !== undefined && (typeof text !== "object" || text === null))
             return `settings text ${t.path} is not a localized text: ${show(text)}`;
         }
-        for (const d of def.publishChecks?.({ required: false, validation: [] }, s) ?? [])
-          if (!isPath(d.path) || !isPublishCode(d.code)) return `publish check ${show(d)}`;
+        // A clean field has nothing to report.
+        const clean = def.publishChecks?.({ required: false, validation: [] }, s) ?? [];
+        if (clean.length > 0) return `publish check on a clean field: ${show(clean)}`;
+        // An extreme limit is the likeliest trigger; whatever comes back must be well formed.
+        for (const rule of def.allowedRules.filter(isNumericRule)) {
+          const validation: Rule[] = [{ rule, value: Number.MAX_SAFE_INTEGER }];
+          for (const d of def.publishChecks?.({ required: false, validation }, s) ?? [])
+            if (!isPath(d.path) || !isPublishCode(d.code))
+              return `publish check ${show(d)} for ${rule} ${String(Number.MAX_SAFE_INTEGER)}`;
+        }
         for (const r of def.exclusiveRoles?.(s) ?? [])
           if (!isPath(r.role) || !isPublishCode(r.code)) return `exclusive role ${show(r)}`;
       }
@@ -172,7 +194,11 @@ const checks: readonly { name: string; run: (def: AnyFieldType) => string | unde
       if (def.requiredCode === undefined) return "alwaysRequired without requiredCode";
       if (!(validationCodes as readonly string[]).includes(def.requiredCode))
         return `unknown requiredCode ${def.requiredCode}`;
-      const a: unknown = def.fixtures.validAnswers.find((v) => def.isEmpty(v));
+      const settings: unknown = def.fixtures.settings[0];
+      // The submission pipeline asks isEmpty about the normalized answer.
+      const a: unknown = def.fixtures.validAnswers.find((v) =>
+        def.isEmpty(def.normalize(v, settings)),
+      );
       return a === undefined ? undefined : `valid answer ${show(a)} reported empty`;
     },
   },
