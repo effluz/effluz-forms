@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, inject, it } from "vitest";
 import { migrate } from "@/shared/infrastructure/postgres/migrate";
+import { createPool } from "@/shared/infrastructure/postgres/pool";
 import { testPool } from "../db";
 
 describe("migrate", () => {
@@ -41,5 +42,18 @@ describe("migrate", () => {
     const regclass = await pool.query<{ t: string | null }>("select to_regclass('ok_t') as t");
     expect(regclass.rows[0]?.t).toBeNull();
     expect((await pool.query("select 1 from schema_migration where id = '9002'")).rowCount).toBe(0);
+  });
+
+  it("overrides a session statement timeout on the runner's connection", async () => {
+    // The pool's connections carry a 1 s cap, as a database-level default would.
+    const capped = createPool(inject("databaseUrl"), { max: 1, statementTimeoutMs: 1_000 });
+    const slow = { id: "9004", name: "slow", sql: "select pg_sleep(1.5);" };
+    try {
+      const result = await migrate(capped, [slow]);
+      expect(result.applied).toEqual(["9004"]);
+    } finally {
+      await capped.query("delete from schema_migration where id = '9004'");
+      await capped.end();
+    }
   });
 });

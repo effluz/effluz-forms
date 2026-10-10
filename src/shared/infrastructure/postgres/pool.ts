@@ -3,7 +3,10 @@ import type { Logger } from "@/shared/application/ports/logger";
 
 export interface PoolOptions {
   max?: number;
-  /** Per-statement timeout in milliseconds. Default 30 000; 0 disables it. */
+  /**
+   * Per-statement timeout in milliseconds. Defaults to 30 000 when omitted.
+   * 0 leaves the server default (pg treats 0 as unset, it does not disable the timeout).
+   */
   statementTimeoutMs?: number;
   logger?: Logger;
 }

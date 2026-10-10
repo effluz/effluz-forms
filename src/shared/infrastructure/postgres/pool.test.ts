@@ -23,7 +23,7 @@ describe("poolOptions", () => {
     expect(o.application_name).toBe("effluz-forms");
   });
 
-  it("accepts 0 to disable the statement timeout", () => {
+  it("passes 0 through, leaving the server default to apply", () => {
     expect(poolOptions(URL, { statementTimeoutMs: 0 }).statement_timeout).toBe(0);
   });
 

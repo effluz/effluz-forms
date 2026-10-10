@@ -65,6 +65,9 @@ export async function migrate(
   const applied: string[] = [];
   let failure: Error | undefined;
   try {
+    // The pool's (or the database's) statement timeout must not cap migrations or
+    // the wait for the advisory lock. pg treats a 0 option as unset, so say it here.
+    await client.query("set statement_timeout = 0");
     // Lock first: two first-time runners must not race on creating the ledger.
     await client.query("select pg_advisory_lock($1)", [LOCK_KEY]);
     await client.query(`create table if not exists schema_migration (
