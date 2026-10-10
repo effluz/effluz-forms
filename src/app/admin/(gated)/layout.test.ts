@@ -78,11 +78,9 @@ describe("admin session gate", () => {
     await expect(render()).rejects.toThrow("REDIRECT /admin/auth/signin?returnTo=%2Fadmin");
   });
 
-  it("returns to the same-origin admin page named by the Referer", async () => {
+  it("returns to /admin, since the proxy has already redirected with the real path", async () => {
     request.headers = new Headers({ referer: `${BASE}/admin/forms/1` });
-    await expect(render()).rejects.toThrow(
-      "REDIRECT /admin/auth/signin?returnTo=%2Fadmin%2Fforms%2F1",
-    );
+    await expect(render()).rejects.toThrow(/^REDIRECT \/admin\/auth\/signin\?returnTo=%2Fadmin$/);
   });
 
   it("redirects when the cookie names no session", async () => {

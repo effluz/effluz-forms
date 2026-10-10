@@ -82,6 +82,9 @@ export default tseslint.config(
           capture: ["module"],
           partialMatch: false,
         })),
+        // Files directly in src/, which Next requires for the proxy (src/proxy.ts), are
+        // app code. Listed last so every more specific element above wins.
+        { type: "app", pattern: "src", partialMatch: false },
       ],
       // Files are categorized within their element; the entry file stays application code.
       "boundaries/files": [

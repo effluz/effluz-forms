@@ -35,6 +35,14 @@ export const copy = {
     es: "Es posible que Google no esté disponible o que el enlace de inicio de sesión haya caducado. No se creó ninguna sesión.",
   },
   "auth.error_retry": { en: "Try again", es: "Intentar de nuevo" },
+  "auth.csrf_title": {
+    en: "Sign-out did not go through",
+    es: "No se pudo cerrar la sesión",
+  },
+  "auth.csrf_body": {
+    en: "This page was out of date. Open the admin area again and sign out from there.",
+    es: "Esta página estaba desactualizada. Vuelve a abrir el área de administración y cierra la sesión desde allí.",
+  },
 } as const satisfies Record<string, { en: string; es: string }>;
 
 export type CopyKey = keyof typeof copy;

@@ -122,6 +122,8 @@ export class GoogleOidcAdmin implements AdminIdentity {
       state,
       nonce,
       hd: this.options.allowedHostedDomain,
+      // Always show the chooser, so someone refused for a personal account can pick another.
+      prompt: "select_account",
     });
     return { authorizationUrl: url.toString(), state, nonce, codeVerifier };
   }

@@ -1,6 +1,7 @@
 import { getContainer } from "@/app/container";
 import { signOut } from "@/modules/identity/application";
 import { clearedCookie, readCookie } from "@/modules/identity/presentation/cookies";
+import { csrfRejectedPage } from "@/modules/identity/presentation/csrf-page";
 import {
   clientIp,
   forbidden,
@@ -35,6 +36,6 @@ export async function POST(request: Request): Promise<Response> {
     csrfToken: await csrfField(request),
     meta: { ip: clientIp(request.headers) },
   });
-  if (outcome === "csrf_mismatch") return forbidden();
+  if (outcome === "csrf_mismatch") return forbidden(csrfRejectedPage());
   return redirectTo(SIGNED_OUT_PATH, [cleared]);
 }

@@ -1,10 +1,10 @@
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { getContainer } from "@/app/container";
 import { currentSession } from "@/modules/identity/application";
 import { AdminShell } from "@/modules/identity/presentation/AdminShell";
-import { returnPathFromReferer, signInPath } from "@/modules/identity/presentation/http";
+import { signInPath } from "@/modules/identity/presentation/http";
 
 /**
  * Lets this segment block on the session read: with Cache Components a top-level
@@ -15,19 +15,16 @@ import { returnPathFromReferer, signInPath } from "@/modules/identity/presentati
 export const instant = false;
 
 /**
- * The session gate for every admin page outside /admin/auth.
- * See specs/use-cases/sign-in.md, "Trigger".
+ * Defence in depth behind the proxy gate (src/proxy.ts), and the source of the
+ * shell's identity. See specs/use-cases/sign-in.md, "Trigger".
  */
 export default async function GatedLayout({ children }: { children: ReactNode }) {
   const jar = await cookies();
   const container = getContainer();
   const sessionId = jar.get(container.config.session.cookieName)?.value || null;
   const current = await currentSession(container.identity, { sessionId, meta: { ip: null } });
-  if (current.state !== "active") {
-    // Server layouts do not see the request path; the Referer is the best available hint.
-    const referer = (await headers()).get("referer");
-    redirect(signInPath(returnPathFromReferer(referer, container.config.publicBaseUrl)));
-  }
+  // src/proxy.ts already redirected with the real request path; this is the second line.
+  if (current.state !== "active") redirect(signInPath("/admin"));
   return (
     <AdminShell name={current.session.name} csrfToken={current.session.csrfToken}>
       {children}

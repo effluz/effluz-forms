@@ -16,9 +16,12 @@ export function redirectTo(location: string, setCookies: readonly string[] = [])
   return new Response(null, { status: 302, headers });
 }
 
-/** An uncached, empty 403. */
-export function forbidden(): Response {
-  return new Response(null, { status: 403, headers: NO_STORE });
+/** An uncached 403 carrying an HTML page. */
+export function forbidden(html: string): Response {
+  return new Response(html, {
+    status: 403,
+    headers: { "Content-Type": "text/html; charset=utf-8", ...NO_STORE },
+  });
 }
 
 /** The first `x-forwarded-for` value, set by the reverse proxy, or null. */
@@ -30,24 +33,4 @@ export function clientIp(headers: Headers): string | null {
 /** The sign-in route that returns to `returnTo` afterwards. */
 export function signInPath(returnTo: string): string {
   return `${SIGN_IN_PATH}?returnTo=${encodeURIComponent(returnTo)}`;
-}
-
-/**
- * The admin path to return to after sign-in, taken from the Referer when it is a
- * same-origin admin page other than the auth pages; otherwise `/admin`. The sign-in
- * start sanitizes it again.
- */
-export function returnPathFromReferer(referer: string | null, publicBaseUrl: string): string {
-  if (referer === null) return "/admin";
-  let url: URL;
-  try {
-    url = new URL(referer);
-  } catch {
-    return "/admin";
-  }
-  if (url.origin !== new URL(publicBaseUrl).origin) return "/admin";
-  const path = url.pathname;
-  const inAdmin = path === "/admin" || path.startsWith("/admin/");
-  const inAuth = path === "/admin/auth" || path.startsWith("/admin/auth/");
-  return inAdmin && !inAuth ? path : "/admin";
 }

@@ -275,6 +275,11 @@ Pages outside the session gate, from `use-cases/sign-in.md`.
 | auth.error_title | Sign-in did not complete | No se pudo completar el inicio de sesión |
 | auth.error_body | Google may be unavailable, or the sign-in link expired. No session was created. | Es posible que Google no esté disponible o que el enlace de inicio de sesión haya caducado. No se creó ninguna sesión. |
 | auth.error_retry | Try again | Intentar de nuevo |
+| auth.csrf_title | Sign-out did not go through | No se pudo cerrar la sesión |
+| auth.csrf_body | This page was out of date. Open the admin area again and sign out from there. | Esta página estaba desactualizada. Vuelve a abrir el área de administración y cierra la sesión desde allí. |
+
+The out-of-date page reuses `auth.error_retry` for its link back to the
+admin area.
 
 ### Form overview and lifecycle
 

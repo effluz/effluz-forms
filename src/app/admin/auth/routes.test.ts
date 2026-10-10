@@ -244,6 +244,10 @@ describe("POST /admin/auth/signout", () => {
     expect(res.status).toBe(403);
     expect(setCookie(res, SESSION)).toBeUndefined();
     expect(deps.sessions.has(id)).toBe(true);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toMatch(/<h1>Sign-out did not go through<span lang="es">/);
+    expect(html).toContain('href="/admin"');
   });
 
   it("goes to the signed-out page when there is no session cookie", async () => {

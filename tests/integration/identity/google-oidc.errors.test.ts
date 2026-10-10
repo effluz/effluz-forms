@@ -50,6 +50,13 @@ async function signIn(
 
 const expected = { state: "s1", nonce: "n1", codeVerifier: "v1", redirectUri };
 
+describe("GoogleOidcAdmin authorization URL", () => {
+  it("asks Google to show the account chooser, so a refused person can pick another account", async () => {
+    const start = await adapter().beginSignIn(redirectUri);
+    expect(new URL(start.authorizationUrl).searchParams.get("prompt")).toBe("select_account");
+  });
+});
+
 describe("GoogleOidcAdmin redirect URI", () => {
   it("exchanges the code with the configured redirect URI, not the callback's origin", async () => {
     const done = await signIn("redirect-1", {}, adapter(), "http://internal:3000");

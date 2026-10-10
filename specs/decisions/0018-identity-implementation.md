@@ -42,3 +42,6 @@ not supersede it.
 - Refusals carry only a reason code. Claims, tokens and addresses are never
   logged.
 - Changing identity provider means a new adapter, no application change.
+- The proxy (`src/proxy.ts`) is the HTTP-level gate for `/admin`: under partial
+  prerendering a layout redirect cannot change the status code.
+- The `(gated)` layout checks the session again, as defence in depth.

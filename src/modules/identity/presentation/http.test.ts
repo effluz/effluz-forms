@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clientIp, forbidden, redirectTo, returnPathFromReferer, signInPath } from "./http";
-
-const BASE = "https://forms.example.com";
+import { clientIp, forbidden, redirectTo, signInPath } from "./http";
 
 describe("redirectTo", () => {
   it("is an uncached 302 with the Location and every Set-Cookie header", () => {
@@ -17,10 +15,12 @@ describe("redirectTo", () => {
 });
 
 describe("forbidden", () => {
-  it("is an uncached 403", () => {
-    const res = forbidden();
+  it("is an uncached HTML 403 with the given page", async () => {
+    const res = forbidden("<p>x</p>");
     expect(res.status).toBe(403);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(res.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+    expect(await res.text()).toBe("<p>x</p>");
   });
 });
 
@@ -40,25 +40,5 @@ describe("clientIp", () => {
 describe("signInPath", () => {
   it("encodes the return path", () => {
     expect(signInPath("/admin/forms")).toBe("/admin/auth/signin?returnTo=%2Fadmin%2Fforms");
-  });
-});
-
-describe("returnPathFromReferer", () => {
-  it("keeps a same-origin admin pathname", () => {
-    expect(returnPathFromReferer(`${BASE}/admin/forms/1?tab=share`, BASE)).toBe("/admin/forms/1");
-    expect(returnPathFromReferer(`${BASE}/admin`, BASE)).toBe("/admin");
-  });
-
-  it("falls back to /admin for anything else", () => {
-    expect(returnPathFromReferer(null, BASE)).toBe("/admin");
-    expect(returnPathFromReferer("not a url", BASE)).toBe("/admin");
-    expect(returnPathFromReferer(`${BASE}/forms/a`, BASE)).toBe("/admin");
-    expect(returnPathFromReferer(`${BASE}/administrator`, BASE)).toBe("/admin");
-    expect(returnPathFromReferer("https://evil.example/admin/forms", BASE)).toBe("/admin");
-  });
-
-  it("never returns to the auth pages, which would land a fresh session on a signed-out page", () => {
-    expect(returnPathFromReferer(`${BASE}/admin/auth/signed-out`, BASE)).toBe("/admin");
-    expect(returnPathFromReferer(`${BASE}/admin/auth`, BASE)).toBe("/admin");
   });
 });
