@@ -38,6 +38,7 @@ Labels and options are always plain text.
 ```
 Version
   languages: bilingual | en | es
+  headerImage?                 { ref, alt: LocalizedText }  shown on page 1 only, see specs/design.md
   pages[]                      ordered, at least one
     key, title, description?
     fields[]                   ordered
@@ -146,7 +147,8 @@ draft --publish--> published --close--> closed --archive--> archived
 
 Publishing validates the draft: at least one page with one input field, no
 unlabeled field, all translations present for bilingual forms, consent
-present when required, retention set, no dangling condition references.
+present when required, retention set, no dangling condition references,
+alt text present in each required language when a header image is set.
 
 ## Submissions
 

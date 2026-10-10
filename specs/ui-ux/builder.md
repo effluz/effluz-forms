@@ -126,6 +126,15 @@ never block typing.
 Only staff-authored form text is sent to the service. Submission data never
 is; the port is not reachable from `submissions` or `review`.
 
+### Form panel
+
+Selected by clicking the form title in the outline. Title pair, language
+mode, and the **header image**: an upload control accepting one image,
+showing a preview cropped as the renderer will crop it, alt text pair
+(required when an image is set), and Remove. Upload limits and processing
+are in `system/media-storage.md`; the builder shows the 300 KB result size
+after processing.
+
 ### Page panel
 
 Title pair, description pair (markdown), visibility condition (see Logic).
@@ -434,6 +443,12 @@ builder owns; strings staff type are not here.
 | panel.max_files | Maximum files | Máximo de archivos |
 | panel.max_size | Maximum size per file | Tamaño máximo por archivo |
 | panel.video_note | Videos are kept exactly as sent. The form will tell people that hidden details such as location are not removed from videos. | Los videos se guardan tal como se envían. El formulario avisará que no se quitan datos ocultos como la ubicación. |
+| panel.header_image | Header image | Imagen de cabecera |
+| panel.header_image_hint | Optional. Shown at the top of the first page. Landscape works best. | Opcional. Se muestra arriba de la primera página. Funciona mejor en horizontal. |
+| panel.header_alt | Describe the image | Describe la imagen |
+| panel.header_alt_hint | Read aloud to people who cannot see it | Se lee en voz alta a quienes no pueden verla |
+| panel.header_remove | Remove image | Quitar imagen |
+| panel.header_too_large | The image is still over 300 KB after processing. Try a simpler or smaller image. | La imagen sigue pesando más de 300 KB después de procesarla. Prueba una más simple o más pequeña. |
 | panel.change_type | Change type | Cambiar tipo |
 | panel.change_type_note | Only compatible types are listed. Other changes need a new field. | Solo se muestran tipos compatibles. Otros cambios requieren un campo nuevo. |
 | panel.suggest | Suggest translation | Sugerir traducción |
@@ -543,6 +558,7 @@ builder owns; strings staff type are not here.
 | err.dangling_condition | A condition on "{label}" refers to a field that no longer exists or comes later | Una condición de "{label}" apunta a un campo que ya no existe o viene después |
 | err.over_maximum | "{label}" exceeds the limit: {detail} | "{label}" supera el límite: {detail} |
 | err.submitter_email_dup | Only one email field can be the submitter's address | Solo un campo de correo puede ser el de quien responde |
+| err.header_alt_missing | The header image needs a description in {lang} | La imagen de cabecera necesita una descripción en {lang} |
 | sug.long_page | Page {n} has {count} questions. Consider splitting it. | La página {n} tiene {count} preguntas. Considera dividirla. |
 | sug.upload_busy | The upload on page {n} shares the page with {count} questions. Give it its own page. | La subida de la página {n} comparte página con {count} preguntas. Dale su propia página. |
 | sug.upload_no_help | "{label}" has no help text. Say what photos you expect. | "{label}" no tiene texto de ayuda. Indica qué fotos esperas. |

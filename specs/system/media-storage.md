@@ -23,6 +23,7 @@ no personal data:
 
 ```
 forms/<form slug>/<submission reference>/<nn>-<field slug>.<ext>
+forms/<form slug>/assets/header-<draft or version id>.webp
 backups/<YYYY-MM-DD>-db.dump.enc
 ```
 
@@ -66,6 +67,17 @@ Applied by the application layer before `put`, independent of provider:
   guarantee. The renderer tells the submitter this before they upload. A
   file whose container cannot be parsed is rejected as a validation error.
 - Rename to the key scheme above. The original filename is not stored.
+
+## Staff-uploaded header images
+
+A form's optional header image goes through the same port and the same
+image rules: type verified by content, re-encoded to WebP at 1600 px wide
+with metadata stripped, rejected above 300 KB after encoding or if it
+fails to decode. It is uploaded synchronously from the builder, stored
+under the form's `assets/` path, and served by the app with long cache
+headers keyed by version. It is not personal data and is not subject to
+submission retention; it is deleted when no draft or version references
+it.
 
 ## Downloads
 

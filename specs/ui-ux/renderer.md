@@ -24,6 +24,9 @@ Use case: `use-cases/fill-and-submit-form.md`. Model: `form-definition.md`.
 - Top: a small Effluz wordmark from `design-system/` linking nowhere, the
   language switch on bilingual forms, and the progress indicator on
   multi-page forms.
+- Page 1 only: the version's header image, when set, above the title,
+  following the header image rules in `specs/design.md`. It loads lazily
+  and the title never waits for it.
 - Body: page title, page description, fields in order, then the navigation
   row.
 - Bottom: the privacy footer, present on every page including confirmation.
@@ -235,7 +238,7 @@ form, handled by the copy layer, not by concatenation.
 | Script for enhancement, compressed | under 50 KB, loaded `defer` |
 | First page interactive on a throttled 3G profile | under 3 seconds |
 | Server render of a page | under 200 ms at the 95th percentile |
-| Images in the page | only the wordmark, as SVG |
+| Images in the page | the wordmark as SVG, and on page 1 the optional header image at most 300 KB |
 
 Fonts come from `design-system/` and are self-hosted with `font-display:
 swap`. No third-party scripts except the bot challenge when enabled.
