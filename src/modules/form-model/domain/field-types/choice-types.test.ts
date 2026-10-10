@@ -50,6 +50,14 @@ describe("multiple_choice", () => {
       "twins",
     ]);
   });
+  it("keeps unknown keys after known ones so validation reports them", () => {
+    expect(
+      multipleChoice.normalize([asKey("twins"), asKey("nope"), asKey("single"), asKey("twins")], s),
+    ).toEqual(["single", "twins", "nope"]);
+    expect(
+      multipleChoice.validate(multipleChoice.normalize([asKey("single"), asKey("nope")], s), s),
+    ).toEqual(["unknown_option"]);
+  });
   it("flags unknown keys and exports joined labels", () => {
     expect(multipleChoice.validate([asKey("single"), asKey("nope")], s)).toEqual([
       "unknown_option",

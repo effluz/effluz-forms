@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineFieldType } from "../field-type";
-import { asKey, keySchema } from "../keys";
+import { asKey, type Key, keySchema } from "../keys";
 import { optionLabel, optionsSchema } from "./choice-shared";
 
 export const multipleChoice = defineFieldType({
@@ -11,7 +11,13 @@ export const multipleChoice = defineFieldType({
   answerSchema: z.array(keySchema),
   allowedRules: ["min_selected", "max_selected"],
   allowedOperators: ["contains", "not_contains", "is_empty", "is_not_empty"],
-  normalize: (a, s) => s.options.map((o) => o.key).filter((k) => a.includes(k)),
+  // Known keys come first in option order; unknown keys follow in input order so validate can report them.
+  normalize: (a, s) => {
+    const isOption = (k: Key): boolean => s.options.some((o) => o.key === k);
+    const known = s.options.map((o) => o.key).filter((k) => a.includes(k));
+    const unknown = [...new Set(a)].filter((k) => !isOption(k));
+    return [...known, ...unknown];
+  },
   validate: (a, s) =>
     a.every((k) => s.options.some((o) => o.key === k)) ? [] : ["unknown_option"],
   isEmpty: (a) => a.length === 0,
