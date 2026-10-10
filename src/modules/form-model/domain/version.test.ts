@@ -137,4 +137,44 @@ describe("parseDraft", () => {
     );
     expect(bad.ok).toBe(false);
   });
+  it("checks contains values against the element shape of a multiple_choice answer", () => {
+    const opts = {
+      options: [
+        { key: "opt_one", label: { en: "1" } },
+        { key: "opt_two", label: { en: "2" } },
+      ],
+    };
+    const withValue = (value: unknown) =>
+      parseDraft(
+        draft([
+          page("page1", [
+            field("multi", "multiple_choice", { settings: opts }),
+            field("note", "short_text", {
+              visibility: { field: "multi", op: "contains", value },
+            }),
+          ]),
+        ]),
+        registry,
+      );
+    expect(withValue("opt_one").ok).toBe(true);
+    const bad = withValue(["opt_one"]);
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.issues[0]?.path).toMatch(/visibility\/value$/);
+  });
+  it("checks contains values against the answer shape of a text field", () => {
+    const withValue = (value: unknown) =>
+      parseDraft(
+        draft([
+          page("page1", [
+            field("note", "short_text"),
+            field("other", "short_text", {
+              visibility: { field: "note", op: "contains", value },
+            }),
+          ]),
+        ]),
+        registry,
+      );
+    expect(withValue("x").ok).toBe(true);
+    expect(withValue(5).ok).toBe(false);
+  });
 });

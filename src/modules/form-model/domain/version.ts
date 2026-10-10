@@ -67,6 +67,14 @@ export function fieldIndex(
   return map;
 }
 
+/** The shape a clause value must have for an operator, given the field's answer shape. */
+function clauseValueSchema(op: string, answer: z.ZodType): z.ZodType {
+  if (op === "is_one_of") return z.array(answer);
+  if ((op === "contains" || op === "not_contains") && answer instanceof z.ZodArray)
+    return answer.element as z.ZodType;
+  return answer;
+}
+
 function clauseIssues(
   cond: Condition,
   index: ReturnType<typeof fieldIndex>,
@@ -87,7 +95,7 @@ function clauseIssues(
       message: `operator ${cond.op} not allowed for ${def.id}`,
     });
   if (OPERATORS[cond.op].needsValue) {
-    const valueSchema = cond.op === "is_one_of" ? z.array(def.answerSchema) : def.answerSchema;
+    const valueSchema = clauseValueSchema(cond.op, def.answerSchema);
     if (!valueSchema.safeParse(cond.value).success)
       issues.push({
         path: pathOf([...base, "value"]),
