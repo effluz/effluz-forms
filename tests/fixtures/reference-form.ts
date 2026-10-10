@@ -153,11 +153,11 @@ export const referenceFormDraft = {
           label: es("Escribe tu historia (lo más breve posible)"),
           help: es(
             "Incluye:\n" +
-              "- Cómo fue el embarazo\n" +
-              "- Cómo fue el nacimiento\n" +
-              "- Los días en el hospital\n" +
-              "- Quiénes te acompañaron\n" +
-              "- Cómo está hoy tu bebé\n\n" +
+              "- Cuánto tiempo pasó en el hospital.\n" +
+              "- Fue cesárea o parto natural.\n" +
+              "- Qué fue lo que hizo que naciera antes de tiempo (si sabes la razón).\n" +
+              "- Complicaciones que sufrió durante o después de su nacimiento.\n" +
+              "- Edad actual y cómo se encuentra.\n\n" +
               "[VER PUBLICACIÓN](https://www.instagram.com/effluzpreemiesandtwins/)",
           ),
           ...required,
