@@ -90,6 +90,21 @@ missing any of these fails the conformance suite.
 Adding a type: see `CLAUDE.md`, "Adding a capability". Removing a type is not
 supported while any version uses it.
 
+### Export formats
+
+- `short_text`, `long_text`, `email`, `phone`, `date`: the answer, as one cell.
+- `number`: one cell, as a plain decimal string.
+- `single_choice`: one cell with the option label in the export locale.
+- `multiple_choice`: one cell with the option labels joined by "; ", in
+  option order.
+- `checkbox`: one cell, "yes" or "no" (Spanish "sí" or "no").
+- `consent`: two cells, "yes" (Spanish "sí") and the accepted text version.
+- `file_upload`: two cells, the file count and the media ids joined by "; ".
+- `section`: no columns.
+
+`multiple_choice` answers are normalized to option order with unknown keys
+kept so validation can report them.
+
 ## Validation
 
 Rules are declarative, attached per field, and chosen from the list the

@@ -12,6 +12,36 @@ const ownModule = (layer) => ({
 });
 const thirdParty = (...source) => ({ module: { origin: ["external", "core"], source } });
 
+// Inter-module dependency graph (specs/architecture.md). A module may import only the
+// application layer of the modules listed here; modules absent from the table get none.
+const MODULE_DEPS = {
+  "form-model": [],
+  identity: [],
+  media: [],
+  notifications: [],
+  definitions: ["form-model", "identity"],
+  submissions: ["form-model", "definitions", "media", "notifications"],
+  review: ["form-model", "definitions", "submissions", "media", "identity"],
+};
+const moduleOf = (type, module) => ({ element: { type, captured: { module } } });
+const moduleLayerPolicies = Object.entries(MODULE_DEPS).flatMap(([module, deps]) =>
+  ["application", "infrastructure", "presentation"].map((layer) => ({
+    from: moduleOf(`module-${layer}`, module),
+    allow: {
+      to: [
+        element("shared-domain"),
+        element("shared-application"),
+        ...(layer === "infrastructure" ? [element("shared-infrastructure")] : []),
+        ...(layer === "presentation" ? [element("shared-presentation")] : []),
+        moduleOf("module-domain", module),
+        moduleOf("module-application", module),
+        moduleOf(`module-${layer}`, module),
+        ...deps.map((dep) => moduleOf("module-application", dep)),
+      ],
+    },
+  })),
+);
+
 const frameworks = ["react", "react-dom", "next", "next/*"];
 
 export default tseslint.config(
@@ -61,7 +91,7 @@ export default tseslint.config(
             { allow: { to: { module: { origin: ["external", "core"] } } } },
 
             // Layer rules. Cross-module imports are allowed only into another module's
-            // application layer; the inter-module DAG is added once a second module exists.
+            // application layer, and only along the edges of MODULE_DEPS.
             { from: element("shared-domain"), allow: { to: element("shared-domain") } },
             {
               from: element("shared-application"),
@@ -91,43 +121,7 @@ export default tseslint.config(
               from: element("module-domain"),
               allow: { to: [element("shared-domain"), ownModule("domain")] },
             },
-            {
-              from: element("module-application"),
-              allow: {
-                to: [
-                  element("shared-domain"),
-                  element("shared-application"),
-                  ownModule("domain"),
-                  element("module-application"),
-                ],
-              },
-            },
-            {
-              from: element("module-infrastructure"),
-              allow: {
-                to: [
-                  element("shared-domain"),
-                  element("shared-application"),
-                  element("shared-infrastructure"),
-                  ownModule("domain"),
-                  ownModule("application"),
-                  ownModule("infrastructure"),
-                ],
-              },
-            },
-            {
-              from: element("module-presentation"),
-              allow: {
-                to: [
-                  element("shared-domain"),
-                  element("shared-application"),
-                  element("shared-presentation"),
-                  ownModule("domain"),
-                  ownModule("application"),
-                  ownModule("presentation"),
-                ],
-              },
-            },
+            ...moduleLayerPolicies,
             {
               from: element("app"),
               allow: {

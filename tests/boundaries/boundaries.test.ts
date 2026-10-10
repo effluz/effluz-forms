@@ -94,4 +94,26 @@ describe("layer boundaries", () => {
     );
     expect(rules.filter((m) => m.ruleId?.startsWith("boundaries/"))).toEqual([]);
   });
+
+  it("allows a module domain to import shared domain", async () => {
+    const rules = await lintVirtual(
+      "src/modules/probe-a/domain/shared.ts",
+      `import { resolveText } from "@/shared/domain/localized-text";\nexport const r = resolveText;\n`,
+    );
+    expect(rules.filter((m) => m.ruleId?.startsWith("boundaries/"))).toEqual([]);
+  });
+
+  it("lets definitions use form-model's public API but not review's", async () => {
+    const ok = await lintVirtual(
+      "src/modules/definitions/application/probe.ts",
+      `import { LIMITS } from "@/modules/form-model/application";\nexport const l = LIMITS;\n`,
+    );
+    expect(ok.filter((m) => m.ruleId?.startsWith("boundaries/"))).toEqual([]);
+    await lintVirtual("src/modules/review/application/index.ts", `export const y = 1;\n`);
+    const bad = await lintVirtual(
+      "src/modules/definitions/application/probe2.ts",
+      `import { y } from "@/modules/review/application";\nexport const z = y;\n`,
+    );
+    expect(bad.map((m) => m.ruleId)).toContain("boundaries/dependencies");
+  });
 });
