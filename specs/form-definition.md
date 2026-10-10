@@ -103,6 +103,10 @@ may not add or skip any.
 - System maximums bound anything staff can set: text length, file size, file
   count, options per choice field, fields per page, pages per form. Values are
   in `specs/system/security.md`.
+- `pattern` rules accept a safe subset of regular expressions: literals,
+  escapes, character classes, anchors, quantifiers on single atoms, and
+  non-quantified groups with alternation. Quantified groups, backreferences
+  and lookarounds are rejected so a public submission cannot stall the server.
 
 ## Conditional logic
 

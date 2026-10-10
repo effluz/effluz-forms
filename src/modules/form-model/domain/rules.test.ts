@@ -19,6 +19,36 @@ describe("ruleSchema", () => {
   });
 });
 
+describe("pattern safety", () => {
+  it.each([
+    "(a+)+",
+    "(a|aa)+",
+    "(a|a)*",
+    "(abc)+",
+    "(a)\\1",
+    "(?=a)b",
+    "(",
+    "((a(b)))",
+    "a{1001}",
+    "a".repeat(201),
+  ])("rejects %s", (value) => {
+    expect(ruleSchema.safeParse({ rule: "pattern", value }).success).toBe(false);
+  });
+
+  it.each([
+    "[a-z]+",
+    "\\d{3}-\\d{4}",
+    "(abc|def)",
+    "\\(\\d+\\)",
+    // Escaped parens are literals, not a group, so the quantifier is allowed.
+    "\\(\\d+\\)+",
+    "[^@\\s]+@[^@\\s]+\\.[a-z]{2,}",
+    "a{1000}",
+  ])("accepts %s", (value) => {
+    expect(ruleSchema.safeParse({ rule: "pattern", value }).success).toBe(true);
+  });
+});
+
 describe("evaluateRule", () => {
   it("length rules count user-perceived characters after trimming", () => {
     expect(evaluateRule({ rule: "min_length", value: 3 }, "  ab ", ctx)).toBe("min_length");
@@ -29,6 +59,9 @@ describe("evaluateRule", () => {
   it("pattern matches the whole string", () => {
     expect(evaluateRule({ rule: "pattern", value: "[a-z]+" }, "abc", ctx)).toBeUndefined();
     expect(evaluateRule({ rule: "pattern", value: "[a-z]+" }, "abc1", ctx)).toBe("pattern");
+    expect(
+      evaluateRule({ rule: "pattern", value: "[a-z]+", flags: "i" }, "ABC", ctx),
+    ).toBeUndefined();
   });
   it("number rules", () => {
     expect(evaluateRule({ rule: "min_value", value: 10 }, 9, ctx)).toBe("number_min");

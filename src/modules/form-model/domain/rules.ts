@@ -4,15 +4,135 @@ import type { IssueParams, ValidationCode } from "./issues";
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const count = z.number().int().min(0);
 
+const MAX_PATTERN_LENGTH = 200;
+const MAX_REPEAT = 1000;
+const MAX_GROUP_DEPTH = 2;
+
+/**
+ * Whitelist scanner for the safe regex subset. Walks the pattern once and
+ * rejects every construct outside the subset. Quantified groups, backreferences
+ * and lookarounds are excluded so a public submission cannot stall the server.
+ */
+class PatternScanner {
+  private pos = 0;
+  private readonly source: string;
+
+  constructor(source: string) {
+    this.source = source;
+  }
+
+  run(): boolean {
+    return this.alternation(0) && this.pos === this.source.length;
+  }
+
+  private peek(offset = 0): string {
+    return this.source.charAt(this.pos + offset);
+  }
+
+  private alternation(depth: number): boolean {
+    for (;;) {
+      if (!this.sequence(depth)) return false;
+      if (this.peek() !== "|") return true;
+      this.pos++;
+    }
+  }
+
+  private sequence(depth: number): boolean {
+    while (this.pos < this.source.length) {
+      const c = this.peek();
+      if (c === "|" || c === ")") return true;
+      if (c === "^" || c === "$") {
+        this.pos++;
+        continue;
+      }
+      if (c === "(") {
+        // Groups take no quantifier; a quantifier after ")" fails in atom().
+        if (!this.group(depth)) return false;
+        continue;
+      }
+      if (!this.atom(c) || !this.quantifier()) return false;
+    }
+    return true;
+  }
+
+  private group(depth: number): boolean {
+    if (depth + 1 > MAX_GROUP_DEPTH) return false;
+    if (this.source.startsWith("(?:", this.pos)) {
+      this.pos += 3;
+    } else if (this.peek(1) === "?") {
+      // Lookarounds and named groups.
+      return false;
+    } else {
+      this.pos += 1;
+    }
+    if (!this.alternation(depth + 1) || this.peek() !== ")") return false;
+    this.pos++;
+    return true;
+  }
+
+  private atom(c: string): boolean {
+    if (c === "\\") {
+      const escaped = this.peek(1);
+      // Backreferences (\1 to \9) and named backreferences (\k) are rejected.
+      if (escaped === "" || /[1-9k]/.test(escaped)) return false;
+      this.pos += 2;
+      return true;
+    }
+    if (c === "[") return this.characterClass();
+    if (c === ".") {
+      this.pos++;
+      return true;
+    }
+    // A quantifier or stray bracket where an atom belongs is malformed.
+    if (/[*+?{}\]]/.test(c)) return false;
+    this.pos++;
+    return true;
+  }
+
+  private characterClass(): boolean {
+    this.pos++;
+    if (this.peek() === "^") this.pos++;
+    while (this.pos < this.source.length) {
+      const c = this.peek();
+      if (c === "]") {
+        this.pos++;
+        return true;
+      }
+      this.pos += c === "\\" ? 2 : 1;
+    }
+    return false;
+  }
+
+  private quantifier(): boolean {
+    const c = this.peek();
+    if (c === "{") {
+      const repeat = /\{(\d+)(?:(,)(\d*))?\}/y;
+      repeat.lastIndex = this.pos;
+      const match = repeat.exec(this.source);
+      if (!match) return false;
+      const bounds = [Number(match[1]), match[3] ? Number(match[3]) : 0];
+      if (bounds.some((bound) => bound > MAX_REPEAT)) return false;
+      this.pos += match[0].length;
+    } else if (c === "*" || c === "+" || c === "?") {
+      this.pos++;
+    } else {
+      return true;
+    }
+    // One optional lazy modifier.
+    if (this.peek() === "?") this.pos++;
+    return true;
+  }
+}
+
 function safeRegex(source: string): boolean {
-  if (source.length > 200) return false;
+  if (source.length > MAX_PATTERN_LENGTH) return false;
+  if (!new PatternScanner(source).run()) return false;
   try {
     new RegExp(source, "u");
   } catch {
     return false;
   }
-  // Reject nested quantifiers, the common catastrophic-backtracking shape.
-  return !/(\(.*[+*].*\))[+*{]/.test(source);
+  return true;
 }
 
 export const ruleSchema = z.discriminatedUnion("rule", [
