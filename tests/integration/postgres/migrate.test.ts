@@ -51,6 +51,11 @@ describe("migrate", () => {
     try {
       const result = await migrate(capped, [slow]);
       expect(result.applied).toEqual(["9004"]);
+      // The runner's connection is discarded, so the next one carries the pool default.
+      const setting = await capped.query<{ t: string }>(
+        "select current_setting('statement_timeout') as t",
+      );
+      expect(setting.rows[0]?.t).toBe("1s");
     } finally {
       await capped.query("delete from schema_migration where id = '9004'");
       await capped.end();

@@ -98,8 +98,8 @@ export async function migrate(
     throw e;
   } finally {
     await client.query("select pg_advisory_unlock($1)", [LOCK_KEY]).catch(() => undefined);
-    // Passing the error discards the client instead of returning a possibly broken one.
-    client.release(failure);
+    // Always destroy this client (truthy arg): its session has no statement timeout and must not be reused.
+    client.release(failure ?? true);
   }
   return { applied };
 }
