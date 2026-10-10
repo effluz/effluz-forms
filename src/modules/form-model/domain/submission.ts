@@ -37,7 +37,11 @@ function issuesFor(
 
   if (isAbsent(raw)) {
     if (def.id === "consent") return { issues: [issue("consent")] };
-    return { issues: field.required ? [issue("required")] : [] };
+    if (field.required) return { issues: [issue("required")] };
+    // Omitting a must_be_true answer must not bypass the rule that sending false fails.
+    if (field.validation.some((r) => r.rule === "must_be_true"))
+      return { issues: [issue("must_be_true")] };
+    return { issues: [] };
   }
   const shape = def.answerSchema.safeParse(raw);
   if (!shape.success) {
@@ -91,11 +95,13 @@ export function validateSubmission(
 
   for (const page of version.pages) {
     const pageVisible = page.visibility ? evaluateCondition(page.visibility, answers) : true;
-    if (!pageVisible) continue;
     for (const field of page.fields) {
       const def = registry.get(field.type);
       if (!def.isInput) continue;
-      const visible = field.visibility ? evaluateCondition(field.visibility, answers) : true;
+      // Consent is always visible, so a condition can never skip the agreement.
+      const visible =
+        def.id === "consent" ||
+        (pageVisible && (field.visibility ? evaluateCondition(field.visibility, answers) : true));
       if (!visible) continue;
       const own = Object.hasOwn(body, field.key) ? body[field.key] : undefined;
       const result = issuesFor(field, registry, own, ctx);

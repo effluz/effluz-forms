@@ -21,11 +21,8 @@ export const phone = defineFieldType({
     "is_not_empty",
     "is_one_of",
   ],
-  normalize: (a) =>
-    cleanText(a)
-      .replace(/[^\d+\s()-]/g, "")
-      .replace(/\s+/g, " ")
-      .trim(),
+  // Kept as typed: extensions and other notations stay readable for staff.
+  normalize: (a) => cleanText(a).replace(/\s+/g, " "),
   validate: (a) => {
     // The length cap runs before the digit count so oversized input is refused early.
     if (graphemeLength(a) > LIMITS.shortTextMax) return ["max_length"];

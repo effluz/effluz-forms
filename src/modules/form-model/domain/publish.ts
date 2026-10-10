@@ -137,6 +137,8 @@ export function checkDefinition(version: Version, registry: FieldTypeRegistry): 
       if (def.id === "email" && settings["isSubmitterAddress"] === true) submitterEmails++;
       if (def.id === "consent") {
         consentFields++;
+        // A consent field is never conditional: hiding it would skip the agreement.
+        if (field.visibility || page.visibility) push("consent_missing", fPath);
         requireText(settings["text"] as LocalizedText, `${fPath}/settings/text`, "unlabeled");
         if (
           !isConsentChecklistComplete(settings as Parameters<typeof isConsentChecklistComplete>[0])

@@ -134,6 +134,37 @@ describe("checkDefinition", () => {
     });
     expect(codes(checkDefinition(v, registry))).toContain("consent_missing");
   });
+  it("reports consent_missing at a consent field that has a visibility condition", () => {
+    const v = parse(
+      withFields([
+        nameField,
+        mailField,
+        { ...consentField, visibility: { field: "name", op: "is_not_empty" } },
+      ]),
+    );
+    expect(checkDefinition(v, registry)).toContainEqual({
+      code: "consent_missing",
+      path: "pages/0/fields/2",
+    });
+  });
+  it("reports consent_missing at a consent field on a page that has a visibility condition", () => {
+    const v = parse({
+      ...base,
+      pages: [
+        { ...page1, fields: [nameField, mailField] },
+        {
+          key: "page2",
+          title: { en: "Two", es: "Dos" },
+          visibility: { field: "name", op: "is_not_empty" },
+          fields: [consentField],
+        },
+      ],
+    });
+    expect(checkDefinition(v, registry)).toContainEqual({
+      code: "consent_missing",
+      path: "pages/1/fields/0",
+    });
+  });
   it("reports consent_checklist when an item is not covered", () => {
     const v = parse({
       ...base,

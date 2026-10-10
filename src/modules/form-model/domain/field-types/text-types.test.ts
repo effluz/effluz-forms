@@ -65,8 +65,9 @@ describe("email", () => {
 });
 
 describe("phone", () => {
-  it("keeps digits, plus, spaces, dashes and parentheses only", () => {
-    expect(phone.normalize(" +507 6123-4567 ext.2", {})).toBe("+507 6123-4567 2");
+  it("keeps the number as typed, trimming and collapsing whitespace only", () => {
+    expect(phone.normalize(" +507 6123-4567 ext.2", {})).toBe("+507 6123-4567 ext.2");
+    expect(phone.normalize("+507  6123\t4567", {})).toBe("+507 6123 4567");
   });
   it("needs at least 6 digits", () => {
     expect(phone.validate("12345", {})).toEqual(["pattern"]);

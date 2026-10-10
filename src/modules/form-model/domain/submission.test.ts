@@ -113,6 +113,67 @@ const opt = parseDraft(
 );
 if (!opt.ok) throw new Error(JSON.stringify(opt.issues));
 
+const gated = parseDraft(
+  {
+    languages: "es",
+    confirmation: { screen: { es: "Gracias" } },
+    pages: [
+      {
+        key: "page1",
+        title: { es: "Datos" },
+        fields: [
+          { key: "twins", type: "checkbox", label: { es: "Gemelos" } },
+          {
+            key: "agree",
+            type: "consent",
+            label: { es: "Consentimiento" },
+            settings: { text: consentText },
+            visibility: { field: "twins", op: "equals", value: true },
+          },
+        ],
+      },
+      {
+        key: "page2",
+        title: { es: "Más" },
+        visibility: { field: "twins", op: "equals", value: true },
+        fields: [
+          {
+            key: "agree_page",
+            type: "consent",
+            label: { es: "Consentimiento" },
+            settings: { text: consentText },
+          },
+        ],
+      },
+    ],
+  },
+  registry,
+);
+if (!gated.ok) throw new Error(JSON.stringify(gated.issues));
+
+const mustBeTrue = parseDraft(
+  {
+    languages: "es",
+    confirmation: { screen: { es: "Gracias" } },
+    pages: [
+      {
+        key: "page1",
+        title: { es: "Datos" },
+        fields: [
+          {
+            key: "optin",
+            type: "checkbox",
+            label: { es: "Acepto" },
+            validation: [{ rule: "must_be_true" }],
+          },
+        ],
+      },
+    ],
+  },
+  registry,
+);
+if (!mustBeTrue.ok) throw new Error(JSON.stringify(mustBeTrue.issues));
+
 describe("isAbsent", () => {
   it("treats undefined, null, blank and empty array as absent, but not 0 or false", () => {
     for (const a of [undefined, null, "", "  ", []]) expect(isAbsent(a)).toBe(true);
@@ -132,6 +193,7 @@ describe("validateSubmission", () => {
         twins: false,
         names: "ignored",
         born: "2026-01-01",
+        optin: true,
         agree: accepted,
         extra: "x",
       },
@@ -145,6 +207,7 @@ describe("validateSubmission", () => {
         weeks: 30,
         twins: false,
         born: "2026-01-01",
+        optin: true,
         agree: accepted,
       },
       consent: { fieldKey: "agree", textVersion: accepted.textVersion },
@@ -297,6 +360,26 @@ describe("validateSubmission", () => {
     );
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.issues).toContainEqual({ code: "consent", field: "agree" });
+  });
+  it("requires a consent field even when its own or its page's condition hides it", () => {
+    const res = validateSubmission(gated.version, registry, { twins: false }, ctx);
+    expect(res).toEqual({
+      ok: false,
+      issues: [
+        { code: "consent", field: "agree" },
+        { code: "consent", field: "agree_page" },
+      ],
+    });
+  });
+  it("reports must_be_true for an omitted non-required must_be_true checkbox", () => {
+    expect(validateSubmission(mustBeTrue.version, registry, {}, ctx)).toEqual({
+      ok: false,
+      issues: [{ code: "must_be_true", field: "optin" }],
+    });
+    expect(validateSubmission(mustBeTrue.version, registry, { optin: true }, ctx)).toEqual({
+      ok: true,
+      answers: { optin: true },
+    });
   });
   it("treats a non-required answer that normalizes to blank as absent", () => {
     const res = validateSubmission(opt.version, registry, { nick: "\u200B" }, ctx);
