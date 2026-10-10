@@ -9,6 +9,9 @@ describe("consentTextVersion", () => {
     expect(consentTextVersion({ en: "I agree.", es: "Acepto" })).not.toBe(a);
     expect(consentTextVersion({ en: "I agree", es: "Acepto." })).not.toBe(a);
   });
+  it("matches the pinned vector so stored versions never change", () => {
+    expect(consentTextVersion({ en: "I agree", es: "Acepto" })).toBe("ae9d9e5ae8c52f00");
+  });
   it("treats NFC and NFD forms as the same text", () => {
     expect(consentTextVersion({ es: "María" })).toBe(consentTextVersion({ es: "María" }));
   });

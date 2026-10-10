@@ -4,10 +4,12 @@ import { checkbox } from "./checkbox";
 import { consent } from "./consent";
 import { date } from "./date";
 import { email } from "./email";
+import { fileUpload } from "./file-upload";
 import { longText } from "./long-text";
 import { multipleChoice } from "./multiple-choice";
 import { numberType } from "./number";
 import { phone } from "./phone";
+import { section } from "./section";
 import { shortText } from "./short-text";
 import { singleChoice } from "./single-choice";
 
@@ -22,6 +24,8 @@ export const defaultFieldTypes: readonly AnyFieldType[] = [
   multipleChoice,
   checkbox,
   consent,
+  fileUpload,
+  section,
 ];
 
 export function buildDefaultRegistry(): FieldTypeRegistry {
