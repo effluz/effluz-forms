@@ -1,0 +1,54 @@
+import type { z } from "zod";
+import type { Languages, Locale } from "@/shared/domain/localized-text";
+import type { ValidationCode } from "./issues";
+import type { OperatorId } from "./operators";
+import type { RuleId } from "./rules";
+
+export const fieldTypeIds = [
+  "short_text",
+  "long_text",
+  "email",
+  "phone",
+  "number",
+  "date",
+  "single_choice",
+  "multiple_choice",
+  "checkbox",
+  "consent",
+  "file_upload",
+  "section",
+] as const;
+export type FieldTypeId = (typeof fieldTypeIds)[number];
+
+export interface FieldTypeFixtures<S, A> {
+  settings: S[];
+  validAnswers: A[];
+  invalidAnswers: unknown[];
+  emptyAnswer?: A;
+}
+
+export interface FieldTypeDefinition<S = unknown, A = unknown> {
+  id: FieldTypeId;
+  isInput: boolean;
+  collectsPersonalData: boolean;
+  settingsSchema: z.ZodType<S>;
+  answerSchema: z.ZodType<A>;
+  allowedRules: readonly RuleId[];
+  allowedOperators: readonly OperatorId[];
+  normalize(answer: A, settings: S): A;
+  validate(answer: A, settings: S): ValidationCode[];
+  isEmpty(answer: A): boolean;
+  exportHeaders(label: string): string[];
+  exportCells(answer: A | undefined, settings: S, locale: Locale, languages: Languages): string[];
+  fixtures: FieldTypeFixtures<S, A>;
+}
+
+export function defineFieldType<S, A>(def: FieldTypeDefinition<S, A>): FieldTypeDefinition<S, A> {
+  return Object.freeze(def);
+}
+
+/** Loosens the generics for storage in a heterogeneous registry. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyFieldType = FieldTypeDefinition<any, any>;
+
+export const normalizeText = (s: string): string => s.normalize("NFC").trim();
