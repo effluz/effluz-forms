@@ -13,24 +13,34 @@ export interface FakeIssuer {
   clientId: string;
   clientSecret: string;
   /** Registers what the next token exchange will return for a given code. */
-  grant(
-    code: string,
-    claims: Record<string, unknown>,
-    opts?: { signWithWrongKey?: boolean; omitNonce?: boolean },
-  ): void;
+  grant(code: string, claims: Record<string, unknown>, opts?: GrantOptions): void;
+  /** Makes one endpoint answer HTTP 500 until switched off again. */
+  failEndpoint(endpoint: "jwks" | "discovery", failing: boolean): void;
   close(): Promise<void>;
+}
+
+export interface GrantOptions {
+  signWithWrongKey?: boolean;
+  omitNonce?: boolean;
+  /** Seconds until the ID token expires, from now. Negative values give an expired token. */
+  expiresIn?: number;
+  /** Overrides the `aud` claim (default: the client id). */
+  audience?: string;
+  /** Overrides the `iss` claim (default: this issuer). */
+  issuer?: string;
 }
 
 interface Grant {
   claims: Record<string, unknown>;
-  signWithWrongKey: boolean;
-  omitNonce: boolean;
+  options: GrantOptions;
 }
 
+/** What was sent to /authorize, bound to the code issued for it. */
 interface AuthorizationRequest {
   nonce: string | null;
   state: string | null;
   codeChallenge: string | null;
+  redirectUri: string;
 }
 
 const KID = "fake-issuer-key";
@@ -79,19 +89,24 @@ export async function startFakeIssuer(): Promise<FakeIssuer> {
 
   const grants = new Map<string, Grant>();
   const requests = new Map<string, AuthorizationRequest>();
+  const failing = new Set<"jwks" | "discovery">();
 
   let issuer = "";
 
   async function idToken(grant: Grant, nonce: string | null): Promise<string> {
     const claims: Record<string, unknown> = { ...grant.claims };
-    if (nonce !== null && !grant.omitNonce) claims["nonce"] = nonce;
-    const key: CryptoKey = grant.signWithWrongKey ? unpublished.privateKey : signing.privateKey;
+    const { options } = grant;
+    if (nonce !== null && options.omitNonce !== true) claims["nonce"] = nonce;
+    const key: CryptoKey =
+      options.signWithWrongKey === true ? unpublished.privateKey : signing.privateKey;
+    const now = Math.floor(Date.now() / 1000);
+    const expiresIn = options.expiresIn ?? 300;
     return new SignJWT(claims)
       .setProtectedHeader({ alg: "RS256", kid: KID })
-      .setIssuer(issuer)
-      .setAudience(CLIENT_ID)
-      .setIssuedAt()
-      .setExpirationTime("5m")
+      .setIssuer(options.issuer ?? issuer)
+      .setAudience(options.audience ?? CLIENT_ID)
+      .setIssuedAt(Math.min(now, now + expiresIn - 300))
+      .setExpirationTime(now + expiresIn)
       .sign(key);
   }
 
@@ -102,23 +117,33 @@ export async function startFakeIssuer(): Promise<FakeIssuer> {
       sendJson(res, 401, { error: "invalid_client" });
       return;
     }
-    const grant = grants.get(form.get("code") ?? "");
-    const request = requests.get(CLIENT_ID);
+    const code = form.get("code") ?? "";
+    const grant = grants.get(code);
+    const request = requests.get(code);
     const verifier = form.get("code_verifier");
+    const redirectMatches =
+      request !== undefined && form.get("redirect_uri") === request.redirectUri;
     const challengeMatches =
       request?.codeChallenge == null ||
       (verifier !== null &&
         createHash("sha256").update(verifier).digest("base64url") === request.codeChallenge);
-    if (form.get("grant_type") !== "authorization_code" || !grant || !challengeMatches) {
+    if (
+      form.get("grant_type") !== "authorization_code" ||
+      !grant ||
+      !request ||
+      !challengeMatches ||
+      !redirectMatches
+    ) {
       sendJson(res, 400, { error: "invalid_grant" });
       return;
     }
-    grants.delete(form.get("code") ?? "");
+    grants.delete(code);
+    requests.delete(code);
     sendJson(res, 200, {
       access_token: "x",
       token_type: "bearer",
       expires_in: 3600,
-      id_token: await idToken(grant, request?.nonce ?? null),
+      id_token: await idToken(grant, request.nonce),
     });
   }
 
@@ -130,14 +155,16 @@ export async function startFakeIssuer(): Promise<FakeIssuer> {
       return;
     }
     const state = url.searchParams.get("state");
-    requests.set(clientId, {
+    // `__code` is a test-only convention: it picks which registered grant to return.
+    const code = url.searchParams.get("__code") ?? "unspecified-code";
+    requests.set(code, {
       nonce: url.searchParams.get("nonce"),
       state,
       codeChallenge: url.searchParams.get("code_challenge"),
+      redirectUri,
     });
-    // `__code` is a test-only convention: it picks which registered grant to return.
     const target = new URL(redirectUri);
-    target.searchParams.set("code", url.searchParams.get("__code") ?? "unspecified-code");
+    target.searchParams.set("code", code);
     if (state !== null) target.searchParams.set("state", state);
     res.writeHead(302, { location: target.toString() });
     res.end();
@@ -149,6 +176,10 @@ export async function startFakeIssuer(): Promise<FakeIssuer> {
     const handle = async (): Promise<void> => {
       switch (route) {
         case "GET /.well-known/openid-configuration":
+          if (failing.has("discovery")) {
+            sendJson(res, 500, { error: "server_error" });
+            return;
+          }
           sendJson(res, 200, {
             issuer,
             authorization_endpoint: `${issuer}/authorize`,
@@ -162,6 +193,10 @@ export async function startFakeIssuer(): Promise<FakeIssuer> {
           });
           return;
         case "GET /jwks":
+          if (failing.has("jwks")) {
+            sendJson(res, 500, { error: "server_error" });
+            return;
+          }
           sendJson(res, 200, { keys: [publicJwk] });
           return;
         case "GET /authorize":
@@ -192,11 +227,11 @@ export async function startFakeIssuer(): Promise<FakeIssuer> {
     clientId: CLIENT_ID,
     clientSecret: CLIENT_SECRET,
     grant(code, claims, opts = {}) {
-      grants.set(code, {
-        claims,
-        signWithWrongKey: opts.signWithWrongKey ?? false,
-        omitNonce: opts.omitNonce ?? false,
-      });
+      grants.set(code, { claims, options: opts });
+    },
+    failEndpoint(endpoint, isFailing) {
+      if (isFailing) failing.add(endpoint);
+      else failing.delete(endpoint);
     },
     close() {
       return new Promise<void>((resolve, reject) => {

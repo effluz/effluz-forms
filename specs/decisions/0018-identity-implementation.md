@@ -16,9 +16,10 @@ not supersede it.
 - **Library.** `openid-client` v6 with its functional API. Auth.js was
   rejected: it owns sessions and storage, which we want in our own Postgres
   tables behind our own ports. A hand-rolled flow was rejected: PKCE, state,
-  nonce and token validation are easy to get subtly wrong. `jose` verifies the
-  ID token signature, which `openid-client` does not do for tokens received
-  from the token endpoint.
+  nonce and token validation are easy to get subtly wrong. `openid-client`
+  does not verify the signature of an ID token received from the token
+  endpoint by default, so the adapter enables its non-repudiation checks
+  (`enableNonRepudiationChecks`), which verify it against the issuer's JWKS.
 - **Flow.** Authorization code with PKCE (S256), `state` and `nonce`.
 - **Attempts.** An in-flight sign-in is stored server-side in
   `sign_in_attempt`, keyed by an opaque cookie. It is single-use and expires
@@ -37,8 +38,7 @@ not supersede it.
 - The adapter sits behind the `AdminIdentity` port, so the application layer
   never sees `openid-client` or Google specifics, and tests use a local fake
   issuer instead of Google.
-- `openid-client` and `jose` are runtime dependencies. `jose` was already in
-  the tree through `openid-client`.
+- Only `openid-client` is a new runtime dependency; `jose` is test-only.
 - Refusals carry only a reason code. Claims, tokens and addresses are never
   logged.
 - Changing identity provider means a new adapter, no application change.

@@ -1,5 +1,3 @@
-import { createRemoteJWKSet, customFetch as joseCustomFetch, errors, jwtVerify } from "jose";
-import type { JWTPayload } from "jose";
 import * as client from "openid-client";
 import type {
   AdminIdentity,
@@ -21,14 +19,10 @@ export interface GoogleOidcOptions {
 
 type Refusal = "exchange_failed" | "invalid_token";
 
-interface Discovered {
-  configuration: client.Configuration;
-  /** Resolves the issuer's signing keys; cached by jose between sign-ins. */
-  keys: ReturnType<typeof createRemoteJWKSet>;
-}
-
 /** openid-client errors that mean the ID token itself is not acceptable. */
 const INVALID_TOKEN_CODES = new Set<string>([
+  // Also covers a malformed callback or token response, which therefore reports as
+  // invalid_token; a failed signature check lands here too.
   "OAUTH_INVALID_RESPONSE",
   "OAUTH_JWT_CLAIM_COMPARISON_FAILED",
   "OAUTH_JWT_TIMESTAMP_CHECK_FAILED",
@@ -38,11 +32,18 @@ const INVALID_TOKEN_CODES = new Set<string>([
 ]);
 
 function isLocalTestIssuer(issuer: string): boolean {
-  return issuer.startsWith("http://127.0.0.1") || issuer.startsWith("http://localhost");
+  try {
+    const url = new URL(issuer);
+    return (
+      url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost")
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Maps whatever openid-client or jose throws to a refusal reason. Nothing is
+ * Maps whatever openid-client throws to a refusal reason. Nothing is
  * logged and no error detail leaves this function.
  */
 function reasonFor(error: unknown): Refusal {
@@ -51,18 +52,12 @@ function reasonFor(error: unknown): Refusal {
       ? "invalid_token"
       : "exchange_failed";
   }
-  if (error instanceof errors.JOSEError) {
-    // Fetching the signing keys failed: a transport problem, not a bad token.
-    const keyFetchFailed =
-      error instanceof errors.JWKSTimeout || error.code === errors.JOSEError.code;
-    return keyFetchFailed ? "exchange_failed" : "invalid_token";
-  }
   // ResponseBodyError, AuthorizationResponseError, WWWAuthenticateChallengeError,
   // network TypeErrors and everything else are token endpoint or transport failures.
   return "exchange_failed";
 }
 
-function claimsFrom(payload: JWTPayload): IdentityClaims {
+function claimsFrom(payload: client.IDToken): IdentityClaims {
   const text = (value: unknown): string | undefined =>
     typeof value === "string" ? value : undefined;
   return {
@@ -79,17 +74,19 @@ function claimsFrom(payload: JWTPayload): IdentityClaims {
  * PKCE, state and nonce. See specs/system/security.md, "Admin authentication",
  * and specs/decisions/0018-identity-implementation.md.
  *
- * openid-client checks the token response, issuer, audience, expiry and nonce,
- * but does not verify the signature of an ID token received from the token
- * endpoint. The security spec requires it, so jose verifies it here.
+ * openid-client does not verify the signature of an ID token received from the
+ * token endpoint by default. `enableNonRepudiationChecks` turns that on: the
+ * signature is then verified against the issuer's `jwks_uri`, and symmetric
+ * algorithms are rejected. Issuer, audience, expiry and nonce are checked by the
+ * library in the same call.
  */
 export class GoogleOidcAdmin implements AdminIdentity {
-  private discovered: Promise<Discovered> | null = null;
+  private discovered: Promise<client.Configuration> | null = null;
 
   constructor(private readonly options: GoogleOidcOptions) {}
 
   async beginSignIn(redirectUri: string): Promise<SignInStart> {
-    const { configuration } = await this.discover();
+    const configuration = await this.discover();
     const state = client.randomState();
     const nonce = client.randomNonce();
     const codeVerifier = client.randomPKCECodeVerifier();
@@ -127,26 +124,26 @@ export class GoogleOidcAdmin implements AdminIdentity {
     }
 
     try {
-      const { configuration, keys } = await this.discover();
-      const tokens = await client.authorizationCodeGrant(configuration, callback, {
+      const configuration = await this.discover();
+      // The token request must carry the redirect URI sent at authorization, not whatever
+      // origin and path this request arrived on behind the reverse proxy.
+      const current = new URL(expected.redirectUri);
+      current.search = callback.search;
+      const tokens = await client.authorizationCodeGrant(configuration, current, {
         pkceCodeVerifier: expected.codeVerifier,
         expectedNonce: expected.nonce,
         expectedState: expected.state,
       });
-      if (tokens.id_token === undefined) return { ok: false, reason: "invalid_token" };
-      const { payload } = await jwtVerify(tokens.id_token, keys, {
-        issuer: configuration.serverMetadata().issuer,
-        audience: this.options.clientId,
-        algorithms: ["RS256"],
-      });
-      return { ok: true, claims: claimsFrom(payload) };
+      const idToken = tokens.claims();
+      if (idToken === undefined) return { ok: false, reason: "invalid_token" };
+      return { ok: true, claims: claimsFrom(idToken) };
     } catch (error) {
       return { ok: false, reason: reasonFor(error) };
     }
   }
 
   /** Discovery runs once, lazily. A failed attempt is forgotten so the next call retries. */
-  private discover(): Promise<Discovered> {
+  private discover(): Promise<client.Configuration> {
     if (this.discovered === null) {
       const attempt = this.runDiscovery();
       this.discovered = attempt;
@@ -157,7 +154,7 @@ export class GoogleOidcAdmin implements AdminIdentity {
     return this.discovered;
   }
 
-  private async runDiscovery(): Promise<Discovered> {
+  private async runDiscovery(): Promise<client.Configuration> {
     const { issuer, clientId, clientSecret, fetch: injectedFetch } = this.options;
     const discoveryOptions: client.DiscoveryRequestOptions = {};
     if (isLocalTestIssuer(issuer)) {
@@ -175,13 +172,7 @@ export class GoogleOidcAdmin implements AdminIdentity {
       undefined,
       discoveryOptions,
     );
-
-    const jwksUri = configuration.serverMetadata().jwks_uri;
-    if (jwksUri === undefined) throw new Error("issuer metadata has no jwks_uri");
-    const jwksOptions: NonNullable<Parameters<typeof createRemoteJWKSet>[1]> = {};
-    if (injectedFetch !== undefined) {
-      jwksOptions[joseCustomFetch] = (url, init) => injectedFetch(url, init);
-    }
-    return { configuration, keys: createRemoteJWKSet(new URL(jwksUri), jwksOptions) };
+    client.enableNonRepudiationChecks(configuration);
+    return configuration;
   }
 }
