@@ -17,6 +17,18 @@ const draft = (pages: unknown[]) => ({
 });
 
 describe("parseDraft", () => {
+  it("parses a title and defaults it to an empty text", () => {
+    const r = parseDraft(
+      { languages: "bilingual", pages: [{ key: "page1" }], confirmation: {} },
+      registry,
+    );
+    expect(r.ok && r.version.title).toEqual({});
+    const t = parseDraft(
+      { languages: "en", title: { en: "Stories" }, pages: [{ key: "page1" }], confirmation: {} },
+      registry,
+    );
+    expect(t.ok && t.version.title).toEqual({ en: "Stories" });
+  });
   it("parses a minimal draft and applies settings defaults", () => {
     const r = parseDraft(draft([page("page1", [field("story", "long_text")])]), registry);
     expect(r.ok).toBe(true);

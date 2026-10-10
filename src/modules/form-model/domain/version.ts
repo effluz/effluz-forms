@@ -32,6 +32,7 @@ export const pageSchema = z.object({
 export type Page = z.infer<typeof pageSchema>;
 
 export const versionSchema = z.object({
+  title: localizedTextSchema.default({}),
   languages: languagesSchema,
   headerImage: z.object({ ref: mediaIdSchema, alt: localizedTextSchema.default({}) }).optional(),
   pages: z.array(pageSchema).min(1).max(LIMITS.pagesPerForm),

@@ -29,6 +29,7 @@ const mailField = {
 const page1 = { key: "page1", title: { en: "One", es: "Uno" } };
 const base = {
   languages: "bilingual",
+  title: { en: "Stories", es: "Historias" },
   confirmation: { screen: { en: "Thanks", es: "Gracias" } },
   pages: [{ ...page1, fields: [nameField, mailField, consentField] }],
 };
@@ -90,6 +91,16 @@ describe("checkDefinition", () => {
         "confirmation_missing",
       ]),
     );
+  });
+  it("reports unlabeled and missing_translation for the form title", () => {
+    const blank = checkDefinition(parse({ ...base, title: {} }), registry);
+    expect(blank).toContainEqual({ code: "unlabeled", path: "title" });
+    const partial = checkDefinition(parse({ ...base, title: { en: "Stories" } }), registry);
+    expect(partial).toContainEqual({
+      code: "missing_translation",
+      path: "title",
+      params: { lang: "es" },
+    });
   });
   it("reports missing_translation with the language and path", () => {
     const v = parse({

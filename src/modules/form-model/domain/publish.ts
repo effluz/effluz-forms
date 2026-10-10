@@ -62,6 +62,7 @@ export function checkDefinition(version: Version, registry: FieldTypeRegistry): 
     if (text) requireText(text, path, null);
   };
 
+  requireText(version.title, "title", "unlabeled");
   if (inputFields(version, registry).length === 0) push("no_input", "pages");
   requireText(version.confirmation.screen, "confirmation/screen", "confirmation_missing");
   if (version.confirmation.email) {

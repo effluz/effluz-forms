@@ -39,6 +39,7 @@ Labels and options are always plain text.
 
 ```
 Version
+  title                        LocalizedText, required; the renderer's <h1> and browser title
   languages: bilingual | en | es
   headerImage?                 { ref, alt: LocalizedText }  shown on page 1 only, see specs/design.md
   pages[]                      ordered, at least one
@@ -168,11 +169,12 @@ draft --publish--> published --close--> closed --archive--> archived
 - A form with submissions cannot be deleted, only archived. Submissions are
   removed by retention or explicit, audited deletion.
 
-Publishing validates the draft: at least one page with one input field, no
-unlabeled field, all translations present for bilingual forms, consent
-present when required, retention set, no dangling condition references,
-alt text present in each required language when a header image is set, at most
-one consent field, and the consent field is never conditional.
+Publishing validates the draft: a title in every required language, at least
+one page with one input field, no unlabeled field, all translations present
+for bilingual forms, consent present when required, retention set, no
+dangling condition references, alt text present in each required language
+when a header image is set, at most one consent field, and the consent field
+is never conditional.
 
 ## Submissions
 

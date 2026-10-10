@@ -20,6 +20,7 @@ const required = { required: true } as const;
 
 export const referenceFormDraft = {
   languages: "es",
+  title: { es: "Historias" },
   pages: [
     {
       key: "page1",
