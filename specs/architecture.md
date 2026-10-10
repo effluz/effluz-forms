@@ -99,6 +99,7 @@ or a module's public API:
 | `EmailSender` | Send a bilingual transactional message | SMTP2GO | `system/email.md` |
 | `AdminIdentity` | Start a staff sign-in and complete it into verified claims or a refusal reason; the admission policy is identity's own domain rule | Google OpenID Connect | `system/security.md` |
 | `AuditLog` | Append one entry to the audit log inside the current unit of work. Owned by `identity`, which exports it and the audit action list for other modules | Postgres (`audit_log`, append-only by trigger) | `system/security.md` |
+| `AuditLogReader` | List audit entries for a target, newest first and capped, plus the distinct actors for a filter menu. Owned by `identity`, which exports it for other modules' activity views | Postgres (`audit_log`) | `system/security.md` |
 | `Clock`, `IdGenerator`, `Logger` | Determinism in tests; structured logging with defensive redaction | System clock, random UUIDs, pino | `system/observability.md` (`Logger`) |
 | `FieldTypeRegistry` | Look up a field type's validator, normalizer, exporter | In-code registry in `form-model` | `form-definition.md` |
 | `Translator` | Suggest a translation of staff-authored text; available to `definitions` only | DeepL API | `decisions/0010` |

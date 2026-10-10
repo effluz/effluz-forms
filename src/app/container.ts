@@ -1,7 +1,8 @@
 import type { Pool } from "pg";
-import type { IdentityDeps } from "@/modules/identity/application";
+import type { AuditLogReader, IdentityDeps } from "@/modules/identity/application";
 import { GoogleOidcAdmin } from "@/modules/identity/infrastructure/google-oidc";
 import { PgAuditLog } from "@/modules/identity/infrastructure/pg-audit-log";
+import { PgAuditLogReader } from "@/modules/identity/infrastructure/pg-audit-log-reader";
 import { PgSessionRepository } from "@/modules/identity/infrastructure/pg-session-repository";
 import { PgSignInAttemptStore } from "@/modules/identity/infrastructure/pg-sign-in-attempt-store";
 import type { JobQueue } from "@/shared/application/ports/job-queue";
@@ -24,6 +25,7 @@ export interface Container {
   queue: JobQueue;
   jobStore: PgJobStore;
   identity: IdentityDeps;
+  auditReader: AuditLogReader;
 }
 
 function buildIdentity(config: AppConfig, pool: Pool, uow: UnitOfWorkFactory): IdentityDeps {
@@ -70,6 +72,7 @@ export function buildContainer(
       overrides.jobStore ??
       new PgJobStore(pool, systemClock, { leaseSeconds: config.worker.leaseSeconds }),
     identity: overrides.identity ?? buildIdentity(config, pool, uow),
+    auditReader: overrides.auditReader ?? new PgAuditLogReader(pool),
   };
 }
 

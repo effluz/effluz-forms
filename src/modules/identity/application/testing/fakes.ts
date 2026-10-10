@@ -10,6 +10,7 @@
  *   not a UUID as absent (reads return null, writes keyed by it do nothing), and
  *   refuse to store a row under one.
  * - `InMemoryAuditLog`: `entries` as `{ entry, at }`.
+ * - `InMemoryAuditLogReader`: reads the same `entries`; ids are `audit-<n>` by insertion order.
  * - `InMemorySignInAttemptStore`: `seed(attempt)`, `size()`; honours the 10-minute expiry.
  * - `ScriptedAdminIdentity`: `script(completion)` queues the next completion;
  *   `beginCalls` and `completeCalls` record the arguments received.
@@ -32,6 +33,12 @@ import type {
   SignInStart,
 } from "../ports/admin-identity";
 import type { AuditLog } from "../ports/audit-log";
+import {
+  AUDIT_PAGE_MAX,
+  type AuditLogReader,
+  type AuditQuery,
+  type AuditRecord,
+} from "../ports/audit-log-reader";
 import type { SessionRepository } from "../ports/session-repository";
 import type { SignInAttempt, SignInAttemptStore } from "../ports/sign-in-attempt-store";
 
@@ -153,6 +160,44 @@ export class InMemoryAuditLog implements AuditLog {
     assertNoPersonalData(entry.details);
     this.entries.push({ entry, at: new Date(at.getTime()) });
     return Promise.resolve();
+  }
+}
+
+/** Reads an `InMemoryAuditLog`, mirroring `PgAuditLogReader` ordering, filters and cap. */
+export class InMemoryAuditLogReader implements AuditLogReader {
+  constructor(private readonly log: InMemoryAuditLog) {}
+
+  listByTarget(query: AuditQuery): Promise<AuditRecord[]> {
+    const limit = Math.min(Math.max(Math.floor(query.limit), 0), AUDIT_PAGE_MAX);
+    const found = this.log.entries
+      .map(({ entry, at }, index) => ({ entry, at, index }))
+      .filter(({ entry, at }) => {
+        if (entry.targetId !== query.targetId) return false;
+        if (query.action !== undefined && entry.action !== query.action) return false;
+        if (query.actorEmail !== undefined && entry.actorEmail !== query.actorEmail) return false;
+        if (query.before !== undefined && at.getTime() >= query.before.getTime()) return false;
+        return true;
+      })
+      .sort((a, b) => b.at.getTime() - a.at.getTime() || b.index - a.index)
+      .slice(0, limit)
+      .map(({ entry, at, index }): AuditRecord => ({
+        id: `audit-${String(index + 1)}`,
+        action: entry.action,
+        actorEmail: entry.actorEmail,
+        targetId: entry.targetId,
+        ip: entry.ip,
+        details: entry.details === undefined ? null : { ...entry.details },
+        at: new Date(at.getTime()),
+      }));
+    return Promise.resolve(found);
+  }
+
+  actorsForTarget(targetId: string): Promise<string[]> {
+    const actors = new Set<string>();
+    for (const { entry } of this.log.entries) {
+      if (entry.targetId === targetId && entry.actorEmail !== null) actors.add(entry.actorEmail);
+    }
+    return Promise.resolve([...actors].sort());
   }
 }
 

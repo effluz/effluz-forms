@@ -196,6 +196,11 @@ answered, so it is not optional.
 - **Written with the change it records.** A row joins the same unit of work as
   the state change, so both commit or neither does. A rejected sign-in has no
   state change and uses a unit of work of its own.
+- **Reading.** `identity` exports an `AuditLogReader` for other modules'
+  activity views: entries of one target, newest first, filterable by action,
+  actor and an upper time bound, at most 200 per call, plus the distinct
+  actors of a target for filter menus. It is read-only and never exposes
+  the table itself.
 - **Identity's actions:** `sign_in`, `sign_in_rejected`, `sign_out`,
   `session_expired` and `sessions_revoked`. Other modules register their own.
 - **Details never carry an address.** Values are strings, numbers or booleans,
