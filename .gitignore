@@ -42,3 +42,6 @@ playwright-report/
 
 # boundary-test probes
 src/modules/probe-*/
+
+# test reports (CI writes reports/unit.xml)
+/reports/
