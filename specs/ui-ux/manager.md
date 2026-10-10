@@ -253,6 +253,33 @@ builder (status names, New form dialog).
 | home.banner_dead | {count} jobs need attention. | {count} trabajos necesitan atención. |
 | home.banner_backup | The last backup is older than two days. | La última copia de seguridad tiene más de dos días. |
 | home.see_operations | See Operations | Ver Operaciones |
+| shell.wordmark | Effluz | Effluz |
+| shell.signed_in_as | Signed in as {name} | Sesión iniciada como {name} |
+| admin.home_placeholder | Admin area, coming soon | Área de administración, próximamente |
+
+`admin.home_placeholder` is the heading of the interim admin home and goes
+away when the forms list ships.
+
+### Sign-in and access
+
+Pages outside the session gate, from `use-cases/sign-in.md`.
+
+| Key | English | Spanish |
+|---|---|---|
+| auth.denied_title | This account cannot access the admin area | Esta cuenta no puede acceder al área de administración |
+| auth.denied_body | Only accounts on the Effluz Workspace domain can sign in. Sign in with your Effluz work account. | Solo pueden iniciar sesión las cuentas del dominio de Effluz en Workspace. Inicia sesión con tu cuenta de trabajo de Effluz. |
+| auth.denied_retry | Try another account | Probar con otra cuenta |
+| auth.signed_out_title | You have signed out | Has cerrado sesión |
+| auth.signed_out_body | Your admin session has ended. You are still signed in to Google. | Tu sesión de administración ha terminado. Tu sesión en Google sigue abierta. |
+| auth.signed_out_again | Sign in again | Volver a iniciar sesión |
+| auth.error_title | Sign-in did not complete | No se pudo completar el inicio de sesión |
+| auth.error_body | Google may be unavailable, or the sign-in link expired. No session was created. | Es posible que Google no esté disponible o que el enlace de inicio de sesión haya caducado. No se creó ninguna sesión. |
+| auth.error_retry | Try again | Intentar de nuevo |
+| auth.csrf_title | Sign-out did not go through | No se pudo cerrar la sesión |
+| auth.csrf_body | This page was out of date. Open the admin area again and sign out from there. | Esta página estaba desactualizada. Vuelve a abrir el área de administración y cierra la sesión desde allí. |
+
+The out-of-date page reuses `auth.error_retry` for its link back to the
+admin area.
 
 ### Form overview and lifecycle
 

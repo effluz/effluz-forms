@@ -6,9 +6,9 @@ Decision record: `decisions/0001-postgres-in-container.md`.
 ## Role
 
 PostgreSQL is the single system of record. It holds form definitions and
-their versions, submissions, media records, the jobs outbox, admin sessions
-and the audit log. Photos themselves are never stored in the database, only
-references.
+their versions, submissions, media records, the jobs outbox, the worker
+heartbeat, admin sessions, in-flight sign-in attempts and the audit log.
+Photos themselves are never stored in the database, only references.
 
 ## Deployment
 
@@ -28,14 +28,26 @@ its jobs are either both committed or neither is.
 Rules:
 
 - A use case opens at most one unit of work and never nests them.
-- Nothing outside `infrastructure/` imports the database driver.
+- The database driver is imported only in `infrastructure/`, in the
+  composition root (type only) and in the health route's pool probe.
 - Read-only queries for the admin page may bypass the unit of work but still go
   through a repository.
+
+## Connections
+
+- One `pg` pool per process, created by the composition root. The web pool
+  holds at most 10 connections; the worker's holds `WORKER_CONCURRENCY` plus 2.
+- Pools set `statement_timeout` to 30 seconds, wait at most 5 seconds for a
+  connection, and name themselves `effluz-forms` in `application_name`. An
+  idle connection that drops is logged as a warning, not a crash.
+- The migration runner is the one exception to the statement timeout; see
+  "Migrations".
 
 ## Schema conventions
 
 - Table and column names in `snake_case`, singular table names per aggregate.
-- Every table has `id` (random UUID), `created_at`, `updated_at` in UTC.
+- Every table has `id` (random UUID), `created_at`, `updated_at` in UTC. The
+  one exception is `schema_migration`, the migration ledger.
 - Core tables and the module that owns their migrations:
 
   | Table | Owner | Notes |
@@ -47,8 +59,12 @@ Rules:
   | `submission` | `submissions` | form_id, form_version_id, locale, answers (jsonb, **immutable after insert, trigger-enforced**), consent (jsonb), received_at, reference (unique per form), status, curated_answers (jsonb), published_post_url, status_changed_by, status_changed_at |
   | `submission_edit` | `review` | submission_id, field_key, text, source (`manual`, `suggested`), editor, created_at. Append-only. |
   | `media` | `media` | submission_id, field_key, status, provider_ref, content_type, size |
+  | `schema_migration` | `shared` | the ledger: `id` (the four-digit migration id, text), `name`, `applied_at`. Created by the runner itself, not by a migration file. |
   | `job` | `shared` | see `jobs.md` |
-  | `admin_session`, `audit_log` | `identity` | see `security.md` |
+  | `worker_heartbeat` | `shared` | one row per worker process: `worker_id` (unique), `last_seen_at`. See `jobs.md`. |
+  | `admin_session` | `identity` | `email`, `name`, `csrf_token`, `last_seen_at`; `created_at` starts the absolute lifetime. Referenced by an opaque cookie. See `security.md`. |
+  | `sign_in_attempt` | `identity` | `state`, `nonce`, `code_verifier`, `return_to`, `expires_at`. Single use: deleted when consumed. Holds short-lived secrets, so it is never logged. See `security.md`. |
+  | `audit_log` | `identity` | `action`, `actor_email`, `target_id`, `ip`, `details` (jsonb), `created_at`. **Append-only**: the trigger `audit_log_no_update` rejects every `UPDATE` and `DELETE`. See `security.md`. |
 
 - Definitions and answers are jsonb documents validated by `form-model`
   before they are written. The database does not know field types.
@@ -62,7 +78,35 @@ Rules:
 ## Migrations
 
 - Versioned, forward-only, committed with the code that needs them.
-- Run as a deploy step before the new app version starts.
+- A migration is a plain `.sql` file named `NNNN_<name>.sql`: four digits,
+  then lowercase letters, digits and underscores. Any other `.sql` name makes
+  the runner fail.
+- The module that owns a table keeps its migrations in
+  `src/modules/<module>/infrastructure/migrations/`. Cross-cutting tables
+  (`job`, `worker_heartbeat`) live in
+  `src/shared/infrastructure/postgres/migrations/`. The runner picks up every
+  module's `infrastructure/migrations/` folder that exists; a new module needs
+  no registration.
+- **One global sequence.** Ids are a single zero-padded four-digit sequence
+  across the shared folder and every module folder. The runner merges the
+  folders, sorts by id alone and refuses to start when two files share an id.
+  That is why the identity tables are `0003_identity.sql` and not
+  `0001_identity.sql`. Take the next free number; the module name carries no
+  weight in the ordering.
+- The runner (`src/shared/infrastructure/postgres/migrate.ts`) applies each
+  pending migration in its own transaction and records it in
+  `schema_migration`. It holds the Postgres advisory lock `727001` for the
+  whole run, so concurrent deploys queue instead of interleaving. It disables
+  `statement_timeout` on its own session, so a slow migration or a wait for the
+  lock is never cut off, and it discards that connection afterwards.
+- The ledger records the id, name and time of each migration, and has no
+  checksum. A pending id lower than one already applied is still applied.
+  "Never edit a migration" and "take the next number" are kept by review.
+- Run as a deploy step before the new app version starts, with
+  `pnpm db:migrate` (`src/app/cli/migrate.ts`). The command loads the full
+  application configuration, so it needs every required variable, not just
+  `DATABASE_URL`. See `deployment.md`, "Local development", for what the
+  production image must contain.
 - Must be compatible with the previous app version (expand, deploy, contract),
   so a failed deploy can roll the app back without rolling the schema back.
 - Never edit a migration that has reached `main`. Add a new one.
@@ -81,6 +125,14 @@ Rules:
 
 ## Local development
 
-Compose starts Postgres with the same major version. Integration tests run
-against a throwaway database created per test run, never against the dev
-database.
+- `pnpm db:up` starts `compose.dev.yml` (Postgres 17 on `127.0.0.1:5432`, and
+  the mail catcher) and waits until they are up. `pnpm db:down` stops them and
+  keeps the data volume.
+- `pnpm db:migrate` applies pending migrations to `DATABASE_URL`.
+- `pnpm test:integration` never touches the dev database. Its global setup
+  connects with `TEST_DATABASE_ADMIN_URL` (a role that can create databases;
+  when unset it falls back to
+  `postgres://effluz:effluz@127.0.0.1:5432/postgres`), creates a throwaway
+  database named `effluz_test_<8 hex digits>`, runs every migration into it,
+  and drops it when the run ends. CI sets the same variable against its
+  Postgres service; see `ci-cd.md`.

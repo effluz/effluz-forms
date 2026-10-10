@@ -97,9 +97,9 @@ or a module's public API:
 | `MediaStorage` | Store a file, return a reference, produce a time-limited view URL, delete | Local disk (staging), Dropbox (durable) | `system/media-storage.md` |
 | `JobQueue` | Enqueue typed jobs with retry and scheduling semantics | Postgres outbox table | `system/jobs.md` |
 | `EmailSender` | Send a bilingual transactional message | SMTP2GO | `system/email.md` |
-| `AdminIdentity` | Verify a staff sign-in and return an allowed identity | Google OpenID Connect | `system/security.md` |
-| `Clock`, `IdGenerator` | Determinism in tests | System | n/a |
-
+| `AdminIdentity` | Start a staff sign-in and complete it into verified claims or a refusal reason; the admission policy is identity's own domain rule | Google OpenID Connect | `system/security.md` |
+| `AuditLog` | Append one entry to the audit log inside the current unit of work. Owned by `identity`, which exports it and the audit action list for other modules | Postgres (`audit_log`, append-only by trigger) | `system/security.md` |
+| `Clock`, `IdGenerator`, `Logger` | Determinism in tests; structured logging with defensive redaction | System clock, random UUIDs, pino | `system/observability.md` (`Logger`) |
 | `FieldTypeRegistry` | Look up a field type's validator, normalizer, exporter | In-code registry in `form-model` | `form-definition.md` |
 | `Translator` | Suggest a translation of staff-authored text; available to `definitions` only | DeepL API | `decisions/0010` |
 | `TextCorrector` | Suggest spelling and grammar corrections for one text answer; available to `review` only | DeepL Write | `decisions/0011` |
@@ -108,12 +108,23 @@ Repositories belong to the module that owns the aggregate (`definitions` owns
 forms and versions, `submissions` owns submissions) and are defined as ports
 in that module's `application/` with adapters in its `infrastructure/`.
 
+`identity` keeps three ports to itself: `AdminIdentity`, `SessionRepository`
+(rows in `admin_session`) and `SignInAttemptStore` (single-use rows in
+`sign_in_attempt`). Only its use cases call them. Their types are exported
+from the module's public API solely so the composition root can assemble
+`IdentityDeps`; no other module depends on them.
+
 **Where the framework is allowed.** Next.js and React appear only in
-`presentation/` folders and in the composition root under `src/app/`. Route
-handlers and server actions are thin: parse input, call a use case, map the
-result to a response. A use case must be callable from a test, from the worker,
-and from a route handler without change. No React or Next.js import may appear
-in `domain/`, `application/`, or `infrastructure/`.
+`presentation/` folders, in the composition root under `src/app/`, and in
+`src/proxy.ts`. The proxy is the one framework entry point outside `src/app/`
+because Next requires that file at the `src` root; the same rules apply to it
+as to `src/app/`. ESLint admits exactly that file (and its test) through the
+`root-entry` file category, and any other file outside a layer still fails
+the boundaries check. Route handlers and server actions are thin: parse input,
+call a use case, map the result to a response. A use case must be callable
+from a test, from the worker, and from a route handler without change. No
+React or Next.js import may appear in `domain/`, `application/`, or
+`infrastructure/`.
 
 ## Publishing data flow
 
@@ -192,6 +203,9 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 | Product shape | Staff-authored, versioned form definitions; modules by capability | accepted | `decisions/0009` |
 | Translation suggestions | DeepL behind a `Translator` port, staff text only | accepted | `decisions/0010` |
 | Submission curation | Immutable original, curated copy, DeepL Write suggestions | accepted | `decisions/0011` |
+| Postgres access | `pg` (node-postgres) with hand-written SQL and plain `.sql` migrations; no ORM | accepted | `decisions/0017` |
+| OpenID Connect client | `openid-client` v6 behind the `AdminIdentity` port; sessions and sign-in attempts in our own tables | accepted | `decisions/0018` |
+| Logging | `pino` behind the `Logger` port, JSON to stdout with redaction | accepted | `decisions/0019` |
 | Error tracking | Sentry with PII scrubbing | proposed | `system/observability.md` |
 | Bot challenge | Cloudflare Turnstile on the final step | proposed | `system/security.md` |
 

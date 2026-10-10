@@ -49,6 +49,8 @@ const moduleLayerPolicies = Object.entries(MODULE_DEPS).flatMap(([module, deps])
 );
 
 const frameworks = ["react", "react-dom", "next", "next/*"];
+// The Next entry files that must sit at the src root (src/proxy.ts and its test).
+const rootEntry = { file: { categories: "root-entry" } };
 
 export default tseslint.config(
   { ignores: [".next/**", "node_modules/**", "coverage/**", "next-env.d.ts"] },
@@ -86,6 +88,9 @@ export default tseslint.config(
       // Files are categorized within their element; the entry file stays application code.
       "boundaries/files": [
         { category: "module-application-entry", pattern: "src/modules/*/application/index.ts" },
+        // Next requires the proxy at the src root, outside app/. Only these named files
+        // are known there; any other file outside an element still fails no-unknown-files.
+        { category: "root-entry", pattern: "src/proxy{,.test}.ts" },
       ],
     },
     rules: {
@@ -133,10 +138,12 @@ export default tseslint.config(
             },
             ...moduleLayerPolicies,
             {
-              from: element("app"),
+              // The src root entry files get exactly the app's permissions.
+              from: [element("app"), rootEntry],
               allow: {
                 to: [
                   element("app"),
+                  rootEntry,
                   element("shared-application"),
                   element("shared-infrastructure"),
                   element("shared-presentation"),

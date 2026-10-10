@@ -28,6 +28,9 @@ yarn-error.log*
 .env*.local
 .env
 
+# local staging directory for uploads
+/data/
+
 # vercel
 .vercel
 

@@ -21,7 +21,7 @@ Runs on every pull request and every push to `main`.
 | `lint` | Formatting and lint rules | nothing |
 | `typecheck` | Static types | nothing |
 | `unit` | Domain and application tests, no I/O; includes the field type conformance suite | nothing |
-| `integration` | Infrastructure adapters against a Postgres service container, the local disk media adapter, a fake email provider | Postgres service |
+| `integration` | Infrastructure adapters against a Postgres 17 service container (identity's Google adapter runs against a local fake OIDC issuer); the local disk media adapter and a fake email provider join when those adapters exist | Postgres service |
 | `e2e` | Build, publish, submit and review a form in a browser against the built app; invalid submission and closed form paths | Postgres service |
 | `build` | Builds the production image to prove it builds; not pushed on PRs | nothing |
 
@@ -31,6 +31,19 @@ bug to fix, not a wait to accept.
 
 Dependency caches are keyed on the lockfile. Test reports and e2e traces are
 uploaded as artifacts on failure only.
+
+As built (`.github/workflows/ci.yml`):
+
+- `integration` starts `postgres:17` as a service with a health check and sets
+  `TEST_DATABASE_ADMIN_URL` to it. `pnpm test:integration` then creates and
+  drops its own throwaway database (`database.md`, "Local development") and
+  writes a junit report to `reports/integration.xml`, uploaded as the
+  `integration-report` artifact when the job fails. `unit` does the same with
+  `reports/unit.xml`.
+- `build` runs the Next.js production build, `pnpm build`. Building the image
+  joins it with the deployment plan, and `e2e` with the renderer plan.
+- A final job named `ci` waits for all the others and fails unless each one
+  succeeded. It is the single status check branch protection requires.
 
 ## Workflow: `deploy`
 

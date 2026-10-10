@@ -39,6 +39,7 @@ authoritative for its topic.
 ```
 src/
   app/                      composition root and framework entry points only
+  proxy.ts                  framework entry point Next requires at the src root; same rules as app/
   modules/<module>/         one folder per capability, self-contained
     domain/                 entities, value objects, business rules, errors
     application/            use cases, ports (interfaces), DTOs, public API
@@ -62,7 +63,8 @@ The module list and the allowed dependencies between modules are defined in
 - Promote code to `shared/` only when at least two modules need it.
 - Unit tests sit next to the code they test.
 - Static brand assets referenced by code live in `design-system/`.
-- Framework imports are allowed only in `presentation/` folders and `src/app/`.
+- Framework imports are allowed only in `presentation/` folders, `src/app/`
+  and `src/proxy.ts`.
 
 ## Workflow for every task
 
