@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { Pool } from "pg";
 import { txOf } from "@/shared/infrastructure/postgres/tx";
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 import type { AuditLog } from "../application/ports/audit-log";
@@ -7,12 +6,9 @@ import { assertNoPersonalData, type AuditEntry } from "../domain/audit";
 
 /**
  * Postgres adapter for the append-only audit log; see specs/system/security.md,
- * "Audit log". The pool is held for symmetry with the other adapters: writes
- * always join the caller's unit of work.
+ * "Audit log". Writes always join the caller's unit of work, so it needs no pool.
  */
 export class PgAuditLog implements AuditLog {
-  constructor(private readonly pool: Pool) {}
-
   async record(uow: UnitOfWork, entry: AuditEntry, at: Date): Promise<void> {
     assertNoPersonalData(entry.details);
     await txOf(uow).client.query(

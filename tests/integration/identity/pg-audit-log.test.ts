@@ -16,7 +16,7 @@ interface Row {
 describe("PgAuditLog", () => {
   const pool = testPool();
   const uowf = new PgUnitOfWorkFactory(pool);
-  const log = new PgAuditLog(pool);
+  const log = new PgAuditLog();
   const at = new Date("2026-10-10T12:00:00.000Z");
   const bare = { action: "sign_in", actorEmail: null, targetId: null, ip: null } as const;
   beforeEach(() => truncateAll(pool));
