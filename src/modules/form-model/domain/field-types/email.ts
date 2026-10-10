@@ -16,6 +16,7 @@ export const email = defineFieldType({
   settingsSchema: z.object({ isSubmitterAddress: z.boolean().default(false) }),
   answerSchema: z.string(),
   allowedRules: ["pattern"],
+  maxLength: EMAIL_MAX_LENGTH,
   allowedOperators: [
     "equals",
     "not_equals",

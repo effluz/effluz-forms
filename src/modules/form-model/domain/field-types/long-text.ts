@@ -15,6 +15,7 @@ export const longText = defineFieldType({
   }),
   answerSchema: z.string(),
   allowedRules: ["min_length", "max_length"],
+  maxLength: LIMITS.longTextMax,
   allowedOperators: ["contains", "not_contains", "is_empty", "is_not_empty"],
   normalize: (a) => cleanText(a).replace(/\r\n?/g, "\n"),
   validate: (a) => (graphemeLength(a) > LIMITS.longTextMax ? ["max_length"] : []),

@@ -35,6 +35,8 @@ export interface FieldTypeDefinition<S = unknown, A = unknown> {
   answerSchema: z.ZodType<A>;
   allowedRules: readonly RuleId[];
   allowedOperators: readonly OperatorId[];
+  /** The hard cap the type's own validate enforces, for message parameters. */
+  maxLength?: number;
   normalize(answer: A, settings: S): A;
   validate(answer: A, settings: S): ValidationCode[];
   isEmpty(answer: A): boolean;

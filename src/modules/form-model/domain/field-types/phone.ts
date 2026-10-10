@@ -11,6 +11,7 @@ export const phone = defineFieldType({
   settingsSchema: z.object({}),
   answerSchema: z.string(),
   allowedRules: ["min_length", "max_length"],
+  maxLength: LIMITS.shortTextMax,
   allowedOperators: [
     "equals",
     "not_equals",

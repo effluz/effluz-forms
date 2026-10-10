@@ -18,6 +18,7 @@ export const shortText = defineFieldType({
   settingsSchema: settings,
   answerSchema: z.string(),
   allowedRules: ["min_length", "max_length", "pattern"],
+  maxLength: LIMITS.shortTextMax,
   allowedOperators: [
     "equals",
     "not_equals",
