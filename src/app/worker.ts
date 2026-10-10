@@ -1,4 +1,5 @@
 import os from "node:os";
+import { createIdentityCleanupHandler } from "@/modules/identity/infrastructure/jobs/cleanup";
 import { systemClock } from "@/shared/infrastructure/clock";
 import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
 import { createCleanupHandler } from "@/shared/infrastructure/jobs/handlers/cleanup";
@@ -37,8 +38,14 @@ function main(): void {
       concurrency: config.worker.concurrency,
       pollIntervalMs: config.worker.pollIntervalMs,
       jobTimeoutMs: (config.worker.leaseSeconds - 15) * 1000,
-      handlers: { "jobs.cleanup": createCleanupHandler(store) },
-      recurring: [{ type: "jobs.cleanup", period: "daily" }],
+      handlers: {
+        "jobs.cleanup": createCleanupHandler(store),
+        "identity.cleanup": createIdentityCleanupHandler(pool),
+      },
+      recurring: [
+        { type: "jobs.cleanup", period: "daily" },
+        { type: "identity.cleanup", period: "daily" },
+      ],
     },
   );
 

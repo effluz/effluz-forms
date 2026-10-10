@@ -60,7 +60,9 @@ A staff member opens any `/admin` path without a valid session.
 ## Audit entries
 
 `sign_in`, `sign_in_rejected`, `sign_out`, `session_expired` (written lazily
-on the next request that finds an expired session, or a sign-out that does),
+on the next request that finds an expired session, or a sign-out that does; a
+session the daily `identity.cleanup` job removes first gets no entry, see
+`system/security.md`),
 `sessions_revoked` (written by the revocation command, not by a request: the
 operator is the actor when `OPERATOR_EMAIL` is set and empty otherwise, the
 details hold only the number of sessions removed, and the revoked address is
