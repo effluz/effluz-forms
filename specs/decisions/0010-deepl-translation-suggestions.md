@@ -25,6 +25,7 @@ source language and target language. The port is available to
   expected volume.
 - Translation quality is reviewed by a human before publish is encouraged
   but not forced: unreviewed machine text is a suggestion, not an error.
-- No submitter data ever leaves for the service, enforced by module
-  dependencies: `submissions` and `review` cannot reach the port.
+- No submitter data reaches this port, enforced by module dependencies:
+  `submissions` and `review` cannot use it. Submission text corrections
+  use a separate port under ADR 0011.
 - Switching provider is a new adapter.

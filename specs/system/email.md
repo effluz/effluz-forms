@@ -11,7 +11,8 @@ is committed:
 | Message | To | Language | Content |
 |---|---|---|---|
 | Submitter confirmation | The field marked as submitter address, if the form has one and the version defines a confirmation email | Submitter's locale | Staff-authored subject and body from the version, inside a fixed template that adds how to request deletion |
-| Staff notification | Recipients in the form's settings | English | Form name, submission id, time, link to the manager |
+| Staff notification | Recipients in the form's settings, when cadence is per submission | English | Form name, reference, time, link to the manager |
+| Staff daily digest | Recipients in the form's settings, when cadence is daily | English | Form name, count of new submissions since the last digest, list of references with links. Not sent when the count is zero |
 
 The staff notification deliberately carries no story text and no photos.
 

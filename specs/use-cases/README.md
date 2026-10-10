@@ -16,5 +16,6 @@ In build order:
 | `publish-form.md` | definitions | Validate and publish a draft as a version; lifecycle transitions |
 | `manage-form-settings.md` | definitions | Recipients, retention, open and close dates, bot challenge, QR code |
 | `fill-and-submit-form.md` | submissions | Public flow page by page, validation, media staging, intake transaction |
-| `review-submissions.md` | review | List, filter, view, view photo, export CSV, delete |
+| `review-submissions.md` | review | List, filter, view, view and download media, export CSV, delete |
+| `curate-submission.md` | review | Status toward publication; correct text answers with original preserved; DeepL Write suggestions |
 | `operate-jobs.md` | review | See and retry dead jobs |

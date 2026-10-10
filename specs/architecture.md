@@ -78,7 +78,7 @@ this table and go through each module's public application API.
 | `notifications` | Email templates and the `EmailSender` port; job handlers for email | `shared` |
 | `definitions` | Forms, drafts, versions, lifecycle, operational settings, QR codes, translation suggestions | `form-model`, `identity` |
 | `submissions` | Public rendering of a published version, server validation, intake transaction, enqueuing jobs | `form-model`, `definitions`, `media`, `notifications` |
-| `review` | Listing, viewing, exporting and deleting submissions; dead job retry | `form-model`, `definitions`, `submissions`, `media`, `identity` |
+| `review` | Listing, viewing, exporting, downloading and deleting submissions; curation status and text edits; dead job retry | `form-model`, `definitions`, `submissions`, `media`, `identity` |
 
 `shared/` holds the kernel: `LocalizedText`, ids, `Clock`, `UnitOfWork`,
 `JobQueue`, logging, and nothing that belongs to one module.
@@ -102,6 +102,7 @@ or a module's public API:
 
 | `FieldTypeRegistry` | Look up a field type's validator, normalizer, exporter | In-code registry in `form-model` | `form-definition.md` |
 | `Translator` | Suggest a translation of staff-authored text; available to `definitions` only | DeepL API | `decisions/0010` |
+| `TextCorrector` | Suggest spelling and grammar corrections for one text answer; available to `review` only | DeepL Write | `decisions/0011` |
 
 Repositories belong to the module that owns the aggregate (`definitions` owns
 forms and versions, `submissions` owns submissions) and are defined as ports
@@ -190,6 +191,7 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 | Application | Next.js and React, framework confined to presentation and composition root | accepted | `decisions/0008` |
 | Product shape | Staff-authored, versioned form definitions; modules by capability | accepted | `decisions/0009` |
 | Translation suggestions | DeepL behind a `Translator` port, staff text only | accepted | `decisions/0010` |
+| Submission curation | Immutable original, curated copy, DeepL Write suggestions | accepted | `decisions/0011` |
 | Error tracking | Sentry with PII scrubbing | proposed | `system/observability.md` |
 | Bot challenge | Cloudflare Turnstile on the final step | proposed | `system/security.md` |
 
@@ -201,7 +203,7 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 | Dropbox | Personal account `tluzcando@gmail.com` | App folder for durable media and encrypted backups |
 | SMTP2GO | Effluz account, sender domain `forms.effluz.com` | Transactional email |
 | InterServer | Effluz account | The VPS, United States region |
-| DeepL | Effluz account, API key | Translation suggestions in the builder |
+| DeepL | Effluz account, API key | Translation suggestions in the builder; DeepL Write corrections in the manager |
 | GitHub | `effluz/effluz-forms` | Code, CI/CD, container registry |
 
 Credentials for all of these live in the team password manager, never in the

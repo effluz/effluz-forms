@@ -63,8 +63,8 @@ also makes its unsent jobs no-ops.
 
 Defined in code with a schedule. The worker's scheduler loop enqueues them with
 a `uniqueKey` of `<type>:<period>` so a restart never doubles them. Initial
-set: `retention.purge` daily, `backup.database` nightly, `jobs.cleanup`
-daily (removes succeeded jobs older than 30 days, expired in-progress
+set: `retention.purge` daily, `email.staff_digest` daily per form,
+`backup.database` nightly, `jobs.cleanup` daily (removes succeeded jobs older than 30 days, expired in-progress
 submission records older than 24 hours, and their staged files).
 
 ## Job types in the first release
@@ -74,7 +74,8 @@ submission records older than 24 hours, and their staged files).
 | `media.upload` | Submission stored | Staging to Dropbox, media row to `stored` |
 | `media.delete` | Retention purge or admin delete | Remove from Dropbox and staging |
 | `email.submitter_confirmation` | Submission stored, version defines one | Confirmation in the submitter's locale |
-| `email.staff_notification` | Submission stored | Link to the manager, no content |
+| `email.staff_notification` | Submission stored, form cadence is per submission | Link to the manager, no content |
+| `email.staff_digest` | Daily schedule per form with daily cadence | List of new references with links, skipped when empty |
 | `retention.purge` | Daily schedule | Delete submissions past their form's retention setting |
 | `backup.database` | Nightly schedule | Encrypted dump to Dropbox backup folder |
 | `jobs.cleanup` | Daily schedule | Prune old succeeded jobs, expired in-progress records and their staged files |

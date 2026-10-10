@@ -18,7 +18,18 @@ Each tier is an adapter of the same port.
 | `delete(ref)` | Remove the file. Succeeds if it is already gone. |
 | `exists(ref)` | For upload idempotency checks. |
 
-Keys are opaque, random, and carry no personal data: `<form>/<submission-id>/<media-id>.<ext>`.
+Keys are human-readable so staff can browse the Dropbox folder, and carry
+no personal data:
+
+```
+forms/<form slug>/<submission reference>/<nn>-<field slug>.<ext>
+backups/<YYYY-MM-DD>-db.dump.enc
+```
+
+`nn` is the file's position within the field, `field slug` is an ASCII
+slug of the field label in the form's first language, truncated to 40
+characters. Example: `forms/historia-prematuro-2026/HP-0042/01-sube-hasta-10-fotos.jpg`.
+The original filename is never used.
 
 ## Adapters
 
@@ -54,7 +65,15 @@ Applied by the application layer before `put`, independent of provider:
   codec checked by content only, no re-encoding, no metadata stripping
   guarantee. The renderer tells the submitter this before they upload. A
   file whose container cannot be parsed is rejected as a validation error.
-- Rename to the opaque key. The original filename is not stored.
+- Rename to the key scheme above. The original filename is not stored.
+
+## Downloads
+
+The manager offers a per-file download and a per-submission ZIP named
+`<form slug>-<reference>.zip` with the same paths inside. Both stream
+through the app from the staging copy or the Dropbox temporary link, and
+both write an audit entry. Files are also directly in the Dropbox folder
+above for staff who prefer to work there.
 
 ## Lifecycle
 

@@ -14,10 +14,12 @@ copy. It is Spanish single-language, like the original.
 | Setting | Value |
 |---|---|
 | Slug | `historia-prematuro-2026` |
+| Reference prefix | `HP` |
 | Languages | `es` only |
 | Retention | 12 months |
 | Close date | 2026-11-09, end of day, Panama time |
 | Notification recipients | one Effluz staff group address |
+| Notification cadence | per submission |
 | Bot challenge | off |
 
 ## Page 1: Introduction and contact
@@ -76,7 +78,9 @@ copy. It is Spanish single-language, like the original.
   > bebés prematuros. Entiendo que Effluz guarda mis respuestas y archivos
   > en servidores en Estados Unidos y en su cuenta de Dropbox durante 12
   > meses, que las personas del equipo de Effluz con acceso a esa cuenta
-  > pueden verlos, y que puedo pedir que se eliminen antes escribiendo a
+  > pueden verlos, que Effluz puede revisar la ortografía y gramática de mis
+  > textos con un servicio automático de corrección (DeepL) conservando el
+  > original, y que puedo pedir que se eliminen antes escribiendo a
   > {privacy contact}.
 
   English reference translation, for the bilingual template:
@@ -86,8 +90,10 @@ copy. It is Spanish single-language, like the original.
   > its social media, website and premature-baby campaigns. I understand
   > that Effluz keeps my answers and files on servers in the United States
   > and in its Dropbox account for 12 months, that Effluz team members with
-  > access to that account can see them, and that I can ask for earlier
-  > deletion by writing to {privacy contact}.
+  > access to that account can see them, that Effluz may check the spelling
+  > and grammar of my texts with an automated correction service (DeepL)
+  > while keeping the original, and that I can ask for earlier deletion by
+  > writing to {privacy contact}.
 
 ## Confirmation
 

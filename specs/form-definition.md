@@ -28,7 +28,8 @@ submitter used.
 
 Staff-authored text is plain text and is escaped on every render. Four
 places may use a restricted rich-text subset (paragraphs, line breaks, bold,
-bulleted lists, links to `https` URLs) that the renderer sanitizes: page
+italic, bulleted lists, numbered lists, links to `https` URLs) that the
+renderer sanitizes: page
 descriptions, field help, `section` descriptions, and confirmation copy.
 Labels and options are always plain text.
 
@@ -151,11 +152,19 @@ present when required, retention set, no dangling condition references.
 
 ```
 Submission
-  id, formId, versionId, locale, receivedAt
-  answers: { [fieldKey]: answer }   only visible fields, normalized per type
+  id, formId, versionId, locale, receivedAt, reference
+  answers: { [fieldKey]: answer }   only visible fields, normalized per type; immutable
   media[]: references for file_upload answers
   consent: { fieldKey, textVersion, acceptedAt }
+  status: new | viewed | edited | published
+  curatedAnswers: { [fieldKey]: string }   text fields only, see use-cases/curate-submission.md
+  publishedPostUrl?: https URL
 ```
+
+`reference` is a short human identifier, `<prefix>-<sequence>`, where the
+prefix is a form setting (default: uppercase initials of the slug) and the
+sequence is per form, zero-padded to four digits. It names the Dropbox
+folder and appears on the confirmation screen.
 
 Answers are stored as a document keyed by field key, never as one column per
 field. The version tells review and export how to interpret each key. An
@@ -177,9 +186,11 @@ enforces by requiring the editor to tick each item as covered:
 7. How to request earlier deletion: the privacy contact address.
 8. That the submitter is an adult and, when a minor's data is involved, has
    authority to share it.
+9. That text answers may be checked for spelling and grammar by an
+   automated correction service (DeepL), and that the original is kept.
 
 The builder offers a starting template in both languages that already
-covers 1, 2 and 4 to 8, leaving the purpose to the editor. The renderer adds
+covers 1, 2 and 4 to 9, leaving the purpose to the editor. The renderer adds
 nothing to the consent text; it must stand on its own.
 
 ## Privacy rules enforced by the model

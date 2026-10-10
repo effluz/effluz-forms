@@ -17,6 +17,11 @@ The editor opens a form's Settings tab in the manager.
    - **Notification recipients**: one or more email addresses that receive
      the staff notification. Addresses must be on `effluz.com` or in a
      configured allowlist of partner domains.
+   - **Notification cadence**: one email per submission, or a daily digest
+     at a chosen hour in the form's timezone. Default per submission.
+   - **Reference prefix**: 2 to 6 uppercase letters or digits used in
+     submission references and Dropbox folder names. Default derived from
+     the slug. Read-only after the first submission.
    - **Retention**: whole months, 1 to 36, default 12. Help text explains it
      counts from each submission's received time and that deletion is
      permanent.

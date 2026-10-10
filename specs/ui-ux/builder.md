@@ -160,22 +160,23 @@ Title pair, description pair (markdown), visibility condition (see Logic).
 
 ### Markdown inputs
 
-A textarea with a toolbar: Bold, Bulleted list, Link, and a Preview toggle
-that renders the text through the same sanitizer the renderer uses. Buttons
-wrap or insert syntax around the selection: `**bold**`, lines starting with
-`- `, `[text](https://…)`. Link insertion opens a small dialog for text and
-URL and refuses non-`https` URLs. Paste inserts plain text. A one-line hint
-under the textarea shows the three constructs. Anything else typed renders
+A textarea with a toolbar: Bold, Italic, Bulleted list, Numbered list,
+Link, and a Preview toggle that renders the text through the same sanitizer
+the renderer uses. Buttons wrap or insert syntax around the selection:
+`**bold**`, `_italic_`, lines starting with `- `, lines starting with `1. `,
+`[text](https://…)`. Link insertion opens a small dialog for text and URL
+and refuses non-`https` URLs. Paste inserts plain text. A one-line hint
+under the textarea shows the five constructs. Anything else typed renders
 literally; the preview makes that obvious.
 
 ### Consent field
 
-Beside the text pair, the eight-item checklist from `form-definition.md`,
+Beside the text pair, the nine-item checklist from `form-definition.md`,
 each a checkbox labeled with the requirement and a short example. "Insert
 template" fills both languages with the bilingual template, pre-ticks the
 items the template covers, and places the cursor at the purpose sentence.
 The retention item shows the form's current retention setting and warns
-when the text mentions a different number. All eight ticked is a publish
+when the text mentions a different number. All nine ticked is a publish
 requirement.
 
 ### Confirmation
@@ -443,10 +444,12 @@ builder owns; strings staff type are not here.
 | panel.machine_tag | Machine translated, not reviewed | Traducción automática, sin revisar |
 | panel.mark_reviewed | Mark as reviewed | Marcar como revisado |
 | md.bold | Bold | Negrita |
+| md.italic | Italic | Cursiva |
 | md.list | Bulleted list | Lista con viñetas |
+| md.numbered | Numbered list | Lista numerada |
 | md.link | Link | Enlace |
 | md.preview | Preview | Vista previa |
-| md.hint | **bold**, - list items, [link text](https://…) | **negrita**, - elementos de lista, [texto del enlace](https://…) |
+| md.hint | **bold**, _italic_, - bullets, 1. numbers, [link text](https://…) | **negrita**, _cursiva_, - viñetas, 1. números, [texto del enlace](https://…) |
 | md.link_text | Link text | Texto del enlace |
 | md.link_url | Address (https only) | Dirección (solo https) |
 | consent.checklist | Your consent text must cover | Tu texto de consentimiento debe incluir |
@@ -460,6 +463,7 @@ builder owns; strings staff type are not here.
 | consent.item.6 | That Effluz team members with access can see files | Que el equipo de Effluz con acceso puede ver los archivos |
 | consent.item.7 | How to request deletion | Cómo pedir que se eliminen |
 | consent.item.8 | That the person is an adult with authority over a minor's data | Que la persona es mayor de edad y tiene autoridad sobre los datos del menor |
+| consent.item.9 | That texts may be checked by an automated correction service (DeepL), keeping the original | Que los textos pueden revisarse con un servicio automático de corrección (DeepL), conservando el original |
 | confirm.screen | Confirmation screen | Pantalla de confirmación |
 | confirm.send_email | Send a confirmation email | Enviar correo de confirmación |
 | confirm.needs_email_field | Mark an email field as the submitter's address first | Primero marca un campo de correo como el de quien responde |

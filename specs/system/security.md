@@ -97,10 +97,23 @@ untrusted input:
 An `audit_log` table records every staff action named in the Audit entries
 section of each use case under `specs/use-cases/`: sign-in and rejection,
 form lifecycle and settings, draft saves, submission listing, viewing,
-photo viewing, export, deletion, job retry and discard. Each row: actor email,
+photo viewing, media download, text edits and reverts, correction
+suggestions, status changes, export, deletion, job retry and discard. Each row: actor email,
 action, target id, timestamp, IP. Append-only from the application role. Kept
 for one year. This is the only place where "who looked at a child's photo"
 can be answered, so it is not optional.
+
+## Data sent to third parties
+
+| Service | What leaves | When |
+|---|---|---|
+| DeepL (translate) | Staff-authored form text | On an editor's request in the builder |
+| DeepL Write | One text answer at a time | On a curator's request in the manager |
+| Dropbox | Uploaded files, encrypted database dumps | Always, by job |
+| SMTP2GO | Submitter address and staff-authored confirmation copy; staff addresses and references | Always, by job |
+| Google | Staff identity only | Sign-in |
+
+Nothing else leaves. Error tracking is configured to scrub bodies.
 
 ## Dependencies and supply chain
 
