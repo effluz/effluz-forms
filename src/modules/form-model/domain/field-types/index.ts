@@ -1,11 +1,14 @@
 import type { AnyFieldType } from "../field-type";
 import { createRegistry, type FieldTypeRegistry } from "../registry";
+import { checkbox } from "./checkbox";
 import { date } from "./date";
 import { email } from "./email";
 import { longText } from "./long-text";
+import { multipleChoice } from "./multiple-choice";
 import { numberType } from "./number";
 import { phone } from "./phone";
 import { shortText } from "./short-text";
+import { singleChoice } from "./single-choice";
 
 export const defaultFieldTypes: readonly AnyFieldType[] = [
   shortText,
@@ -14,6 +17,9 @@ export const defaultFieldTypes: readonly AnyFieldType[] = [
   phone,
   numberType,
   date,
+  singleChoice,
+  multipleChoice,
+  checkbox,
 ];
 
 export function buildDefaultRegistry(): FieldTypeRegistry {
