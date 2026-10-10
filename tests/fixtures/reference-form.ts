@@ -25,7 +25,9 @@ export const referenceFormDraft = {
       key: "page1",
       title: es("Historia de bebé prematuro"),
       description: es(
-        "Gracias por querer compartir tu historia. Síguenos en Instagram y Facebook de Effluz.",
+        "Gracias por querer compartir tu historia.\n\n" +
+          "Síguenos en [Instagram](https://www.instagram.com/effluzpreemiesandtwins/) y " +
+          "[Facebook](https://www.facebook.com/EffluzPreemiesAndTwins).",
       ),
       fields: [
         {
@@ -150,8 +152,13 @@ export const referenceFormDraft = {
           type: "long_text",
           label: es("Escribe tu historia (lo más breve posible)"),
           help: es(
-            "Cuéntanos cómo fue el embarazo, el nacimiento, los días en el hospital y cómo " +
-              "está hoy tu bebé.",
+            "Incluye:\n" +
+              "- Cómo fue el embarazo\n" +
+              "- Cómo fue el nacimiento\n" +
+              "- Los días en el hospital\n" +
+              "- Quiénes te acompañaron\n" +
+              "- Cómo está hoy tu bebé\n\n" +
+              "[VER PUBLICACIÓN](https://www.instagram.com/effluzpreemiesandtwins/)",
           ),
           ...required,
         },
@@ -215,7 +222,7 @@ export const referenceFormDraft = {
 /** Synthetic answers: invented names, example.com address, placeholder media ids. */
 export const referenceSubmission: Record<string, unknown> = {
   adult_name: "Lucía Prueba Ejemplo",
-  phone: "+507 6123 4567",
+  phone: "+507 0000 0000",
   email: "familia@example.com",
   instagram: "@familia_ejemplo",
   photo_auth: "yes_opt",

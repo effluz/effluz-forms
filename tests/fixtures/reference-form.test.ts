@@ -75,4 +75,12 @@ describe("reference form through the public API", () => {
     if (!ok.ok) throw new Error("submission");
     expect(exportRow(cols, r.version, registry, ok.answers, "es")).toHaveLength(20);
   });
+  it("keeps the restricted rich text as markdown in description and help", () => {
+    const r = parseDraft(referenceFormDraft, registry);
+    if (!r.ok) throw new Error("parse");
+    const [first, , , fourth] = r.version.pages;
+    expect(first?.description?.es).toContain("](https://");
+    const story = fourth?.fields.find((f) => f.key === "story");
+    expect(story?.help?.es).toContain("\n- ");
+  });
 });

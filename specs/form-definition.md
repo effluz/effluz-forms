@@ -31,6 +31,8 @@ places may use a restricted rich-text subset (paragraphs, line breaks, bold,
 italic, bulleted lists, numbered lists, links to `https` URLs) that the
 renderer sanitizes: page
 descriptions, field help, `section` descriptions, and confirmation copy.
+The subset is stored as the markdown syntax defined in `ui-ux/builder.md`;
+labels and options never contain it.
 Labels and options are always plain text.
 
 ## Structure of a version

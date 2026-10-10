@@ -20,6 +20,8 @@ function mkdirTracked(dir: string) {
 
 async function lintVirtual(relativePath: string, code: string) {
   const file = path.join(process.cwd(), relativePath);
+  if (existsSync(file))
+    throw new Error(`Boundary probe target already exists, refusing to overwrite: ${relativePath}`);
   mkdirTracked(path.dirname(file));
   writeFileSync(file, code);
   written.push(file);
@@ -41,17 +43,20 @@ afterAll(() => {
 
 describe("layer boundaries", () => {
   it("forbids domain importing from application", async () => {
-    await lintVirtual("src/modules/probe-a/application/index.ts", `export const y = 1;\n`);
+    await lintVirtual(
+      "src/modules/probe-a/application/boundary-probe-target.ts",
+      `export const y = 1;\n`,
+    );
     const rules = await lintVirtual(
-      "src/modules/probe-a/domain/x.ts",
-      `import { y } from "../application";\nexport const z = y;\n`,
+      "src/modules/probe-a/domain/boundary-probe-x.ts",
+      `import { y } from "../application/boundary-probe-target";\nexport const z = y;\n`,
     );
     expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });
 
   it("forbids domain importing react", async () => {
     const rules = await lintVirtual(
-      "src/modules/probe-a/domain/r.ts",
+      "src/modules/probe-a/domain/boundary-probe-r.ts",
       `import * as React from "react";\nexport const z = React;\n`,
     );
     expect(rules).toContainEqual(
@@ -63,17 +68,20 @@ describe("layer boundaries", () => {
   });
 
   it("forbids a module importing another module's domain", async () => {
-    await lintVirtual("src/modules/probe-a/domain/inner.ts", `export const y = 1;\n`);
+    await lintVirtual(
+      "src/modules/probe-a/domain/boundary-probe-inner.ts",
+      `export const y = 1;\n`,
+    );
     const rules = await lintVirtual(
-      "src/modules/probe-b/domain/x.ts",
-      `import { y } from "../../probe-a/domain/inner";\nexport const z = y;\n`,
+      "src/modules/probe-b/domain/boundary-probe-x.ts",
+      `import { y } from "../../probe-a/domain/boundary-probe-inner";\nexport const z = y;\n`,
     );
     expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });
 
   it("forbids domain importing a prefixed Node core module", async () => {
     const rules = await lintVirtual(
-      "src/modules/probe-a/domain/io.ts",
+      "src/modules/probe-a/domain/boundary-probe-io.ts",
       `import { readFileSync } from "node:fs";\nexport const z = readFileSync;\n`,
     );
     expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
@@ -81,7 +89,7 @@ describe("layer boundaries", () => {
 
   it("forbids domain importing a bare Node core module", async () => {
     const rules = await lintVirtual(
-      "src/modules/probe-a/domain/io-bare.ts",
+      "src/modules/probe-a/domain/boundary-probe-io-bare.ts",
       `import { readFileSync } from "fs";\nexport const z = readFileSync;\n`,
     );
     expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
@@ -89,7 +97,7 @@ describe("layer boundaries", () => {
 
   it("allows domain importing zod", async () => {
     const rules = await lintVirtual(
-      "src/modules/probe-a/domain/ok.ts",
+      "src/modules/probe-a/domain/boundary-probe-ok.ts",
       `import { z } from "zod";\nexport const s = z.string();\n`,
     );
     expect(rules.filter((m) => m.ruleId?.startsWith("boundaries/"))).toEqual([]);
@@ -97,7 +105,7 @@ describe("layer boundaries", () => {
 
   it("allows a module domain to import shared domain", async () => {
     const rules = await lintVirtual(
-      "src/modules/probe-a/domain/shared.ts",
+      "src/modules/probe-a/domain/boundary-probe-shared.ts",
       `import { resolveText } from "@/shared/domain/localized-text";\nexport const r = resolveText;\n`,
     );
     expect(rules.filter((m) => m.ruleId?.startsWith("boundaries/"))).toEqual([]);
@@ -105,15 +113,26 @@ describe("layer boundaries", () => {
 
   it("lets definitions use form-model's public API but not review's", async () => {
     const ok = await lintVirtual(
-      "src/modules/definitions/application/probe.ts",
+      "src/modules/definitions/application/boundary-probe-ok.ts",
       `import { LIMITS } from "@/modules/form-model/application";\nexport const l = LIMITS;\n`,
     );
     expect(ok.filter((m) => m.ruleId?.startsWith("boundaries/"))).toEqual([]);
-    await lintVirtual("src/modules/review/application/index.ts", `export const y = 1;\n`);
+    await lintVirtual(
+      "src/modules/review/application/boundary-probe-target.ts",
+      `export const y = 1;\n`,
+    );
     const bad = await lintVirtual(
-      "src/modules/definitions/application/probe2.ts",
-      `import { y } from "@/modules/review/application";\nexport const z = y;\n`,
+      "src/modules/definitions/application/boundary-probe-bad.ts",
+      `import { y } from "@/modules/review/application/boundary-probe-target";\nexport const z = y;\n`,
     );
     expect(bad.map((m) => m.ruleId)).toContain("boundaries/dependencies");
+  });
+
+  it("forbids submissions importing review's application layer", async () => {
+    const rules = await lintVirtual(
+      "src/modules/submissions/application/boundary-probe.ts",
+      `import { y } from "@/modules/review/application/boundary-probe-target";\nexport const z = y;\n`,
+    );
+    expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });
 });
