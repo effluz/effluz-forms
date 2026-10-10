@@ -145,7 +145,8 @@ export default tseslint.config(
 
             {
               from: [element("module-domain"), element("shared-domain")],
-              disallow: { to: thirdParty(...frameworks, "node:*") },
+              // Every Node core module, bare (`fs`) or prefixed (`node:fs`), is core origin.
+              disallow: { to: [thirdParty(...frameworks), { module: { origin: "core" } }] },
               message: "domain depends on nothing outside itself",
             },
             {
