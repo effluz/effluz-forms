@@ -31,11 +31,16 @@ describe("pattern safety", () => {
     "((a(b)))",
     "a{1001}",
     "a".repeat(201),
+    // Three or more quantifiers: over the limit of two.
+    "a{0,1000}a{0,1000}a{0,1000}a{0,1000}b",
     "a*a*a*b",
+    "a?b?c?",
     "\\d{2,}\\d{2,}\\d{2,}",
-    "(a|b)*c+d{1,}",
-    // Three unbounded quantifiers: over the limit of two.
+    "[A-Z]{2}\\d{4}[A-Z]?",
     "[^@\\s]+@[^@\\s]+\\.[a-z]{2,}",
+    "a*b?c{1,3}",
+    // Five alternation bars: over the limit of four.
+    "(a|aa)(a|aa)(a|aa)(a|aa)(a|aa)b",
   ])("rejects %s", (value) => {
     expect(ruleSchema.safeParse({ rule: "pattern", value }).success).toBe(false);
   });
@@ -49,7 +54,7 @@ describe("pattern safety", () => {
     "\\(\\d+\\)+",
     "[a-z]+@[a-z]+",
     "\\+?\\d{7,15}",
-    "a*b?c{1,3}",
+    "a*b?",
     "a{1000}",
   ])("accepts %s", (value) => {
     expect(ruleSchema.safeParse({ rule: "pattern", value }).success).toBe(true);

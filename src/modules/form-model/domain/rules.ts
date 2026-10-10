@@ -7,7 +7,10 @@ const count = z.number().int().min(0);
 const MAX_PATTERN_LENGTH = 200;
 const MAX_REPEAT = 1000;
 const MAX_GROUP_DEPTH = 2;
-const MAX_UNBOUNDED = 2;
+const MAX_QUANTIFIERS = 2;
+// Unquantified alternation alone can be exponential (a chain of 30 two-way
+// groups takes over 2 s), so the number of "|" is bounded too.
+const MAX_ALTERNATIVES = 4;
 /** Longest answer, in graphemes, that a pattern rule will match against. */
 export const PATTERN_MAX_INPUT = 1000;
 
@@ -18,7 +21,8 @@ export const PATTERN_MAX_INPUT = 1000;
  */
 class PatternScanner {
   private pos = 0;
-  private unbounded = 0;
+  private quantifiers = 0;
+  private alternatives = 0;
   private readonly source: string;
 
   constructor(source: string) {
@@ -37,6 +41,7 @@ class PatternScanner {
     for (;;) {
       if (!this.sequence(depth)) return false;
       if (this.peek() !== "|") return true;
+      if (++this.alternatives > MAX_ALTERNATIVES) return false;
       this.pos++;
     }
   }
@@ -109,7 +114,6 @@ class PatternScanner {
 
   private quantifier(): boolean {
     const c = this.peek();
-    let unbounded = false;
     if (c === "{") {
       const repeat = /\{(\d+)(?:(,)(\d*))?\}/y;
       repeat.lastIndex = this.pos;
@@ -117,19 +121,15 @@ class PatternScanner {
       if (!match) return false;
       const bounds = [Number(match[1]), match[3] ? Number(match[3]) : 0];
       if (bounds.some((bound) => bound > MAX_REPEAT)) return false;
-      // {n,} is unbounded; {n} and {n,m} are not.
-      unbounded = match[2] !== undefined && match[3] === "";
       this.pos += match[0].length;
-    } else if (c === "*" || c === "+") {
-      unbounded = true;
-      this.pos++;
-    } else if (c === "?") {
+    } else if (c === "*" || c === "+" || c === "?") {
       this.pos++;
     } else {
       return true;
     }
-    if (unbounded && ++this.unbounded > MAX_UNBOUNDED) return false;
-    // One optional lazy modifier.
+    // Every quantifier counts once, bounded or not.
+    if (++this.quantifiers > MAX_QUANTIFIERS) return false;
+    // One optional lazy modifier belongs to the same quantifier.
     if (this.peek() === "?") this.pos++;
     return true;
   }
