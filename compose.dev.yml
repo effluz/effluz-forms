@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: effluz
+      POSTGRES_PASSWORD: effluz
+      POSTGRES_DB: effluz
+    ports: ["5432:5432"]
+    volumes: ["effluz-dev-db:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U effluz -d effluz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  mail:
+    image: axllent/mailpit
+    ports: ["8025:8025", "1025:1025"]
+volumes:
+  effluz-dev-db:
