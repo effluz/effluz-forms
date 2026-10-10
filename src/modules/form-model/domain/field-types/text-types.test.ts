@@ -6,8 +6,19 @@ import { shortText } from "./short-text";
 
 describe("short_text", () => {
   it("trims, NFC-normalizes and strips zero-width characters", () => {
-    const raw = "  Ana​ María  ";
+    const raw = "  Ana\u200B María  ";
     expect(shortText.normalize(raw, {})).toBe("Ana María");
+  });
+  it("strips U+200B, U+2060 and U+FEFF", () => {
+    expect(shortText.normalize("a\u200Bb\u2060c\uFEFF", {})).toBe("abc");
+  });
+  it("keeps zero-width joiners so emoji sequences survive", () => {
+    const family = "\u{1F469}\u200D\u{1F469}\u200D\u{1F467}";
+    expect(shortText.normalize(family, {})).toBe(family);
+  });
+  it("keeps zero-width non-joiners so Persian text survives", () => {
+    const persian = "می\u200Cخواهم";
+    expect(shortText.normalize(persian, {})).toBe(persian);
   });
   it("rejects answers over the system maximum as max_length", () => {
     expect(shortText.validate("x".repeat(5_001), {})).toEqual(["max_length"]);
@@ -41,6 +52,12 @@ describe("email", () => {
     }
     expect(email.validate("ana.maria+x@example.com", { isSubmitterAddress: false })).toEqual([]);
   });
+  it("caps length at 254 graphemes before the syntax check", () => {
+    expect(email.validate("a".repeat(250) + "@x.co", { isSubmitterAddress: false })).toEqual([
+      "max_length",
+    ]);
+    expect(email.validate("a".repeat(249) + "@x.co", { isSubmitterAddress: false })).toEqual([]);
+  });
   it("collects personal data", () => {
     expect(email.collectsPersonalData).toBe(true);
     expect(phone.collectsPersonalData).toBe(true);
@@ -54,5 +71,9 @@ describe("phone", () => {
   it("needs at least 6 digits", () => {
     expect(phone.validate("12345", {})).toEqual(["pattern"]);
     expect(phone.validate("+507 6123 4567", {})).toEqual([]);
+  });
+  it("caps length at shortTextMax before counting digits", () => {
+    expect(phone.validate("1".repeat(5_001), {})).toEqual(["max_length"]);
+    expect(phone.validate("1".repeat(5_000), {})).toEqual([]);
   });
 });

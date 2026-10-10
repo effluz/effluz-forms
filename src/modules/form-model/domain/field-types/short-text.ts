@@ -4,7 +4,9 @@ import { defineFieldType, normalizeText } from "../field-type";
 import { LIMITS } from "../limits";
 import { graphemeLength } from "../rules";
 
-const ZERO_WIDTH = /[\u200B-\u200D\uFEFF]/g;
+// Only characters with no visible or joining role. U+200C and U+200D stay: they
+// shape emoji sequences and Persian or Indic text.
+const ZERO_WIDTH = /[\u200B\u2060\uFEFF]/g;
 export const cleanText = (s: string): string => normalizeText(s.replace(ZERO_WIDTH, ""));
 
 const settings = z.object({ placeholder: localizedTextSchema.optional() });

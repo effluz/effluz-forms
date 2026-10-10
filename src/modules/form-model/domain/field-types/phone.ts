@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { defineFieldType } from "../field-type";
+import { LIMITS } from "../limits";
+import { graphemeLength } from "../rules";
 import { cleanText } from "./short-text";
 
 export const phone = defineFieldType({
@@ -23,7 +25,11 @@ export const phone = defineFieldType({
       .replace(/[^\d+\s()-]/g, "")
       .replace(/\s+/g, " ")
       .trim(),
-  validate: (a) => ((a.match(/\d/g)?.length ?? 0) >= 6 ? [] : ["pattern"]),
+  validate: (a) => {
+    // The length cap runs before the digit count so oversized input is refused early.
+    if (graphemeLength(a) > LIMITS.shortTextMax) return ["max_length"];
+    return (a.match(/\d/g)?.length ?? 0) >= 6 ? [] : ["pattern"];
+  },
   isEmpty: (a) => a.trim().length === 0,
   exportHeaders: (label) => [label],
   exportCells: (a) => [a ?? ""],
