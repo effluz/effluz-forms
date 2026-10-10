@@ -5,7 +5,7 @@ services:
       POSTGRES_USER: effluz
       POSTGRES_PASSWORD: effluz
       POSTGRES_DB: effluz
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
     volumes: ["effluz-dev-db:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U effluz -d effluz"]
@@ -14,6 +14,6 @@ services:
       retries: 10
   mail:
     image: axllent/mailpit
-    ports: ["8025:8025", "1025:1025"]
+    ports: ["127.0.0.1:8025:8025", "127.0.0.1:1025:1025"]
 volumes:
   effluz-dev-db:

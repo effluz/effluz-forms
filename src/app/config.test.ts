@@ -45,6 +45,10 @@ describe("loadConfig", () => {
     });
     expect(c.session.secure).toBe(true);
   });
+  it("rejects an empty APP_VERSION or SESSION_COOKIE_NAME and names it", () => {
+    expect(() => loadConfig({ ...base, APP_VERSION: "" })).toThrow(/APP_VERSION/);
+    expect(() => loadConfig({ ...base, SESSION_COOKIE_NAME: "" })).toThrow(/SESSION_COOKIE_NAME/);
+  });
   it("rejects an unknown SERVICE or LOG_LEVEL", () => {
     expect(() => loadConfig({ ...base, SERVICE: "cron" })).toThrow(/SERVICE/);
     expect(() => loadConfig({ ...base, LOG_LEVEL: "verbose" })).toThrow(/LOG_LEVEL/);
