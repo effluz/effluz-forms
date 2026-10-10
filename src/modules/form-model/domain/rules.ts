@@ -7,6 +7,9 @@ const count = z.number().int().min(0);
 const MAX_PATTERN_LENGTH = 200;
 const MAX_REPEAT = 1000;
 const MAX_GROUP_DEPTH = 2;
+const MAX_UNBOUNDED = 2;
+/** Longest answer, in graphemes, that a pattern rule will match against. */
+export const PATTERN_MAX_INPUT = 1000;
 
 /**
  * Whitelist scanner for the safe regex subset. Walks the pattern once and
@@ -15,6 +18,7 @@ const MAX_GROUP_DEPTH = 2;
  */
 class PatternScanner {
   private pos = 0;
+  private unbounded = 0;
   private readonly source: string;
 
   constructor(source: string) {
@@ -105,6 +109,7 @@ class PatternScanner {
 
   private quantifier(): boolean {
     const c = this.peek();
+    let unbounded = false;
     if (c === "{") {
       const repeat = /\{(\d+)(?:(,)(\d*))?\}/y;
       repeat.lastIndex = this.pos;
@@ -112,12 +117,18 @@ class PatternScanner {
       if (!match) return false;
       const bounds = [Number(match[1]), match[3] ? Number(match[3]) : 0];
       if (bounds.some((bound) => bound > MAX_REPEAT)) return false;
+      // {n,} is unbounded; {n} and {n,m} are not.
+      unbounded = match[2] !== undefined && match[3] === "";
       this.pos += match[0].length;
-    } else if (c === "*" || c === "+" || c === "?") {
+    } else if (c === "*" || c === "+") {
+      unbounded = true;
+      this.pos++;
+    } else if (c === "?") {
       this.pos++;
     } else {
       return true;
     }
+    if (unbounded && ++this.unbounded > MAX_UNBOUNDED) return false;
     // One optional lazy modifier.
     if (this.peek() === "?") this.pos++;
     return true;
@@ -182,10 +193,14 @@ export function evaluateRule(
         ? "max_length"
         : undefined;
     case "pattern":
-      return typeof answer === "string" &&
-        !new RegExp(`^(?:${rule.value})$`, `u${rule.flags ?? ""}`).test(answer.trim())
-        ? "pattern"
-        : undefined;
+      if (typeof answer !== "string") return undefined;
+      // Oversized input is refused before any regex is built or run. Combining
+      // marks add code units without adding graphemes, so both are bounded.
+      if (graphemeLength(answer) > PATTERN_MAX_INPUT || answer.length > PATTERN_MAX_INPUT)
+        return "pattern";
+      return new RegExp(`^(?:${rule.value})$`, `u${rule.flags ?? ""}`).test(answer.trim())
+        ? undefined
+        : "pattern";
     case "min_value":
       return typeof answer === "number" && answer < rule.value ? "number_min" : undefined;
     case "max_value":

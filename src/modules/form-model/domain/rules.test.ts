@@ -31,6 +31,11 @@ describe("pattern safety", () => {
     "((a(b)))",
     "a{1001}",
     "a".repeat(201),
+    "a*a*a*b",
+    "\\d{2,}\\d{2,}\\d{2,}",
+    "(a|b)*c+d{1,}",
+    // Three unbounded quantifiers: over the limit of two.
+    "[^@\\s]+@[^@\\s]+\\.[a-z]{2,}",
   ])("rejects %s", (value) => {
     expect(ruleSchema.safeParse({ rule: "pattern", value }).success).toBe(false);
   });
@@ -42,7 +47,9 @@ describe("pattern safety", () => {
     "\\(\\d+\\)",
     // Escaped parens are literals, not a group, so the quantifier is allowed.
     "\\(\\d+\\)+",
-    "[^@\\s]+@[^@\\s]+\\.[a-z]{2,}",
+    "[a-z]+@[a-z]+",
+    "\\+?\\d{7,15}",
+    "a*b?c{1,3}",
     "a{1000}",
   ])("accepts %s", (value) => {
     expect(ruleSchema.safeParse({ rule: "pattern", value }).success).toBe(true);
@@ -62,6 +69,12 @@ describe("evaluateRule", () => {
     expect(
       evaluateRule({ rule: "pattern", value: "[a-z]+", flags: "i" }, "ABC", ctx),
     ).toBeUndefined();
+  });
+  it("pattern rules refuse answers over 1000 characters", () => {
+    expect(evaluateRule({ rule: "pattern", value: ".*" }, "a".repeat(1001), ctx)).toBe("pattern");
+    expect(evaluateRule({ rule: "pattern", value: ".*" }, "a".repeat(1000), ctx)).toBeUndefined();
+    // 1000 graphemes but 2000 code units: combining marks cannot bypass the cap.
+    expect(evaluateRule({ rule: "pattern", value: ".*" }, "á".repeat(1000), ctx)).toBe("pattern");
   });
   it("number rules", () => {
     expect(evaluateRule({ rule: "min_value", value: 10 }, 9, ctx)).toBe("number_min");

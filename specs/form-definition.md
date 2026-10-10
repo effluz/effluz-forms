@@ -107,6 +107,11 @@ may not add or skip any.
   escapes, character classes, anchors, quantifiers on single atoms, and
   non-quantified groups with alternation. Quantified groups, backreferences
   and lookarounds are rejected so a public submission cannot stall the server.
+  At most two unbounded quantifiers per pattern, and pattern rules apply only
+  to answers of up to 1,000 characters; a field with a pattern rule must
+  therefore cap its length at 1,000 or below, which publish validation
+  enforces. The limit counts graphemes and UTF-16 code units, so combining
+  marks cannot exceed it.
 
 ## Conditional logic
 
