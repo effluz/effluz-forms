@@ -12,11 +12,14 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "db:migrate": "tsx src/app/cli/migrate.ts",
     "db:up": "docker compose -f compose.dev.yml up -d --wait",
     "db:down": "docker compose -f compose.dev.yml down"
   },
   "dependencies": {
     "next": "16.4.0",
+    "pg": "^8.23.1",
     "pino": "^10.4.0",
     "re2js": "^2.8.6",
     "react": "19.3.0",
@@ -26,6 +29,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@types/node": "^24.19.1",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^3.2.7",
@@ -35,6 +39,7 @@
     "eslint-plugin-boundaries": "^7.2.0",
     "pino-pretty": "^13.2.0",
     "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "typescript-eslint": "^8.71.1",
     "vitest": "^3.2.7"
