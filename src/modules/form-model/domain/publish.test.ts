@@ -376,11 +376,22 @@ describe("checkDefinition reads field type hooks", () => {
     ]);
     expect(check(stub, [numberField])).toEqual([]);
   });
-  it("rejects a condition on a neverHidden field and counts alwaysRequired as consent", () => {
-    const stub = defineFieldType({ ...numberType, neverHidden: true, alwaysRequired: true });
+  it("rejects a condition on a neverHidden field and counts a consentRecord as consent", () => {
+    const stub = defineFieldType({
+      ...numberType,
+      neverHidden: true,
+      alwaysRequired: true,
+      consentRecord: (a) => ({ textVersion: String(a) }),
+    });
     const gatedNumber = { ...numberField, visibility: { field: "name", op: "is_not_empty" } };
     expect(check(stub, [nameField, mailField, gatedNumber])).toEqual([
       { code: "consent_missing", path: "pages/0/fields/2" },
+    ]);
+  });
+  it("does not count a merely mandatory type as consent", () => {
+    const stub = defineFieldType({ ...numberType, alwaysRequired: true });
+    expect(check(stub, [nameField, mailField, numberField])).toEqual([
+      { code: "consent_missing", path: "pages" },
     ]);
   });
   it("caps length rules at any type's declared maxLength", () => {

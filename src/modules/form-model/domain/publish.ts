@@ -134,7 +134,7 @@ export function checkDefinition(version: Version, registry: FieldTypeRegistry): 
   for (const { role, count } of roles.values())
     if (count > 1) push(role.code, "pages", role.params);
   const hasConsent = inputFields(version, registry).some(
-    (f) => registry.get(f.type).alwaysRequired,
+    (f) => registry.get(f.type).consentRecord !== undefined,
   );
   if (!hasConsent && collectsPersonalData(version, registry)) push("consent_missing", "pages");
   return issues;
