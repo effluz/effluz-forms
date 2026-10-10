@@ -19,7 +19,9 @@ manager (close, reopen, archive, unarchive).
    one input field; every field labeled in every required language; every
    option labeled; consent field and retention present when the form
    collects personal data; confirmation screen text present; no condition
-   references a missing or later field; no settings exceed system maximums.
+   references a missing or later field; header image alt text present in
+   each required language when an image is set; no settings exceed system
+   maximums.
 2. Violations are returned as a list with a link to each offending field.
    Publishing stops here if the list is not empty.
 3. The editor sees a summary: version number to be created, number of pages

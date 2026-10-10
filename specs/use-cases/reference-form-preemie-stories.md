@@ -22,6 +22,11 @@ copy. It is Spanish single-language, like the original.
 | Notification cadence | per submission |
 | Bot challenge | off |
 
+## Header image
+
+None in the fixture. The original Google Form has none either. A test
+variant adds one to exercise the alt text validation.
+
 ## Page 1: Introduction and contact
 
 - Page title: form title. Page description: the welcome text, with two
