@@ -128,6 +128,30 @@ describe("layer boundaries", () => {
     expect(bad.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });
 
+  it("forbids definitions reaching past form-model's application entry point", async () => {
+    await lintVirtual(
+      "src/modules/form-model/application/boundary-probe-deep.ts",
+      `export const y = 1;\n`,
+    );
+    const rules = await lintVirtual(
+      "src/modules/definitions/application/boundary-probe-deep.ts",
+      `import { y } from "@/modules/form-model/application/boundary-probe-deep";\nexport const z = y;\n`,
+    );
+    expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
+  });
+
+  it("lets a module's own layers import its own application files", async () => {
+    await lintVirtual(
+      "src/modules/definitions/application/boundary-probe-own-target.ts",
+      `export const y = 1;\n`,
+    );
+    const rules = await lintVirtual(
+      "src/modules/definitions/infrastructure/boundary-probe-own.ts",
+      `import { y } from "@/modules/definitions/application/boundary-probe-own-target";\nexport const z = y;\n`,
+    );
+    expect(rules.filter((m) => m.ruleId?.startsWith("boundaries/"))).toEqual([]);
+  });
+
   it("forbids submissions importing review's application layer", async () => {
     const rules = await lintVirtual(
       "src/modules/submissions/application/boundary-probe.ts",

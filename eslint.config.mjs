@@ -13,7 +13,8 @@ const ownModule = (layer) => ({
 const thirdParty = (...source) => ({ module: { origin: ["external", "core"], source } });
 
 // Inter-module dependency graph (specs/architecture.md). A module may import only the
-// application layer of the modules listed here; modules absent from the table get none.
+// public entry point (application/index.ts) of the modules listed here; modules absent
+// from the table get none.
 const MODULE_DEPS = {
   "form-model": [],
   identity: [],
@@ -24,6 +25,11 @@ const MODULE_DEPS = {
   review: ["form-model", "definitions", "submissions", "media", "identity"],
 };
 const moduleOf = (type, module) => ({ element: { type, captured: { module } } });
+// A module's single public entry point: its application/index.ts file.
+const entryOf = (module) => ({
+  ...moduleOf("module-application", module),
+  file: { categories: "module-application-entry" },
+});
 const moduleLayerPolicies = Object.entries(MODULE_DEPS).flatMap(([module, deps]) =>
   ["application", "infrastructure", "presentation"].map((layer) => ({
     from: moduleOf(`module-${layer}`, module),
@@ -36,7 +42,7 @@ const moduleLayerPolicies = Object.entries(MODULE_DEPS).flatMap(([module, deps])
         moduleOf("module-domain", module),
         moduleOf("module-application", module),
         moduleOf(`module-${layer}`, module),
-        ...deps.map((dep) => moduleOf("module-application", dep)),
+        ...deps.map(entryOf),
       ],
     },
   })),
@@ -76,6 +82,10 @@ export default tseslint.config(
           capture: ["module"],
           partialMatch: false,
         })),
+      ],
+      // Files are categorized within their element; the entry file stays application code.
+      "boundaries/files": [
+        { category: "module-application-entry", pattern: "src/modules/*/application/index.ts" },
       ],
     },
     rules: {
