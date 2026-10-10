@@ -42,13 +42,17 @@ export function admit(claims: IdentityClaims, allowedHostedDomain: string): Admi
   const attemptedDomain =
     hostedDomain !== "" ? hostedDomain : email !== "" ? domainOf(email) : null;
 
-  if (email === "") {
+  const allowed = allowedHostedDomain.trim().toLowerCase();
+
+  if (!email.includes("@")) {
     return { admitted: false, reason: "missing_email", attemptedDomain };
   }
   if (claims.emailVerified !== true) {
     return { admitted: false, reason: "unverified_email", attemptedDomain };
   }
-  if (hostedDomain !== allowedHostedDomain.trim().toLowerCase()) {
+  // A blank allowed domain or a blank hosted-domain claim must never match, even
+  // against each other: this policy is a security boundary independent of config.
+  if (allowed === "" || hostedDomain === "" || hostedDomain !== allowed) {
     return { admitted: false, reason: "wrong_domain", attemptedDomain };
   }
 

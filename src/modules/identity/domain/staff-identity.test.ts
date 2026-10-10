@@ -79,4 +79,43 @@ describe("admit", () => {
       ),
     ).toMatchObject({ admitted: true });
   });
+
+  describe("blank domains never admit", () => {
+    it("refuses every claim when the allowed domain is empty", () => {
+      expect(admit({ email: "ana@gmail.com", emailVerified: true }, "")).toEqual({
+        admitted: false,
+        reason: "wrong_domain",
+        attemptedDomain: "gmail.com",
+      });
+    });
+
+    it("refuses every claim when the allowed domain is only whitespace", () => {
+      expect(admit({ email: "ana@gmail.com", emailVerified: true }, "  ")).toEqual({
+        admitted: false,
+        reason: "wrong_domain",
+        attemptedDomain: "gmail.com",
+      });
+      expect(
+        admit({ email: "a@example.com", emailVerified: true, hostedDomain: "  " }, "  "),
+      ).toMatchObject({ admitted: false, reason: "wrong_domain" });
+    });
+
+    it("refuses an empty hosted-domain claim", () => {
+      expect(
+        admit({ email: "ana@example.com", emailVerified: true, hostedDomain: "" }, "example.com"),
+      ).toEqual({ admitted: false, reason: "wrong_domain", attemptedDomain: "example.com" });
+    });
+
+    it("refuses a whitespace hosted-domain claim", () => {
+      expect(
+        admit({ email: "ana@example.com", emailVerified: true, hostedDomain: "  " }, "example.com"),
+      ).toEqual({ admitted: false, reason: "wrong_domain", attemptedDomain: "example.com" });
+    });
+  });
+
+  it("treats an email without an at sign as a missing email", () => {
+    expect(
+      admit({ email: "ana", emailVerified: true, hostedDomain: "example.com" }, "example.com"),
+    ).toEqual({ admitted: false, reason: "missing_email", attemptedDomain: "example.com" });
+  });
 });

@@ -39,5 +39,5 @@ export function touch(s: Session, now: Date): Session {
  * See specs/system/security.md, "Sessions".
  */
 export function sessionCookieMaxAgeSeconds(): number {
-  return ABSOLUTE_DAYS * 24 * 60 * 60;
+  return (ABSOLUTE_DAYS * DAY_MS) / 1000;
 }
