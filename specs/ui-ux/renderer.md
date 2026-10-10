@@ -171,6 +171,8 @@ With script, the same input is enhanced:
 | consent | You must agree to continue | Debes aceptar para continuar |
 | files min | Upload at least {n} files for {label} | Sube al menos {n} archivos en {label} |
 | files max | You can upload up to {n} files for {label} | Puedes subir hasta {n} archivos en {label} |
+| invalid shape | {label} has an unexpected value. Please try again | {label} tiene un valor inesperado. Inténtalo de nuevo |
+| unknown option | Choose one of the listed options for {label} | Elige una de las opciones de {label} |
 | file too large | {file} is larger than {size} | {file} pesa más de {size} |
 | file wrong type | {file} is not a supported type. Use {kinds} | {file} no es un tipo permitido. Usa {kinds} |
 | file unreadable | {file} could not be read. Try another file | No se pudo leer {file}. Prueba con otro archivo |

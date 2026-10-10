@@ -115,6 +115,8 @@ submission. The client evaluates the same rules for immediate feedback and
 may not add or skip any.
 
 - `required` is a field property, not a rule, and is skipped for hidden fields.
+- `must_be_true` fails when the answer is false or absent, so omitting the
+  answer cannot bypass it even on a field that is not required.
 - Messages are built from the rule and the field label by the renderer, in
   the submitter's locale. Staff do not write error messages.
 - System maximums bound anything staff can set: text length, file size, file
@@ -128,7 +130,8 @@ may not add or skip any.
   rules apply only to answers of up to 1,000 characters; a field with a pattern
   rule must therefore cap its length at 1,000 or below, which publish
   validation enforces. The limit counts graphemes and UTF-16 code units, so
-  combining marks cannot exceed it.
+  combining marks cannot bypass it. This subset is an interim measure; see
+  ADR 0013.
 
 ## Conditional logic
 
