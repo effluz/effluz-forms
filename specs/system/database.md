@@ -62,8 +62,8 @@ Rules:
   | `schema_migration` | `shared` | the ledger: `id` (the four-digit migration id, text), `name`, `applied_at`. Created by the runner itself, not by a migration file. |
   | `job` | `shared` | see `jobs.md` |
   | `worker_heartbeat` | `shared` | one row per worker process: `worker_id` (unique), `last_seen_at`. See `jobs.md`. |
-  | `admin_session` | `identity` | `email`, `name`, `csrf_token`, `last_seen_at`; `created_at` starts the absolute lifetime. Referenced by an opaque cookie. See `security.md`. |
-  | `sign_in_attempt` | `identity` | `state`, `nonce`, `code_verifier`, `return_to`, `expires_at`. Single use: deleted when consumed. Holds short-lived secrets, so it is never logged. See `security.md`. |
+  | `admin_session` | `identity` | `email`, `name`, `csrf_token`, `last_seen_at`; `created_at` starts the absolute lifetime. Referenced by an opaque cookie. Expired rows go on the next request or with the daily `identity.cleanup` job. See `security.md`. |
+  | `sign_in_attempt` | `identity` | `state`, `nonce`, `code_verifier`, `return_to`, `expires_at`. Single use: deleted when consumed, or by `identity.cleanup` once expired. Holds short-lived secrets, so it is never logged. See `security.md`. |
   | `audit_log` | `identity` | `action`, `actor_email`, `target_id`, `ip`, `details` (jsonb), `created_at`. **Append-only**: the trigger `audit_log_no_update` rejects every `UPDATE` and `DELETE`. See `security.md`. |
 
 - Definitions and answers are jsonb documents validated by `form-model`

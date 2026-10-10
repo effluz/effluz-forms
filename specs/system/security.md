@@ -82,7 +82,9 @@ The step-by-step flow is in `use-cases/sign-in.md`.
   A timestamp exactly on a limit is still valid, and when both limits have
   passed the absolute one is reported. Expiry is enforced lazily: the first
   request that finds an expired session deletes it and writes a
-  `session_expired` audit entry.
+  `session_expired` audit entry. A session that expires without a further
+  request, and a sign-in attempt past its ten minutes, is removed by the
+  daily `identity.cleanup` job without an audit entry (see `jobs.md`).
 - Rotation on sign-in: every sign-in creates a new session with a new id and a
   new CSRF token. No earlier session id is reused. If the callback request
   carries a session cookie, that session is deleted in the same transaction
@@ -188,8 +190,9 @@ answered, so it is not optional.
 
 - **Append-only.** A row-level database trigger (`audit_log_no_update`)
   rejects every `UPDATE` and `DELETE`; `TRUNCATE` is not covered. Kept for one
-  year; no purge exists yet, and since the trigger also blocks deletes, the
-  retention job will need a deliberate, reviewed exception when it is built.
+  year. No purge exists yet; when it is built it runs as a dedicated database
+  role for which the trigger function makes a documented exception, and
+  nothing else may delete audit rows (ADR 0020).
 - **Written with the change it records.** A row joins the same unit of work as
   the state change, so both commit or neither does. A rejected sign-in has no
   state change and uses a unit of work of its own.

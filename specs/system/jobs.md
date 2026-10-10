@@ -23,8 +23,9 @@ Handlers are registered by `type` in the worker's composition root
 (`src/app/worker.ts`). Each handler is a small application-layer function
 that receives the payload and a context with the job id, the attempt number,
 a logger already tagged with the job, and the unit of work, queue and clock
-ports. Only `jobs.cleanup` is registered so far; the other types in "Job types
-in the first release" arrive with the modules that own them.
+ports. Only `jobs.cleanup` and `identity.cleanup` are registered so far; the
+other types in "Job types in the first release" arrive with the modules that
+own them.
 
 ## The `job` table
 
@@ -139,11 +140,13 @@ Two workers racing at a bucket boundary could enqueue twice; that is accepted
 because handlers are idempotent.
 
 Initial set: `retention.purge` daily, `email.staff_digest` daily per form,
-`backup.database` nightly, `jobs.cleanup` daily. Only `jobs.cleanup` is
-scheduled today. As built it deletes succeeded jobs finished more than 30 days
-ago and logs the count. Removing expired in-progress submission records
-(older than 24 hours) and their staged files joins it when `submissions`
-exists.
+`backup.database` nightly, `jobs.cleanup` daily, `identity.cleanup` daily.
+Only the last two are scheduled today. `jobs.cleanup` deletes succeeded jobs
+finished more than 30 days ago and logs the count; removing expired
+in-progress submission records (older than 24 hours) and their staged files
+joins it when `submissions` exists. `identity.cleanup` deletes sign-in
+attempts past their expiry and admin sessions past the idle or absolute
+limit, writes no audit entries, and logs the two counts.
 
 ## Job types in the first release
 
@@ -157,3 +160,4 @@ exists.
 | `retention.purge` | Daily schedule | Delete submissions past their form's retention setting |
 | `backup.database` | Nightly schedule | Encrypted dump to Dropbox backup folder |
 | `jobs.cleanup` | Daily schedule | Prune old succeeded jobs, expired in-progress records and their staged files |
+| `identity.cleanup` | Daily schedule | Delete expired sign-in attempts and expired admin sessions, no audit entries |
