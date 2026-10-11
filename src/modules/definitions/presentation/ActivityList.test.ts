@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { definitionsAuditActions } from "../application";
-import { ActivityList, ACTIVITY_PAGE_SIZE, activityHref } from "./ActivityList";
+import { ActivityList, activityHref } from "./ActivityList";
 
 const ID = "00000001-0000-4000-8000-000000000001";
 
@@ -27,6 +27,7 @@ function list(props: Partial<Parameters<typeof ActivityList>[0]> = {}): string {
       entries: [record()],
       actors: ["other.member@example.com", "staff.member@example.com"],
       filter: {},
+      hasMore: false,
       ...props,
     }),
   );
@@ -132,17 +133,46 @@ describe("ActivityList", () => {
     expect(list()).not.toContain("Export CSV");
   });
 
-  it("links to older entries only when the page is full, keeping the filter", () => {
-    const full = Array.from({ length: ACTIVITY_PAGE_SIZE }, (_, i) =>
-      record({ id: `a${String(i)}`, at: new Date(Date.UTC(2026, 9, 9, 12, 0, 60 - i)) }),
-    );
-    const html = list({ entries: full, filter: { action: "form_closed" } });
-    const oldest = full[full.length - 1]?.at.toISOString() ?? "";
+  it("links to older entries only when more exist, with the cursor of the last row and the filter", () => {
+    const entries = [
+      record({ id: "a1", at: new Date("2026-10-09T12:00:00.123Z") }),
+      record({ id: "a2", at: new Date("2026-10-09T11:00:00.456Z") }),
+    ];
+    const html = list({ entries, hasMore: true, filter: { action: "form_closed" } });
     expect(html).toContain(
-      `href="${activityHref(ID, { action: "form_closed", before: oldest }).replaceAll("&", "&amp;")}"`,
+      `href="${activityHref(ID, {
+        action: "form_closed",
+        before: "2026-10-09T11:00:00.456Z",
+        beforeId: "a2",
+      }).replaceAll("&", "&amp;")}"`,
     );
+    expect(html).toContain("before=2026-10-09T11%3A00%3A00.456Z&amp;beforeId=a2");
     expect(html).toContain("Older entries");
-    expect(list()).not.toContain("Older entries");
+    expect(list({ entries })).not.toContain("Older entries");
+    expect(list({ entries: [], hasMore: true })).not.toContain("Older entries");
+  });
+
+  it("adds an actor missing from the list so the select reflects the active filter", () => {
+    const html = list({ filter: { actorEmail: "gone.member@example.com" } });
+    expect(tags(html, "option", 'value="gone.member@example.com"', "selected")).toHaveLength(1);
+    expect(tags(html, "option", "selected")).toHaveLength(2);
+    expect(tags(list(), "option", 'value="gone.member@example.com"')).toHaveLength(0);
+  });
+
+  it("adds an action of another module so the select reflects the active filter", () => {
+    const html = list({ filter: { action: "submission_exported" } });
+    const option = tags(html, "option", 'value="submission_exported"', "selected");
+    expect(option).toHaveLength(1);
+    expect(html).toContain(">submission_exported</option>");
+    expect(tags(html, "option", "selected")).toHaveLength(2);
+  });
+
+  it("does not duplicate a filter value that is already an option", () => {
+    const html = list({
+      filter: { actorEmail: "staff.member@example.com", action: "form_closed" },
+    });
+    expect(tags(html, "option", 'value="staff.member@example.com"')).toHaveLength(1);
+    expect(tags(html, "option", 'value="form_closed"')).toHaveLength(1);
   });
 });
 
@@ -152,8 +182,8 @@ describe("activityHref", () => {
     expect(activityHref(ID, { actorEmail: "a@example.com", action: "form_closed" })).toBe(
       `/admin/forms/${ID}/activity?actor=a%40example.com&action=form_closed`,
     );
-    expect(activityHref(ID, { before: "2026-10-09T14:30:00.000Z" })).toBe(
-      `/admin/forms/${ID}/activity?before=2026-10-09T14%3A30%3A00.000Z`,
+    expect(activityHref(ID, { before: "2026-10-09T14:30:00.000Z", beforeId: "x1" })).toBe(
+      `/admin/forms/${ID}/activity?before=2026-10-09T14%3A30%3A00.000Z&beforeId=x1`,
     );
   });
 });

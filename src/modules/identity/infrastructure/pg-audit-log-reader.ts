@@ -35,7 +35,13 @@ export class PgAuditLogReader implements AuditLogReader {
     }
     if (query.before !== undefined) {
       params.push(query.before);
-      where.push(`created_at < $${String(params.length)}`);
+      const at = `$${String(params.length)}`;
+      if (query.beforeId === undefined) {
+        where.push(`created_at < ${at}`);
+      } else {
+        params.push(query.beforeId);
+        where.push(`(created_at, id) < (${at}, $${String(params.length)}::uuid)`);
+      }
     }
     params.push(limit);
     const { rows } = await this.pool.query<Row>(

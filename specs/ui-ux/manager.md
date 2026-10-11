@@ -201,8 +201,12 @@ target. Every entry of this tab concerns the form itself, so the target is a
 link to the overview, followed by the entry's details when it has any. An
 action written by another module is shown as stored. Filter by actor and
 action with a plain GET form, so a filtered view is a shareable link. A page
-holds 50 entries; when it is full, "Older entries" continues from the oldest
-one shown. Export as CSV comes with the audit page and has no control here
+holds 50 entries; "Older entries" appears only when older ones exist and
+continues from the oldest one shown. The cursor is the pair (time, id) of that
+entry, so entries written at the same instant are never skipped. A filter value
+the menus do not list (an actor no longer in the list, an action of another
+module) is added as an option, so the menus always show the filter in force.
+Export as CSV comes with the audit page and has no control here
 until then.
 
 ## Operations page

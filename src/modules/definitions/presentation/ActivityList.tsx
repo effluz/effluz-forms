@@ -7,7 +7,7 @@ import { cx, styles } from "@/shared/presentation/styles";
 import local from "./tabs.module.css";
 import { formatDate, formHref } from "./view-models";
 
-/** Entries on one page; a full page links to the older ones. */
+/** Entries on one page; `formActivity` reports whether older ones exist. */
 export const ACTIVITY_PAGE_SIZE = 50;
 
 const ACTOR_ID = "activity-actor";
@@ -15,11 +15,15 @@ const ACTION_ID = "activity-action";
 
 type DefinitionsAction = (typeof definitionsAuditActions)[number];
 
-/** The query a link to the activity tab carries; `before` is the ISO instant of the oldest entry shown. */
+/**
+ * The query a link to the activity tab carries. `before` and `beforeId` are the ISO instant
+ * and the id of the oldest entry shown: together they are the paging cursor.
+ */
 export interface ActivityQuery {
   actorEmail?: string;
   action?: string;
   before?: string;
+  beforeId?: string;
 }
 
 /** The activity tab of a form, with the filter and paging in the query string. */
@@ -28,6 +32,7 @@ export function activityHref(formId: string, query: ActivityQuery): string {
   if (query.actorEmail) params.set("actor", query.actorEmail);
   if (query.action) params.set("action", query.action);
   if (query.before) params.set("before", query.before);
+  if (query.before && query.beforeId) params.set("beforeId", query.beforeId);
   const search = params.toString();
   const base = formHref(formId, "activity");
   return search === "" ? base : `${base}?${search}`;
@@ -87,12 +92,23 @@ function cells(entry: AuditRecord, formId: string) {
 export function ActivityList(props: {
   entries: AuditRecord[];
   actors: string[];
+  /** Whether entries older than the last one exist; see `FormActivity.hasMore`. */
+  hasMore: boolean;
   filter: ActivityFilter;
   formId: string;
 }) {
-  const { entries, actors, filter, formId } = props;
+  const { entries, actors, hasMore, filter, formId } = props;
   const oldest = entries[entries.length - 1];
-  const hasMore = entries.length >= (filter.limit ?? ACTIVITY_PAGE_SIZE) && oldest !== undefined;
+  // A filter value the menus do not list (an actor no longer in the list, an action of
+  // another module) is added, so the select always shows the filter in force.
+  const actorOptions =
+    filter.actorEmail === undefined || actors.includes(filter.actorEmail)
+      ? actors
+      : [...actors, filter.actorEmail].sort();
+  const extraAction =
+    filter.action !== undefined && actionLabel(filter.action) === filter.action
+      ? filter.action
+      : undefined;
   return (
     <section className={local.tab}>
       <h2 className={local.heading}>
@@ -110,7 +126,7 @@ export function ActivityList(props: {
             defaultValue={filter.actorEmail ?? ""}
           >
             <option value="">{bothLanguages(copy["au.any_actor"])}</option>
-            {actors.map((email) => (
+            {actorOptions.map((email) => (
               <option key={email} value={email}>
                 {email}
               </option>
@@ -133,6 +149,7 @@ export function ActivityList(props: {
                 {bothLanguages(copy[actionKey(action)])}
               </option>
             ))}
+            {extraAction === undefined ? null : <option value={extraAction}>{extraAction}</option>}
           </select>
         </div>
         <button className={styles.button} type="submit">
@@ -150,13 +167,14 @@ export function ActivityList(props: {
           rows={entries.map((entry) => ({ key: entry.id, cells: cells(entry, formId) }))}
         />
       )}
-      {hasMore ? (
+      {hasMore && oldest !== undefined ? (
         <a
           className={cx(styles.button, local.older)}
           href={activityHref(formId, {
             ...(filter.actorEmail === undefined ? {} : { actorEmail: filter.actorEmail }),
             ...(filter.action === undefined ? {} : { action: filter.action }),
             before: oldest.at.toISOString(),
+            beforeId: oldest.id,
           })}
         >
           <Bilingual k="au.older" />

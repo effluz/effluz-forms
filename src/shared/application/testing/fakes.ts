@@ -11,7 +11,7 @@
  *   structural twins of identity's `AuditEntry`, `AuditRecord` and `AuditQuery`,
  *   and the personal-data guard is passed in (identity's `assertNoPersonalData`).
  * - `InMemoryAuditLogReader`: reads the same `entries`; ids are `audit-<n>` by
- *   insertion order. Mirrors `PgAuditLogReader` ordering, filters and cap.
+ *   insertion order. Mirrors `PgAuditLogReader` ordering, filters (including the `(createdAt, id)` cursor) and cap.
  *
  * Synthetic data only. Not for production code.
  */
@@ -103,6 +103,7 @@ export interface FakeAuditQuery {
   action?: string;
   actorEmail?: string;
   before?: Date;
+  beforeId?: string;
   limit: number;
 }
 
@@ -122,6 +123,12 @@ export class InMemoryAuditLog {
   }
 }
 
+/** The insertion number inside an `audit-<n>` id; an id that is not one sorts first. */
+function fakeAuditOrdinal(id: string): number {
+  const match = /^audit-(\d+)$/.exec(id);
+  return match?.[1] === undefined ? 0 : Number(match[1]);
+}
+
 export class InMemoryAuditLogReader {
   constructor(private readonly log: InMemoryAuditLog) {}
 
@@ -129,11 +136,19 @@ export class InMemoryAuditLogReader {
     const limit = Math.min(Math.max(Math.floor(query.limit), 0), AUDIT_PAGE_MAX);
     const found = this.log.entries
       .map(({ entry, at }, index) => ({ entry, at, index }))
-      .filter(({ entry, at }) => {
+      .filter(({ entry, at, index }) => {
         if (entry.targetId !== query.targetId) return false;
         if (query.action !== undefined && entry.action !== query.action) return false;
         if (query.actorEmail !== undefined && entry.actorEmail !== query.actorEmail) return false;
-        if (query.before !== undefined && at.getTime() >= query.before.getTime()) return false;
+        if (query.before !== undefined) {
+          const cut = query.before.getTime();
+          if (at.getTime() > cut) return false;
+          if (at.getTime() === cut) {
+            // Same instant: with an id cursor keep only rows after it, otherwise none.
+            if (query.beforeId === undefined) return false;
+            if (index + 1 >= fakeAuditOrdinal(query.beforeId)) return false;
+          }
+        }
         return true;
       })
       .sort((a, b) => b.at.getTime() - a.at.getTime() || b.index - a.index)

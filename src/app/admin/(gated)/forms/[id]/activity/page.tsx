@@ -19,15 +19,23 @@ function first(value: string | string[] | undefined): string {
   return ((Array.isArray(value) ? value[0] : value) ?? "").trim();
 }
 
-/** The filter the query string asks for; blanks and an unreadable instant are ignored. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The filter the query string asks for; blanks and an unreadable instant are ignored, and
+ * `beforeId` counts only next to a readable `before` and only as a UUID.
+ */
 function filterOf(params: Record<string, string | string[] | undefined>): ActivityFilter {
   const actor = first(params.actor);
   const action = first(params.action);
   const before = new Date(first(params.before));
+  const beforeId = first(params.beforeId);
+  const cursor = !Number.isNaN(before.getTime());
   return {
     ...(actor === "" ? {} : { actorEmail: actor }),
     ...(action === "" ? {} : { action }),
-    ...(Number.isNaN(before.getTime()) ? {} : { before }),
+    ...(cursor ? { before } : {}),
+    ...(cursor && UUID.test(beforeId) ? { beforeId } : {}),
     limit: ACTIVITY_PAGE_SIZE,
   };
 }
@@ -41,6 +49,8 @@ export default async function ActivityPage(props: {
   const { container } = await pageSession(formHref(id, "activity"));
   if ((await shareInfo(container.definitions, id)) === null) notFound();
   const filter = filterOf(await props.searchParams);
-  const { entries, actors } = await formActivity(container.definitions, id, filter);
-  return <ActivityList entries={entries} actors={actors} filter={filter} formId={id} />;
+  const { entries, actors, hasMore } = await formActivity(container.definitions, id, filter);
+  return (
+    <ActivityList entries={entries} actors={actors} hasMore={hasMore} filter={filter} formId={id} />
+  );
 }

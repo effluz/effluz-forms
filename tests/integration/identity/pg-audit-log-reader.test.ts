@@ -72,6 +72,42 @@ describe("PgAuditLogReader", () => {
     expect(first).toHaveLength(3);
   });
 
+  it("pages through rows that share one instant with the (createdAt, id) cursor", async () => {
+    await uowf.run(async (uow) => {
+      for (const action of ["a", "b", "c"]) {
+        await log.record(uow, { action, actorEmail: null, targetId: "form-1", ip: null }, t1);
+      }
+    });
+    const first = await reader.listByTarget({ targetId: "form-1", limit: 2 });
+    const last = first[first.length - 1];
+    if (last === undefined) throw new Error("expected a first page");
+
+    const next = await reader.listByTarget({
+      targetId: "form-1",
+      before: last.at,
+      beforeId: last.id,
+      limit: 2,
+    });
+
+    expect(next).toHaveLength(1);
+    expect(new Set([...first, ...next].map((r) => r.id)).size).toBe(3);
+  });
+
+  it("skips the rest of an instant when the cursor is the timestamp alone", async () => {
+    await uowf.run(async (uow) => {
+      for (const action of ["a", "b", "c"]) {
+        await log.record(uow, { action, actorEmail: null, targetId: "form-1", ip: null }, t1);
+      }
+    });
+    const first = await reader.listByTarget({ targetId: "form-1", limit: 2 });
+    const last = first[first.length - 1];
+    if (last === undefined) throw new Error("expected a first page");
+
+    const next = await reader.listByTarget({ targetId: "form-1", before: last.at, limit: 2 });
+
+    expect(next).toEqual([]);
+  });
+
   it("filters by action", async () => {
     await seed();
     const found = await reader.listByTarget({

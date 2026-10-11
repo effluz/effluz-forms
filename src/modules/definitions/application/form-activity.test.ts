@@ -65,9 +65,65 @@ describe("formActivity", () => {
     await formActivity(deps, FORM_ID, { actorEmail: EDITOR.email, limit: 10 });
 
     expect(calls).toEqual([
-      { targetId: FORM_ID, action: "form_published", before, limit: 50 },
-      { targetId: FORM_ID, actorEmail: EDITOR.email, limit: 10 },
+      { targetId: FORM_ID, action: "form_published", before, limit: 51 },
+      { targetId: FORM_ID, actorEmail: EDITOR.email, limit: 11 },
     ]);
-    expect(first).toEqual({ entries: [], actors: [`actor-of-${FORM_ID}`] });
+    expect(first).toEqual({ entries: [], actors: [`actor-of-${FORM_ID}`], hasMore: false });
+  });
+
+  it("passes the (createdAt, id) cursor through", async () => {
+    const calls: AuditQuery[] = [];
+    const reader: AuditLogReader = {
+      listByTarget: (query) => {
+        calls.push(query);
+        return Promise.resolve([]);
+      },
+      actorsForTarget: () => Promise.resolve([]),
+    };
+    const deps: DefinitionsDeps = { ...makeDefinitionsDeps(), auditReader: reader };
+    const before = new Date("2026-10-05T00:00:00Z");
+
+    await formActivity(deps, FORM_ID, { before, beforeId: fakeUuid(9) });
+
+    expect(calls).toEqual([{ targetId: FORM_ID, before, beforeId: fakeUuid(9), limit: 51 }]);
+  });
+
+  it("reports whether older entries exist and trims the extra row", async () => {
+    const deps = makeDefinitionsDeps();
+    await seedLog(deps);
+
+    const more = await formActivity(deps, FORM_ID, { limit: 2 });
+    const exact = await formActivity(deps, FORM_ID, { limit: 3 });
+
+    expect(more.entries.map((e) => e.at)).toEqual([
+      new Date("2026-10-03T00:00:00Z"),
+      new Date("2026-10-02T00:00:00Z"),
+    ]);
+    expect(more.hasMore).toBe(true);
+    expect(exact.entries).toHaveLength(3);
+    expect(exact.hasMore).toBe(false);
+  });
+
+  it("pages through entries that share one instant without skipping any", async () => {
+    const deps = makeDefinitionsDeps();
+    const at = new Date("2026-10-06T00:00:00Z");
+    await deps.uow.run(async (uow) => {
+      for (const action of ["a", "b", "c"]) {
+        await deps.audit.record(uow, { action, actorEmail: null, targetId: FORM_ID, ip: null }, at);
+      }
+    });
+
+    const page1 = await formActivity(deps, FORM_ID, { limit: 2 });
+    const last = page1.entries[page1.entries.length - 1];
+    if (last === undefined) throw new Error("expected a first page");
+    const page2 = await formActivity(deps, FORM_ID, {
+      limit: 2,
+      before: last.at,
+      beforeId: last.id,
+    });
+
+    expect(page1.hasMore).toBe(true);
+    expect(page2.entries.map((e) => e.action)).toEqual(["a"]);
+    expect(page2.hasMore).toBe(false);
   });
 });

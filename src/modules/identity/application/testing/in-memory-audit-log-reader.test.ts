@@ -35,6 +35,32 @@ describe("InMemoryAuditLogReader", () => {
     expect(await reader.listByTarget({ targetId: "form-1", limit: 1 })).toHaveLength(1);
   });
 
+  it("pages through entries of one instant with the (createdAt, id) cursor", async () => {
+    const log = new InMemoryAuditLog();
+    const base = { ip: null, targetId: "form-1", actorEmail: null };
+    for (const action of ["a", "b", "c"]) await log.record(uow, { ...base, action }, t1);
+    const reader = new InMemoryAuditLogReader(log);
+
+    const first = await reader.listByTarget({ targetId: "form-1", limit: 2 });
+    const last = first[first.length - 1];
+    if (last === undefined) throw new Error("expected a first page");
+    const next = await reader.listByTarget({
+      targetId: "form-1",
+      before: last.at,
+      beforeId: last.id,
+      limit: 2,
+    });
+    const timestampOnly = await reader.listByTarget({
+      targetId: "form-1",
+      before: last.at,
+      limit: 2,
+    });
+
+    expect(first.map((r) => r.action)).toEqual(["c", "b"]);
+    expect(next.map((r) => r.action)).toEqual(["a"]);
+    expect(timestampOnly).toEqual([]);
+  });
+
   it("lists distinct actors sorted", async () => {
     const reader = await setup();
     expect(await reader.actorsForTarget("form-1")).toEqual(["ana@example.com", "ben@example.com"]);

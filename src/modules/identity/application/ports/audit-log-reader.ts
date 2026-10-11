@@ -13,8 +13,15 @@ export interface AuditQuery {
   targetId: string;
   action?: string;
   actorEmail?: string;
-  /** Only entries strictly older than this instant. */
+  /**
+   * Paging cursor. With `before` alone, only entries strictly older than that
+   * instant. With `before` and `beforeId` together the cursor is the pair
+   * `(createdAt, id)`: only entries that sort after that row in the listing
+   * order, so rows sharing the instant of the last row shown are not skipped.
+   * `beforeId` without `before` is ignored.
+   */
   before?: Date;
+  beforeId?: string;
   limit: number;
 }
 
