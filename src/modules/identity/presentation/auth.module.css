@@ -6,7 +6,7 @@
 
 .page {
   /* color.text.default */
-  --text: #372549;
+  --text: #1a1423;
   /* color.surface.page.staff, color.surface.card, color.border.default */
   --surface-page: #f4f3fa;
   --surface-card: #ffffff;

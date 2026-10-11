@@ -8,7 +8,7 @@ import { copy, type CopyKey } from "./copy";
  */
 
 const STYLE = [
-  "body{margin:0;background:#f4f3fa;color:#372549;font:15px/1.6 Poppins,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}",
+  "body{margin:0;background:#f4f3fa;color:#1a1423;font:15px/1.6 Poppins,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}",
   "main{box-sizing:border-box;max-width:640px;margin:64px auto 0;padding:32px;background:#fff;border:1px solid #eff0f5;border-radius:16px}",
   "h1{margin:0 0 16px;font-size:24px;font-weight:600;line-height:1.2}",
   "p{margin:0 0 24px}",
