@@ -2,17 +2,21 @@ import { escapeHtml } from "../rich-text-html";
 
 // Colors and font are design-system tokens (design-system/tokens.json), written out because
 // email clients cannot read CSS variables.
-const TEXT = "#372549"; // color.text.default
+const TEXT = "#1A1423"; // color.text.default (brand.ink)
+const LINK = "#372549"; // color.text.link (brand.plum)
 const MUTED = "#774C60"; // color.text.muted
 const PAGE = "#FFF3EF"; // color.surface.page.public
 const CARD = "#FFFFFF"; // color.surface.card
 const BORDER = "#EFF0F5"; // color.border.default
 const FONT = "Poppins, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"; // font.family.sans
 
+/** The token values above, exposed so a test can hold them to design-system/tokens.json. */
+export const EMAIL_TOKENS = { TEXT, LINK, MUTED, PAGE, CARD, BORDER, FONT } as const;
+
 /** Inline styles for rich-text blocks in the body. */
 export const BODY_STYLE = {
   paragraph: `margin:0 0 16px;font:17px/1.6 ${FONT};color:${TEXT}`,
-  link: `color:${TEXT};text-decoration:underline`,
+  link: `color:${LINK};text-decoration:underline`,
 };
 
 /**
