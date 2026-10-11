@@ -37,7 +37,7 @@ describe("specTableRows", () => {
     const rows = specTableRows("specs/ui-ux/renderer.md", "Fixed chrome copy");
     expect(rows.get("skip_link")).toEqual(["Skip to form", "Ir al formulario"]);
     const catalog = specTableRows("specs/ui-ux/renderer.md", "Message catalog");
-    expect(catalog.get("files min")?.[0]).toBe("Upload at least {n} files for {label}");
+    expect(catalog.get("files min one")?.[0]).toBe("Upload at least {n} file for {label}");
   });
 
   it("fails loudly for a heading that does not exist", () => {
