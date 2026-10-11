@@ -16,6 +16,7 @@ const stub = defineFieldType({
   isEmpty: (a) => !a,
   exportHeaders: (label) => [label],
   exportCells: (a) => [a === undefined ? "" : a ? "yes" : "no"],
+  defaultSettings: () => ({}),
   fixtures: { settings: [{}], validAnswers: [true], invalidAnswers: ["yes"], emptyAnswer: false },
 });
 

@@ -60,3 +60,13 @@ describe("consent", () => {
     });
   });
 });
+
+describe("consent default settings", () => {
+  it("parses, with empty text and every checklist item unchecked", () => {
+    const defaults = consent.defaultSettings({
+      newId: () => "00000001-0000-4000-8000-000000000000",
+    });
+    expect(consent.settingsSchema.safeParse(defaults).success).toBe(true);
+    expect(defaults).toEqual({ text: {}, coveredItems: [] });
+  });
+});

@@ -358,7 +358,8 @@ const handlers: { [K in DraftCommand["kind"]]: Handler<K> } = {
     if (isInput(registry, type) && inputCount(registry, page) >= LIMITS.inputFieldsPerPage)
       return reject("limit_fields", { max: LIMITS.inputFieldsPerPage });
     const key = newKey(ids, "f");
-    // The registry has no default-settings hook: the type's schema defaults apply on parse.
+    // An unregistered type keeps `{}` and is reported by parseDraft.
+    const settings: unknown = registry.has(type) ? registry.get(type).defaultSettings(ids) : {};
     const field: Field = {
       key,
       type,
@@ -366,7 +367,7 @@ const handlers: { [K in DraftCommand["kind"]]: Handler<K> } = {
       required: false,
       personal: false,
       validation: [],
-      settings: {},
+      settings,
     };
     page.fields.splice(at, 0, field);
     return finish(next, registry, key);
@@ -392,16 +393,22 @@ const handlers: { [K in DraftCommand["kind"]]: Handler<K> } = {
     return finish(next, registry);
   },
 
-  change_field_type(next, { fieldKey, type }, { registry }) {
+  change_field_type(next, { fieldKey, type }, { registry, ids }) {
     const found = locateField(next, fieldKey);
     const field = found?.page.fields[found.fi];
     if (!field) return reject("unknown_field", { key: fieldKey });
     if (!isCompatibleChange(field.type, type))
       return reject("incompatible_type", { from: field.type, to: type });
-    const allowed = registry.has(type) ? registry.get(type).allowedRules : [];
+    if (!registry.has(type)) {
+      field.type = type;
+      return finish(next, registry);
+    }
+    const def = registry.get(type);
+    // Settings the new type accepts carry over; otherwise the new type starts from its defaults.
+    const carried = def.settingsSchema.safeParse(field.settings);
     field.type = type;
-    field.validation = field.validation.filter((r) => allowed.includes(r.rule));
-    field.settings = {};
+    field.validation = field.validation.filter((r) => def.allowedRules.includes(r.rule));
+    field.settings = carried.success ? carried.data : def.defaultSettings(ids);
     return finish(next, registry);
   },
 

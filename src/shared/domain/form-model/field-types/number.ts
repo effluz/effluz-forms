@@ -10,6 +10,7 @@ export const numberType = defineFieldType({
     integerOnly: z.boolean().default(false),
     unit: localizedTextSchema.optional(),
   }),
+  defaultSettings: () => ({ integerOnly: false }),
   answerSchema: z.number(),
   allowedRules: ["min_value", "max_value"],
   allowedOperators: [

@@ -3,6 +3,8 @@
 Status: accepted
 Date: 2026-10-10
 Amended 2026-10-10: the form model moved to the shared kernel, ADR 0022
+Amended 2026-10-10: a required `defaultSettings(ids)` hook gives the smallest
+settings a newly added field parses with; the conformance suite checks it
 
 ## Context
 

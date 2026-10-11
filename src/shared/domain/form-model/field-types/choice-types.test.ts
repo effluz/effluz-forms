@@ -112,3 +112,34 @@ describe("checkbox", () => {
     expect(checkbox.exportCells(false, {}, "en", "bilingual")).toEqual(["no"]);
   });
 });
+
+describe("default settings", () => {
+  function counter() {
+    let n = 0;
+    return {
+      newId: () => {
+        n += 1;
+        return `ABCD${n.toString(16).padStart(4, "0")}-0000-4000-8000-000000000000`;
+      },
+    };
+  }
+  it.each([singleChoice, multipleChoice].map((d) => [d.id, d] as const))(
+    "%s parses its defaults: two options with generated keys and empty labels",
+    (_id, def) => {
+      const defaults = def.defaultSettings(counter());
+      expect(def.settingsSchema.safeParse(defaults).success).toBe(true);
+      expect(defaults.options).toEqual([
+        { key: "o_abcd0001", label: {} },
+        { key: "o_abcd0002", label: {} },
+      ]);
+    },
+  );
+  it("single_choice starts as radio buttons", () => {
+    expect(singleChoice.defaultSettings(counter()).display).toBe("radio");
+  });
+  it("checkbox parses its own defaults", () => {
+    expect(checkbox.settingsSchema.safeParse(checkbox.defaultSettings(counter())).success).toBe(
+      true,
+    );
+  });
+});

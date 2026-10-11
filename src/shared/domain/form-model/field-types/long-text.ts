@@ -13,6 +13,7 @@ export const longText = defineFieldType({
     placeholder: localizedTextSchema.optional(),
     rows: z.number().int().min(2).max(12).default(4),
   }),
+  defaultSettings: () => ({ rows: 4 }),
   answerSchema: z.string(),
   allowedRules: ["min_length", "max_length"],
   maxLength: LIMITS.longTextMax,

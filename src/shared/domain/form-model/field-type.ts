@@ -65,6 +65,11 @@ export interface FieldTypeDefinition<S = unknown, A = unknown> {
   isInput: boolean;
   collectsPersonalData: boolean;
   settingsSchema: z.ZodType<S>;
+  /**
+   * The smallest settings `settingsSchema` accepts, for a newly added field.
+   * Publish validation, not parsing, reports what staff still have to fill.
+   */
+  defaultSettings(ids: { newId(): string }): NoInfer<S>;
   answerSchema: z.ZodType<A>;
   allowedRules: readonly RuleId[];
   allowedOperators: readonly OperatorId[];

@@ -33,6 +33,7 @@ export const consent = defineFieldType({
   isInput: true,
   collectsPersonalData: false,
   settingsSchema: settings,
+  defaultSettings: () => ({ text: {}, coveredItems: [] }),
   answerSchema: z.object({
     accepted: z.literal(true),
     textVersion: z.string().regex(/^[0-9a-f]{16}$/),

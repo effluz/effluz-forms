@@ -94,3 +94,13 @@ describe("phone", () => {
     expect(phone.validate("1".repeat(5_000), {})).toEqual([]);
   });
 });
+
+describe("default settings", () => {
+  const ids = { newId: () => "00000001-0000-4000-8000-000000000000" };
+  it.each([shortText, longText, email, phone].map((d) => [d.id, d] as const))(
+    "%s parses its own defaults",
+    (_id, def) => {
+      expect(def.settingsSchema.safeParse(def.defaultSettings(ids)).success).toBe(true);
+    },
+  );
+});

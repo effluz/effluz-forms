@@ -71,6 +71,19 @@ const checks: readonly { name: string; run: (def: AnyFieldType) => string | unde
     },
   },
   {
+    name: "parses its default settings",
+    run: (def) => {
+      let n = 0;
+      const ids = {
+        newId: () => `${(++n).toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`,
+      };
+      const defaults: unknown = def.defaultSettings(ids);
+      return def.settingsSchema.safeParse(defaults).success
+        ? undefined
+        : `default settings ${show(defaults)} do not parse`;
+    },
+  },
+  {
     name: "accepts valid and rejects invalid answers by shape",
     run: (def) => {
       for (const a of def.fixtures.validAnswers)

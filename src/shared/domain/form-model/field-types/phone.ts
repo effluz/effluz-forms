@@ -9,6 +9,7 @@ export const phone = defineFieldType({
   isInput: true,
   collectsPersonalData: true,
   settingsSchema: z.object({}),
+  defaultSettings: () => ({}),
   answerSchema: z.string(),
   allowedRules: ["min_length", "max_length"],
   maxLength: LIMITS.shortTextMax,

@@ -76,3 +76,17 @@ describe("section", () => {
     });
   });
 });
+
+describe("default settings", () => {
+  const ids = { newId: () => "00000001-0000-4000-8000-000000000000" };
+  it("file_upload parses its own minimum: one image kind, one file", () => {
+    const defaults = fileUpload.defaultSettings(ids);
+    expect(fileUpload.settingsSchema.safeParse(defaults).success).toBe(true);
+    expect(defaults).toMatchObject({ kinds: ["image"], maxFiles: 1 });
+  });
+  it("section parses its own defaults with an empty title", () => {
+    const defaults = section.defaultSettings(ids);
+    expect(section.settingsSchema.safeParse(defaults).success).toBe(true);
+    expect(defaults).toEqual({ title: {} });
+  });
+});

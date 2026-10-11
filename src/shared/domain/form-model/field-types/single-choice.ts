@@ -2,6 +2,7 @@ import { z } from "zod";
 import { defineFieldType } from "../field-type";
 import { asKey, keySchema } from "../keys";
 import {
+  defaultOptions,
   optionLabel,
   optionLabelTexts,
   optionsSchema,
@@ -28,6 +29,7 @@ export const singleChoice = defineFieldType({
   isInput: true,
   collectsPersonalData: false,
   settingsSchema: settings,
+  defaultSettings: (ids) => ({ options: defaultOptions(ids), display: "radio" as const }),
   answerSchema: keySchema,
   allowedRules: [],
   allowedOperators: ["equals", "not_equals", "is_one_of", "is_empty", "is_not_empty"],

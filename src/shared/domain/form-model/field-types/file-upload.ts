@@ -18,6 +18,7 @@ export const fileUpload = defineFieldType({
   isInput: true,
   collectsPersonalData: true,
   settingsSchema: settings,
+  defaultSettings: () => ({ kinds: ["image" as const], maxFiles: 1, maxSizeMb: LIMITS.fileSizeMb }),
   answerSchema: z.array(mediaIdSchema),
   allowedRules: ["min_files", "max_files"],
   allowedOperators: ["is_empty", "is_not_empty"],

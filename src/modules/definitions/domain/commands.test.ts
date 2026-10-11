@@ -379,12 +379,21 @@ describe("add_field", () => {
     });
   });
 
-  it("leaves settings a type cannot default to the document check", () => {
-    const result = run({ kind: "add_field", pageKey: k("p_first"), type: "single_choice" });
-    const r = rejection(result);
-    expect(r.code).toBe("invalid_document");
-    expect(r.issues?.[0]?.path).toBe("pages/0/fields/2/settings/options");
-  });
+  it.each(registry.list().map((d) => [d.id, d] as const))(
+    "adds a %s field with the type's default settings to an empty page",
+    (_id, def) => {
+      const empty = ok(run({ kind: "add_page" }));
+      const result = applyCommand(
+        empty,
+        { kind: "add_field", pageKey: k("p_00000001"), type: def.id },
+        deps(),
+      );
+      const doc = ok(result);
+      expect(parseDraft(doc, registry).ok).toBe(true);
+      const added = field(doc, result.ok && result.createdKey ? result.createdKey : "");
+      expect(def.settingsSchema.safeParse(added.settings).success).toBe(true);
+    },
+  );
 });
 
 describe("update_field", () => {
@@ -480,7 +489,7 @@ describe("change_field_type", () => {
     expect(field(back, "f_story").type).toBe("short_text");
   });
 
-  it("keeps texts, flags and visibility, drops disallowed rules and resets settings", () => {
+  it("keeps texts, flags, visibility and fitting settings, drops disallowed rules", () => {
     // Put the choice first so the name field may depend on it.
     const reordered = ok(
       run({ kind: "move_field", fieldKey: k("f_kids"), toPageKey: k("p_first"), toIndex: 0 }),
@@ -507,7 +516,28 @@ describe("change_field_type", () => {
     expect(changed.personal).toBe(true);
     expect(changed.visibility).toEqual(before.visibility);
     expect(changed.validation).toEqual([{ rule: "max_length", value: 80 }]);
-    expect(changed.settings).toEqual({ rows: 4 });
+    expect(changed.settings).toEqual({
+      placeholder: { en: "Your name", es: "Tu nombre" },
+      rows: 4,
+    });
+  });
+
+  it("keeps a short_text placeholder when changing to long_text", () => {
+    const doc = ok(run({ kind: "change_field_type", fieldKey: k("f_name"), type: "long_text" }));
+    expect(field(doc, "f_name").settings).toMatchObject({
+      placeholder: { en: "Your name", es: "Tu nombre" },
+    });
+  });
+
+  it("falls back to the new type's defaults when the old settings do not fit", () => {
+    const base = fixture();
+    const story = base.pages[1]?.fields[0];
+    if (!story) throw new Error("no field");
+    story.settings = { rows: 4, placeholder: { en: 3 } };
+    const doc = ok(
+      run({ kind: "change_field_type", fieldKey: k("f_story"), type: "short_text" }, base),
+    );
+    expect(field(doc, "f_story").settings).toEqual({});
   });
 
   it("refuses any other change, in either direction", () => {

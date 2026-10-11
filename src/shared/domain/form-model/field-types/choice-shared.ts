@@ -6,7 +6,7 @@ import {
   resolveText,
 } from "@/shared/domain/localized-text";
 import type { PublishIssueDraft, SettingsText } from "../field-type";
-import { keySchema } from "../keys";
+import { asKey, type Key, keySchema } from "../keys";
 import { LIMITS } from "../limits";
 import type { Rule } from "../rules";
 
@@ -21,6 +21,22 @@ export const optionsSchema = z
     (opts) => new Set(opts.map((o) => o.key)).size === opts.length,
     "option keys must be unique",
   );
+
+const OPTION_KEY_HEX_LENGTH = 8;
+
+/** An option key: `o_` plus 8 hex characters of a fresh uuid, as draft keys are built. */
+export function newOptionKey(ids: { newId(): string }): Key {
+  const hex = ids.newId().replaceAll("-", "").toLowerCase().slice(0, OPTION_KEY_HEX_LENGTH);
+  return asKey(`o_${hex}`);
+}
+
+/** Two options with fresh keys and empty labels: the start of a new choice field. */
+export function defaultOptions(ids: { newId(): string }): Option[] {
+  return [
+    { key: newOptionKey(ids), label: {} },
+    { key: newOptionKey(ids), label: {} },
+  ];
+}
 
 /** Every option label is a required staff-authored text. */
 export function optionLabelTexts(options: readonly Option[]): SettingsText[] {

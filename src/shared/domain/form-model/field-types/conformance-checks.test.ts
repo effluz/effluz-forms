@@ -17,6 +17,13 @@ describe("conformanceChecks", () => {
   it("passes a conforming type", () => {
     expect(failing(checkbox)).toEqual([]);
   });
+  it("fails the defaults check when the default settings do not parse", () => {
+    const broken = defineFieldType({
+      ...fileUpload,
+      defaultSettings: () => ({ kinds: [], maxFiles: 1, maxSizeMb: 1 }),
+    });
+    expect(failing(broken)).toEqual(["parses its default settings"]);
+  });
   it("fails the export check when cells and headers disagree", () => {
     const broken = defineFieldType({
       ...checkbox,

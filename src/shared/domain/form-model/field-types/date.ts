@@ -16,6 +16,7 @@ export const date = defineFieldType({
   isInput: true,
   collectsPersonalData: false,
   settingsSchema: z.object({}),
+  defaultSettings: () => ({}),
   answerSchema: z.string().regex(ISO),
   allowedRules: ["min_date", "max_date", "not_future"],
   allowedOperators: [

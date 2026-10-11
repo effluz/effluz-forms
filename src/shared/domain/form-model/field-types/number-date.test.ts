@@ -37,3 +37,13 @@ describe("date", () => {
     expect(date.answerSchema.safeParse("30/02/2026").success).toBe(false);
   });
 });
+
+describe("default settings", () => {
+  const ids = { newId: () => "00000001-0000-4000-8000-000000000000" };
+  it.each([numberType, date].map((d) => [d.id, d] as const))(
+    "%s parses its own defaults",
+    (_id, def) => {
+      expect(def.settingsSchema.safeParse(def.defaultSettings(ids)).success).toBe(true);
+    },
+  );
+});

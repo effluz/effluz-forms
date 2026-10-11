@@ -2,6 +2,7 @@ import { z } from "zod";
 import { defineFieldType } from "../field-type";
 import { asKey, type Key, keySchema } from "../keys";
 import {
+  defaultOptions,
   optionLabel,
   optionLabelTexts,
   optionsSchema,
@@ -13,6 +14,7 @@ export const multipleChoice = defineFieldType({
   isInput: true,
   collectsPersonalData: false,
   settingsSchema: z.object({ options: optionsSchema }),
+  defaultSettings: (ids) => ({ options: defaultOptions(ids) }),
   answerSchema: z.array(keySchema),
   allowedRules: ["min_selected", "max_selected"],
   allowedOperators: ["contains", "not_contains", "is_empty", "is_not_empty"],

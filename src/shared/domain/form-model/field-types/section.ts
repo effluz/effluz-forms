@@ -10,6 +10,7 @@ export const section = defineFieldType({
     title: localizedTextSchema,
     description: localizedTextSchema.optional(),
   }),
+  defaultSettings: () => ({ title: {} }),
   answerSchema: z.undefined(),
   allowedRules: [],
   allowedOperators: [],

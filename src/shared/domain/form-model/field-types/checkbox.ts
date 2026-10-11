@@ -9,6 +9,7 @@ export const checkbox = defineFieldType({
   isInput: true,
   collectsPersonalData: false,
   settingsSchema: z.object({}),
+  defaultSettings: () => ({}),
   answerSchema: z.boolean(),
   allowedRules: ["must_be_true"],
   allowedOperators: ["equals", "not_equals"],
