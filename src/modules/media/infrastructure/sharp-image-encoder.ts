@@ -1,9 +1,12 @@
-import libheif from "libheif-js/wasm-bundle";
+import libheif, { type HeifImage } from "libheif-js/wasm-bundle";
 import sharp from "sharp";
 import type { EncodedImage, ImageEncoder } from "../application/ports/image-encoder";
 
 /** Images above this many pixels are refused before they are decoded. */
 export const MAX_INPUT_PIXELS = 50_000_000;
+
+/** How long a HEIC decode may take before the file is refused. */
+export const HEIC_DECODE_TIMEOUT_MS = 10_000;
 
 const QUALITY = 85;
 
@@ -51,17 +54,49 @@ async function toBytes(pipeline: sharp.Sharp): Promise<Uint8Array> {
 }
 
 async function reencodeHeic(bytes: Uint8Array): Promise<EncodedImage | null> {
-  const image = new libheif.HeifDecoder().decode(bytes)[0];
-  if (image === undefined) return null;
-  const width = image.get_width();
-  const height = image.get_height();
-  if (width <= 0 || height <= 0 || width * height > MAX_INPUT_PIXELS) return null;
-  const pixels = await new Promise<Uint8ClampedArray | null>((resolve) => {
+  // libheif keeps its handles in a WASM heap that is shared by the whole
+  // process and never shrinks: the decoder owns a context that only a later
+  // decode (or heif_context_free) releases, and every image wraps a handle that
+  // only free() releases. Release both on every path, including early returns.
+  const decoder = new libheif.HeifDecoder();
+  let images: HeifImage[] = [];
+  try {
+    images = decoder.decode(bytes);
+    const image = images[0];
+    if (image === undefined) return null;
+    const width = image.get_width();
+    const height = image.get_height();
+    if (width <= 0 || height <= 0 || width * height > MAX_INPUT_PIXELS) return null;
+    const pixels = await displayWithTimeout(image, width, height);
+    if (pixels === null) return null;
+    const jpeg = sharp(pixels, { raw: { width, height, channels: 4 } }).jpeg({ quality: QUALITY });
+    return { bytes: await toBytes(jpeg), contentType: "image/jpeg" };
+  } finally {
+    for (const image of images) image.free();
+    if (decoder.decoder !== null) {
+      libheif.heif_context_free(decoder.decoder);
+      decoder.decoder = null;
+    }
+  }
+}
+
+/**
+ * libheif-js runs the decode inside a setTimeout callback, so a throw there
+ * leaves its callback uncalled forever. The wait is bounded so a bad file
+ * yields a refusal instead of a hanging request.
+ */
+function displayWithTimeout(
+  image: HeifImage,
+  width: number,
+  height: number,
+): Promise<Uint8ClampedArray | null> {
+  return new Promise<Uint8ClampedArray | null>((resolve) => {
+    const timer = setTimeout(() => {
+      resolve(null);
+    }, HEIC_DECODE_TIMEOUT_MS);
     image.display({ data: new Uint8ClampedArray(width * height * 4), width, height }, (result) => {
+      clearTimeout(timer);
       resolve(result?.data ?? null);
     });
   });
-  if (pixels === null) return null;
-  const jpeg = sharp(pixels, { raw: { width, height, channels: 4 } }).jpeg({ quality: QUALITY });
-  return { bytes: await toBytes(jpeg), contentType: "image/jpeg" };
 }
