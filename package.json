@@ -20,6 +20,8 @@
     "db:down": "docker compose -f compose.dev.yml down"
   },
   "dependencies": {
+    "file-type": "^21.3.4",
+    "libheif-js": "^1.23.5",
     "next": "16.4.0",
     "openid-client": "^6.8.8",
     "pg": "^8.23.1",
@@ -28,6 +30,7 @@
     "re2js": "^2.8.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "sharp": "^0.34.5",
     "zod": "^4.6.5"
   },
   "devDependencies": {
