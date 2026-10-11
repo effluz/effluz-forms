@@ -31,6 +31,10 @@
   --link-hover: #b75d69;
   /* color.focus.ring (3.9:1 on the staff page and cards) */
   --focus: #b75d69;
+  /* color.text.error (6.6:1 on cards), also color.border.error */
+  --error: #9b1c1c;
+  /* shadow.floating */
+  --shadow-floating: 0 8px 24px rgba(55, 37, 73, 0.16);
 
   box-sizing: border-box;
   min-height: 100vh;
@@ -59,6 +63,7 @@
 .shell a:focus-visible,
 .shell button:focus-visible,
 .shell input:focus-visible,
+.shell select:focus-visible,
 .shell summary:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;

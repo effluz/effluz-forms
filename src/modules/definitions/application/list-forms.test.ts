@@ -95,7 +95,11 @@ describe("listForms", () => {
     if (!stored) throw new Error("seed failed");
     deps.store.forms.set(id, {
       ...stored,
-      settings: { ...stored.settings, closesAt: "2026-12-01T00:00:00.000Z" },
+      settings: {
+        ...stored.settings,
+        closesAt: "2026-12-01T00:00:00.000Z",
+        timezone: "America/Mexico_City",
+      },
     });
     const { rows } = await listForms(deps, EDITOR, { tab: "active" });
     expect(rows).toEqual([
@@ -109,6 +113,7 @@ describe("listForms", () => {
         total: 0,
         lastReceivedAt: null,
         closesAt: "2026-12-01T00:00:00.000Z",
+        timezone: "America/Mexico_City",
       },
     ]);
   });

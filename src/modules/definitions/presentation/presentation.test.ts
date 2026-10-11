@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { FormListRow } from "../application";
 import { FormsList } from "./FormsList";
 import { NewFormDialog } from "./NewFormDialog";
+import { carriedValues, refusedCreateLocation, type NewFormValues } from "./new-form-values";
 import { formatDate, formHref, statusTone, titleText } from "./view-models";
 
 const ID_1 = "00000001-0000-4000-8000-000000000001";
@@ -20,6 +21,7 @@ function row(overrides: Partial<FormListRow> = {}): FormListRow {
     total: 12,
     lastReceivedAt: new Date("2026-10-09T14:30:00Z"),
     closesAt: "2026-10-20T04:59:00Z",
+    timezone: "America/Panama",
     ...overrides,
   };
 }
@@ -66,12 +68,15 @@ describe("view models", () => {
     expect(statusTone("archived")).toBe("neutral");
   });
 
-  it("formats a date in the time zone and in UTC", () => {
+  it("formats a date in the time zone, labelled with it, and in UTC", () => {
     expect(formatDate("2026-10-09T14:30:00Z", "America/Panama")).toEqual({
-      local: "2026-10-09 09:30",
+      local: "2026-10-09 09:30 America/Panama",
       utc: "2026-10-09 14:30 UTC",
     });
-    expect(formatDate(new Date("2026-01-01T00:05:00Z"), "UTC").local).toBe("2026-01-01 00:05");
+    expect(formatDate(new Date("2026-01-01T00:05:00Z"), "UTC")).toEqual({
+      local: "2026-01-01 00:05 UTC",
+      utc: "2026-01-01 00:05 UTC",
+    });
   });
 
   it("builds the form's links", () => {
@@ -144,12 +149,34 @@ describe("FormsList", () => {
     expect(html).not.toMatch(/<strong[^>]*>0<\/strong>/);
   });
 
-  it("shows the last submission and the close date as times with a UTC title", () => {
+  it("shows each date in the form's zone and in UTC, both visible", () => {
     const html = list();
     const [last] = tags(html, "time", 'dateTime="2026-10-09T14:30:00.000Z"');
-    expect(last).toContain('title="2026-10-09 14:30 UTC"');
-    expect(html).toMatch(/<time [^>]*>2026-10-09 09:30<\/time>/);
-    expect(tags(html, "time", 'dateTime="2026-10-20T04:59:00.000Z"')).toHaveLength(1);
+    expect(last).not.toContain("title=");
+    expect(html).toMatch(
+      /<time [^>]*>2026-10-09 09:30 America\/Panama<span class="[^"]*">2026-10-09 14:30 UTC<\/span><\/time>/,
+    );
+    expect(html).toMatch(
+      /<time [^>]*>2026-10-19 23:59 America\/Panama<span class="[^"]*">2026-10-20 04:59 UTC<\/span><\/time>/,
+    );
+  });
+
+  it("uses each form's own time zone", () => {
+    const html = list({ rows: [row({ timezone: "Europe/Madrid", closesAt: null })] });
+    expect(html).toContain("2026-10-09 16:30 Europe/Madrid");
+  });
+
+  it("shows UTC once for a form kept in UTC", () => {
+    const html = list({ rows: [row({ timezone: "UTC", closesAt: null })] });
+    expect(html).toMatch(/<time [^>]*>2026-10-09 14:30 UTC<\/time>/);
+  });
+
+  it("reads an empty date as None to assistive technology", () => {
+    const html = list({ rows: [row({ lastReceivedAt: null, closesAt: null })] });
+    expect(count(html, /<span aria-hidden="true">—<\/span>/g)).toBe(2);
+    expect(
+      count(html, /<span class="[^"]*">None<span lang="es"[^>]*>Ninguna<\/span><\/span>/g),
+    ).toBe(2);
   });
 
   it("offers the overview links and only the allowed lifecycle actions in each row's menu", () => {
@@ -218,9 +245,9 @@ describe("NewFormDialog", () => {
   it("offers Blank, checked, and Duplicate with the forms to copy", () => {
     const html = dialog();
     expect(
-      tags(html, "input", 'type="radio"', 'name="start"', 'value="blank"', 'checked=""'),
+      tags(html, "input", 'type="radio"', 'name="kind"', 'value="blank"', 'checked=""'),
     ).toHaveLength(1);
-    const [duplicate] = tags(html, "input", 'type="radio"', 'name="start"', 'value="duplicate"');
+    const [duplicate] = tags(html, "input", 'type="radio"', 'name="kind"', 'value="duplicate"');
     expect(duplicate).not.toContain("checked");
     expect(tags(html, "select", 'name="source"')).toHaveLength(1);
     expect(html).toContain(
@@ -301,5 +328,84 @@ describe("NewFormDialog", () => {
     const html = dialog();
     expect(html).toMatch(/<a class="[^"]*" href="\/admin\/forms">Cancel/);
     expect(html).toMatch(/<button[^>]*type="submit">Create/);
+  });
+
+  it("is a section labelled by its heading, not an ARIA dialog", () => {
+    const html = dialog();
+    expect(html).not.toContain('role="dialog"');
+    const [section] = tags(html, "section", "aria-labelledby=");
+    const id = section?.match(/aria-labelledby="([^"]+)"/)?.[1];
+    expect(tags(html, "h1", `id="${id ?? "missing"}"`)).toHaveLength(1);
+  });
+
+  it("comes back filled in with the values carried after a refusal", () => {
+    const html = dialog({
+      error: "slug_taken",
+      values: {
+        kind: "duplicate",
+        titleEn: "Spring stories",
+        titleEs: "Historias de primavera",
+        languages: "es",
+        slug: "spring-stories",
+        source: ID_2,
+      },
+      sources: [
+        { id: ID_1, title: { en: "One" }, slug: "one" },
+        { id: ID_2, title: { en: "Two" }, slug: "two" },
+      ],
+    });
+    expect(tags(html, "input", 'name="kind"', 'value="duplicate"', "checked")).toHaveLength(1);
+    expect(tags(html, "input", 'name="kind"', 'value="blank"', "checked")).toHaveLength(0);
+    expect(tags(html, "input", 'name="title_en"', 'value="Spring stories"')).toHaveLength(1);
+    expect(tags(html, "input", 'name="title_es"', 'value="Historias de primavera"')).toHaveLength(
+      1,
+    );
+    expect(tags(html, "input", 'name="languages"', 'value="es"', "checked")).toHaveLength(1);
+    expect(tags(html, "input", 'name="languages"', "checked")).toHaveLength(1);
+    expect(tags(html, "input", 'name="slug"', 'value="spring-stories"')).toHaveLength(1);
+    expect(html).toMatch(new RegExp(`<option value="${ID_2}" selected="">Two</option>`));
+  });
+
+  it("falls back to Blank when the carried choice is Duplicate but nothing can be copied", () => {
+    const html = dialog({ sources: [], values: { kind: "duplicate" } });
+    expect(tags(html, "input", 'name="kind"', 'value="blank"', "checked")).toHaveLength(1);
+  });
+});
+
+describe("carried values", () => {
+  const typed: NewFormValues = {
+    kind: "blank",
+    titleEn: "Spring stories",
+    titleEs: "Historias de primavera",
+    languages: "bilingual",
+    slug: "spring-stories",
+    source: "",
+  };
+
+  it("round-trips the typed values through the refusal URL", () => {
+    const location = refusedCreateLocation("slug_taken", typed);
+    expect(location.startsWith("/admin/forms/new?error=slug_taken&")).toBe(true);
+    const params = Object.fromEntries(new URL(location, "https://forms.example.com").searchParams);
+    expect(carriedValues(params)).toEqual({
+      kind: "blank",
+      titleEn: "Spring stories",
+      titleEs: "Historias de primavera",
+      languages: "bilingual",
+      slug: "spring-stories",
+    });
+  });
+
+  it("leaves out values over their limit, in the URL and when reading it", () => {
+    const long = "x".repeat(501);
+    expect(refusedCreateLocation("title_missing", { ...typed, titleEn: long })).not.toContain(
+      "title_en",
+    );
+    expect(carriedValues({ title_en: long, slug: "s".repeat(65), source: "x".repeat(37) })).toEqual(
+      {},
+    );
+  });
+
+  it("ignores a malformed choice or language mode", () => {
+    expect(carriedValues({ kind: "other", languages: "fr" })).toEqual({});
   });
 });

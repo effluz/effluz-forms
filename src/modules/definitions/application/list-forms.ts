@@ -15,6 +15,8 @@ export interface FormListRow {
   total: number;
   lastReceivedAt: Date | null;
   closesAt: string | null;
+  /** The form's time zone, in which its dates are shown beside UTC. */
+  timezone: string;
 }
 
 export interface FormList {
@@ -68,6 +70,7 @@ async function toRow(
     total: summary.total,
     lastReceivedAt: summary.lastReceivedAt,
     closesAt: form.settings.closesAt ?? null,
+    timezone: form.settings.timezone,
   };
 }
 

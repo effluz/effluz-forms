@@ -54,12 +54,19 @@ beforeEach(() => {
 
 const BLANK = {
   csrf: CSRF,
-  start: "blank",
+  kind: "blank",
   title_en: "Spring stories",
   title_es: "Historias de primavera",
   languages: "bilingual",
   slug: "",
 };
+
+/** The dialog's query after a refusal, as a plain object. */
+function refusal(res: Response): Record<string, string> {
+  const location = res.headers.get("Location") ?? "";
+  expect(location.startsWith("/admin/forms/new?")).toBe(true);
+  return Object.fromEntries(new URL(location, BASE).searchParams);
+}
 
 function create(fields: Record<string, string>, cookie: string | null = `${COOKIE}=${SESSION_ID}`) {
   const headers = new Headers({ "x-forwarded-for": "203.0.113.7" });
@@ -116,22 +123,51 @@ describe("POST /admin/forms/create", () => {
     });
   });
 
+  it("drops a title typed for a language the chosen mode does not use", async () => {
+    await create({ ...BLANK, languages: "es" });
+    expect(definitions.store.forms.get(fakeUuid(1))).toMatchObject({
+      title: { es: "Historias de primavera" },
+      languages: "es",
+    });
+    expect(definitions.store.forms.get(fakeUuid(1))?.title).not.toHaveProperty("en");
+  });
+
   it("goes back to the dialog with slug_taken when the link name is in use", async () => {
     await seedForm(definitions, { slug: "spring-stories" });
     const res = await create({ ...BLANK, slug: "spring-stories" });
     expect(res.status).toBe(303);
-    expect(res.headers.get("Location")).toBe("/admin/forms/new?error=slug_taken");
+    expect(refusal(res)).toEqual({
+      error: "slug_taken",
+      kind: "blank",
+      title_en: "Spring stories",
+      title_es: "Historias de primavera",
+      languages: "bilingual",
+      slug: "spring-stories",
+    });
     expect(definitions.store.forms.size).toBe(1);
+  });
+
+  it("carries the source back for a refused duplicate", async () => {
+    const source = await seedForm(definitions, { slug: "autumn-stories" });
+    const res = await create({ ...BLANK, kind: "duplicate", source, slug: "autumn-stories" });
+    expect(refusal(res)).toMatchObject({ error: "slug_taken", kind: "duplicate", source });
+  });
+
+  it("does not carry a title longer than the redirect can hold", async () => {
+    const res = await create({ ...BLANK, title_en: "x".repeat(501), slug: "Not A Slug" });
+    const query = refusal(res);
+    expect(query).toMatchObject({ error: "slug_format", title_es: "Historias de primavera" });
+    expect(query).not.toHaveProperty("title_en");
   });
 
   it("goes back to the dialog with title_missing when a required title is blank", async () => {
     const res = await create({ ...BLANK, title_es: "  " });
-    expect(res.headers.get("Location")).toBe("/admin/forms/new?error=title_missing");
+    expect(refusal(res)).toMatchObject({ error: "title_missing", title_en: "Spring stories" });
   });
 
   it("duplicates the chosen form", async () => {
     const source = await seedForm(definitions, { slug: "autumn-stories" });
-    const res = await create({ ...BLANK, start: "duplicate", source });
+    const res = await create({ ...BLANK, kind: "duplicate", source });
     expect(res.status).toBe(303);
     expect(definitions.audit.entries.at(-1)?.entry.details).toMatchObject({ duplicateOf: source });
   });
@@ -143,13 +179,14 @@ describe("POST /admin/forms/create", () => {
   });
 
   it("goes back with source_not_found when Duplicate has no form chosen", async () => {
-    const res = await create({ ...BLANK, start: "duplicate", source: "" });
-    expect(res.headers.get("Location")).toBe("/admin/forms/new?error=source_not_found");
+    const res = await create({ ...BLANK, kind: "duplicate", source: "" });
+    expect(refusal(res)).toMatchObject({ error: "source_not_found", kind: "duplicate" });
   });
 
   it("refuses a language mode the dialog does not offer with 400", async () => {
     const res = await create({ ...BLANK, languages: "fr" });
     expect(res.status).toBe(400);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
     expect(definitions.store.forms.size).toBe(0);
   });
 });

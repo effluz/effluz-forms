@@ -46,12 +46,14 @@ function stamp(date: Date, timeZone: string): string {
 }
 
 /**
- * A moment as `YYYY-MM-DD HH:mm` in `timezone` and in UTC, the same in both
- * languages. See specs/ui-ux/manager.md, "Forms list (home)".
+ * A moment as `YYYY-MM-DD HH:mm` in `timezone`, labelled with the zone, and in
+ * UTC; the same in both languages. Both are shown. In UTC the two are equal.
+ * See specs/ui-ux/manager.md, "Forms list (home)".
  */
 export function formatDate(iso: string | Date, timezone: string): { local: string; utc: string } {
   const date = typeof iso === "string" ? new Date(iso) : iso;
-  return { local: stamp(date, timezone), utc: `${stamp(date, "UTC")} UTC` };
+  const utc = `${stamp(date, "UTC")} UTC`;
+  return { local: timezone === "UTC" ? utc : `${stamp(date, timezone)} ${timezone}`, utc };
 }
 
 export type FormSection = "settings" | "share" | "activity" | "edit";

@@ -45,8 +45,9 @@ two from 768, single column with full-screen panels below.
   depend on the search. A tab or search with no forms says
   `home.none_here`; `home.empty` is only for an installation with no forms
   at all.
-- Dates show in the default time zone (`America/Panama`) as
-  `YYYY-MM-DD HH:mm`, with the UTC time as the element's title.
+- Dates show in both the form's time zone and UTC, both visible:
+  `YYYY-MM-DD HH:mm` followed by the zone name, with the UTC time on a
+  second line. An empty date cell reads `home.none` to assistive technology.
 - "New form" button opens the dialog specified in `ui-ux/builder.md`.
 - A banner appears above the list only when something is wrong: worker
   heartbeat stale, dead jobs present, last backup older than two days. It
@@ -302,6 +303,7 @@ builder (status names, New form dialog).
 | home.version | v{n} | v{n} |
 | home.actions | Actions | Acciones |
 | home.open | Open | Abrir |
+| home.none | None | Ninguna |
 | shell.wordmark | Effluz | Effluz |
 | shell.signed_in_as | Signed in as {name} | Sesión iniciada como {name} |
 | shell.skip_to_main | Skip to main content | Saltar al contenido principal |

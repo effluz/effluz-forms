@@ -293,12 +293,15 @@ The first pass is a page at `/admin/forms/new` that works without
 JavaScript: one form posting both choices to `/admin/forms/create`, which
 answers with a 303 to the new form, or back to the page with `?error=` and
 the refusal code. The link name may be left empty, and the server then makes
-it from the title (`new.slug_auto`). Duplicate is a select of the active
-forms, and its title is typed rather than prefilled. A refusal shows one
-error row on the field concerned: `new.slug_taken`, `new.slug_reserved`,
-`new.slug_hint` for a malformed link name, `new.title_missing` and
-`new.source_missing`. Until the builder exists, a created form opens on its
-overview.
+it from the title (`new.slug_auto`). A title typed for a language the chosen
+mode does not use is dropped. Duplicate is a select of the active and closed
+forms (archived ones are left out), and its title is typed rather than
+prefilled. A refusal shows one error row on the field concerned:
+`new.slug_taken`, `new.slug_reserved`, `new.slug_hint` for a malformed link
+name, `new.title_missing` and `new.source_missing`. The redirect carries the
+typed values back (titles, language mode, link name, choice and source), so
+the page comes back filled in; a title over 500 characters is not carried.
+Until the builder exists, a created form opens on its overview.
 
 ## Keyboard reference
 

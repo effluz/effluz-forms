@@ -1,6 +1,7 @@
 import { pageSession } from "@/app/admin/_lib/page";
 import { listForms } from "@/modules/definitions/application";
 import { createFormError, NewFormDialog } from "@/modules/definitions/presentation/NewFormDialog";
+import { carriedValues } from "@/modules/definitions/presentation/new-form-values";
 import { Bilingual } from "@/shared/presentation/Bilingual";
 import { Breadcrumbs } from "@/shared/presentation/Breadcrumbs";
 import { pageMetadata } from "@/shared/presentation/metadata";
@@ -16,15 +17,19 @@ export const metadata = pageMetadata("new.title");
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 /**
- * The New form dialog as its own page, so it works without JavaScript; the
- * active forms are the ones offered for duplication. See specs/ui-ux/builder.md,
+ * The New form dialog as its own page, so it works without JavaScript. Active and
+ * closed forms are offered for duplication; archived ones are not. After a refusal
+ * the query carries the code and the values typed. See specs/ui-ux/builder.md,
  * "New form".
  */
 export default async function NewFormPage({ searchParams }: { searchParams: SearchParams }) {
   const { session, container, actor } = await pageSession("/admin/forms/new");
-  const { error } = await searchParams;
-  const { rows } = await listForms(container.definitions, actor, { tab: "active" });
-  const failed = createFormError(error);
+  const params = await searchParams;
+  const [active, closed] = await Promise.all([
+    listForms(container.definitions, actor, { tab: "active" }),
+    listForms(container.definitions, actor, { tab: "closed" }),
+  ]);
+  const failed = createFormError(params.error);
   return (
     <>
       <Breadcrumbs
@@ -35,7 +40,12 @@ export default async function NewFormPage({ searchParams }: { searchParams: Sear
       />
       <NewFormDialog
         csrfToken={session.csrfToken}
-        sources={rows.map((row) => ({ id: row.id, title: row.title, slug: row.slug }))}
+        sources={[...active.rows, ...closed.rows].map((row) => ({
+          id: row.id,
+          title: row.title,
+          slug: row.slug,
+        }))}
+        values={carriedValues(params)}
         {...(failed === undefined ? {} : { error: failed })}
       />
     </>

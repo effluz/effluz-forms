@@ -48,6 +48,7 @@ export const copy = {
   "home.version": { en: "v{n}", es: "v{n}" },
   "home.actions": { en: "Actions", es: "Acciones" },
   "home.open": { en: "Open", es: "Abrir" },
+  "home.none": { en: "None", es: "Ninguna" },
   "status.draft": { en: "Draft", es: "Borrador" },
   "status.published": { en: "Published v{n}", es: "Publicado v{n}" },
   "status.closed": { en: "Closed", es: "Cerrado" },

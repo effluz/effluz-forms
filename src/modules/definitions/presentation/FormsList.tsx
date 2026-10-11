@@ -1,4 +1,4 @@
-import { DEFAULT_TIMEZONE, type FormListRow, type FormTab } from "../application";
+import type { FormListRow, FormTab } from "../application";
 import { Badge } from "@/shared/presentation/Badge";
 import { Bilingual, BilingualText } from "@/shared/presentation/Bilingual";
 import type { CopyKey } from "@/shared/presentation/copy";
@@ -146,8 +146,8 @@ function cells(row: FormListRow) {
       row.newCount
     ),
     row.total,
-    <Moment key="last" at={row.lastReceivedAt} />,
-    <Moment key="closes" at={row.closesAt} />,
+    <Moment key="last" at={row.lastReceivedAt} timezone={row.timezone} />,
+    <Moment key="closes" at={row.closesAt} timezone={row.timezone} />,
     <ActionsMenu key="actions" row={row} />,
   ];
 }
@@ -170,13 +170,28 @@ function StatusCell({ row }: { row: FormListRow }) {
   );
 }
 
-function Moment({ at }: { at: Date | string | null }) {
-  if (at === null) return <span aria-hidden="true">—</span>;
+/**
+ * A moment in the form's own zone, labelled with it, with UTC on a second line;
+ * a missing one reads "None" to assistive technology. See specs/ui-ux/manager.md,
+ * "Forms list (home)".
+ */
+function Moment({ at, timezone }: { at: Date | string | null; timezone: string }) {
+  if (at === null) {
+    return (
+      <>
+        <span aria-hidden="true">—</span>
+        <span className={local.visuallyHidden}>
+          <Bilingual k="home.none" />
+        </span>
+      </>
+    );
+  }
   const date = typeof at === "string" ? new Date(at) : at;
-  const { local: text, utc } = formatDate(date, DEFAULT_TIMEZONE);
+  const { local: zoned, utc } = formatDate(date, timezone);
   return (
-    <time className={local.time} dateTime={date.toISOString()} title={utc}>
-      {text}
+    <time className={local.time} dateTime={date.toISOString()}>
+      {zoned}
+      {zoned === utc ? null : <span className={local.utc}>{utc}</span>}
     </time>
   );
 }
