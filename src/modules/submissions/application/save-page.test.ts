@@ -491,3 +491,60 @@ describe("savePage", () => {
     });
   });
 });
+
+describe("savePage per-submission size", () => {
+  const fullRecord = (deps: FakeSubmissionsDeps, id: string, size: number) => {
+    const r = deps.inProgress.rows.get(id);
+    const big = {
+      id: "a",
+      stagingRef: `in-progress/${id}/a.mp4`,
+      kind: "video" as const,
+      contentType: "video/mp4",
+      size,
+    };
+    if (r) deps.inProgress.rows.set(id, { ...r, files: { f_photos: [big] } });
+  };
+  const MB = 1024 * 1024;
+
+  it("refuses a file posted without script that would pass the per-submission size", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishStory(deps);
+    const id = await startOnPhotos(deps);
+    fullRecord(deps, id, 98 * MB);
+    const out = await savePage(
+      deps,
+      await context(deps, { kind: "record", id }),
+      post(deps, {
+        pageKey: "page_baby",
+        incoming: [{ fieldKey: "f_photos", name: "b.jpg", bytes: fakeImage("image/jpeg", 3 * MB) }],
+      }),
+    );
+    expect(out).toMatchObject({
+      kind: "refused",
+      refusedFiles: [{ fieldKey: "f_photos", code: "submission_too_large", name: "b.jpg" }],
+    });
+    expect(deps.media.staging.files.size).toBe(0);
+  });
+
+  it("reports a file that lost a race for the size at the lock, with its name, and removes it", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishStory(deps);
+    const id = await startOnPhotos(deps);
+    const stale = await context(deps, { kind: "record", id });
+    fullRecord(deps, id, 99 * MB);
+    const out = await savePage(
+      deps,
+      stale,
+      post(deps, {
+        pageKey: "page_baby",
+        incoming: [{ fieldKey: "f_photos", name: "c.jpg", bytes: fakeImage("image/jpeg", 2 * MB) }],
+      }),
+    );
+    expect(out).toMatchObject({
+      kind: "refused",
+      refusedFiles: [{ fieldKey: "f_photos", code: "submission_too_large", name: "c.jpg" }],
+    });
+    expect(deps.media.staging.files.size).toBe(0);
+    expect(deps.inProgress.rows.get(id)?.files["f_photos"]).toHaveLength(1);
+  });
+});

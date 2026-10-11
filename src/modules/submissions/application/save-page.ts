@@ -9,6 +9,7 @@ import {
   withFileAnswers,
   type InProgress,
   type PendingPage,
+  type RefusedFile,
   type RawValues,
 } from "../domain/in-progress";
 import { localeFor, pickLocale } from "../domain/locale";
@@ -138,6 +139,15 @@ export async function savePage(
       const merged = mergeBatch(record, batch, doc, deps.registry);
       record = merged.record;
       const discard = [...merged.overflow];
+      // Files that lost a race for the per-submission size are reported like the ones refused up front.
+      const refusedFiles = [
+        ...batch.refused,
+        ...merged.oversize.map((o): RefusedFile => ({
+          fieldKey: o.fieldKey,
+          code: "submission_too_large",
+          name: batch.names[o.stagingRef] ?? "",
+        })),
+      ];
 
       const keys = pageInputKeys(doc, deps.registry, post.pageKey);
       if (post.action.kind === "remove") {
@@ -190,27 +200,27 @@ export async function savePage(
       });
       const answersNow = () => withFileAnswers(record.answers, record.files);
       const refused = (r: InProgress): PostOutcome =>
-        batch.refused.length === 0
+        refusedFiles.length === 0
           ? { kind: "show", recordId: r.id }
           : {
               kind: "refused",
               recordId: r.id,
               locale: r.locale,
               page: pagePosition(doc, answersNow(), deps.registry, r.pageKey).n,
-              refusedFiles: batch.refused,
+              refusedFiles,
             };
 
       let outcome: PostOutcome;
       switch (post.action.kind) {
         case "next": {
-          if (issues.length > 0 || batch.refused.length > 0) {
+          if (issues.length > 0 || refusedFiles.length > 0) {
             record = holdsPage({ pageKey: post.pageKey, raw, issues });
             outcome = {
               kind: "refused",
               recordId: record.id,
               locale: record.locale,
               page: pagePosition(doc, answersNow(), deps.registry, record.pageKey).n,
-              refusedFiles: batch.refused,
+              refusedFiles,
             };
           } else {
             const to = nextPageKey(doc, answersNow(), deps.registry, post.pageKey);

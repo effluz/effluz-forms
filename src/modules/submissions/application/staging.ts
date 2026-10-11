@@ -1,18 +1,31 @@
 import { discardStaged, stageFile } from "@/modules/media/application";
 import {
   asKey,
+  LIMITS,
   type FieldTypeRegistry,
   type UploadLimits,
   type ValidationIssue,
   type Version,
 } from "@/shared/domain/form-model";
-import type { InProgress, RefusedFile, StagedUpload } from "../domain/in-progress";
+import {
+  stagedBytes,
+  type InProgress,
+  type RefusedFile,
+  type StagedUpload,
+} from "../domain/in-progress";
 import { uploadFields } from "../domain/intake";
 import { pageInputKeys } from "./answers";
 import type { SubmissionsDeps } from "./deps";
 import type { IncomingFile } from "./fill-state";
 
 const BYTES_PER_MB = 1024 * 1024;
+
+/** The most one submission may stage across every field (specs/system/security.md, "Upload limits"). */
+export const SUBMISSION_BYTES = LIMITS.submissionSizeMb * BYTES_PER_MB;
+
+/** The per-file limit: the field's own, never above the system maximum. */
+export const fileMaxBytes = (limits: UploadLimits): number =>
+  Math.min(limits.maxSizeMb, LIMITS.fileSizeMb) * BYTES_PER_MB;
 
 /** What staging one post's files produced, before any record is touched. */
 export interface StagedBatch {
@@ -21,6 +34,8 @@ export interface StagedBatch {
   countIssues: ValidationIssue[];
   /** Every staging reference this batch wrote, for cleanup. */
   refs: string[];
+  /** The browser's name of each staged file by staging reference; in memory only, for reports. */
+  names: Record<string, string>;
 }
 
 const filesMax = (fieldKey: string, n: number): ValidationIssue => ({
@@ -49,8 +64,9 @@ export async function stageIncoming(
     incoming: readonly IncomingFile[];
   },
 ): Promise<StagedBatch> {
-  const batch: StagedBatch = { added: {}, refused: [], countIssues: [], refs: [] };
+  const batch: StagedBatch = { added: {}, refused: [], countIssues: [], refs: [], names: {} };
   const onPage = new Set(pageInputKeys(input.version, deps.registry, input.pageKey).uploads);
+  let total = stagedBytes(input.existing);
 
   for (const { field, limits } of uploadFields(input.version, deps.registry)) {
     if (!onPage.has(field.key)) continue;
@@ -65,12 +81,16 @@ export async function stageIncoming(
       continue;
     }
     for (const file of files) {
+      if (total + file.bytes.length > SUBMISSION_BYTES) {
+        batch.refused.push({ fieldKey: field.key, code: "submission_too_large", name: file.name });
+        continue;
+      }
       try {
         const result = await stageFile(deps.media, {
           recordId: input.recordId,
           bytes: file.bytes,
           accept: limits.kinds,
-          maxBytes: limits.maxSizeMb * BYTES_PER_MB,
+          maxBytes: fileMaxBytes(limits),
         });
         if (!result.ok) {
           batch.refused.push({ fieldKey: field.key, code: result.code, name: file.name });
@@ -78,6 +98,8 @@ export async function stageIncoming(
         }
         (batch.added[field.key] ??= []).push(result.file);
         batch.refs.push(result.file.stagingRef);
+        batch.names[result.file.stagingRef] = file.name;
+        total += result.file.size;
       } catch (error) {
         deps.logger.warn("file staging failed", {
           recordId: input.recordId,
@@ -94,20 +116,29 @@ export async function stageIncoming(
  * Adds a batch to the locked record, field by field. The record may have
  * gained files since the batch was staged (an early upload from script); a
  * field the batch would push past its limit keeps its files, and the batch's
- * files for it come back as `overflow` references with a count issue.
+ * files for it come back as `overflow` references with a count issue. A field
+ * whose files would take the record past `SUBMISSION_BYTES` overflows too, but
+ * as `oversize` (also listed in `overflow`), with no count issue.
  */
 export function mergeBatch(
   record: InProgress,
   batch: StagedBatch,
   version: Version,
   registry: FieldTypeRegistry,
-): { record: InProgress; overflow: string[]; issues: ValidationIssue[] } {
+): {
+  record: InProgress;
+  overflow: string[];
+  issues: ValidationIssue[];
+  oversize: { fieldKey: string; stagingRef: string }[];
+} {
   const limits = new Map<string, UploadLimits>(
     uploadFields(version, registry).map((u) => [u.field.key, u.limits]),
   );
   const files: Record<string, StagedUpload[]> = { ...record.files };
   const overflow: string[] = [];
   const issues: ValidationIssue[] = [...batch.countIssues];
+  const oversize: { fieldKey: string; stagingRef: string }[] = [];
+  let total = stagedBytes(files);
   for (const [fieldKey, added] of Object.entries(batch.added)) {
     const existing = files[fieldKey] ?? [];
     const max = limits.get(fieldKey)?.maxFiles ?? 0;
@@ -116,9 +147,18 @@ export function mergeBatch(
       issues.push(filesMax(fieldKey, max));
       continue;
     }
+    const addedBytes = stagedBytes({ [fieldKey]: added });
+    if (total + addedBytes > SUBMISSION_BYTES) {
+      for (const u of added) {
+        overflow.push(u.stagingRef);
+        oversize.push({ fieldKey, stagingRef: u.stagingRef });
+      }
+      continue;
+    }
+    total += addedBytes;
     files[fieldKey] = [...existing, ...added];
   }
-  return { record: { ...record, files }, overflow, issues };
+  return { record: { ...record, files }, overflow, issues, oversize };
 }
 
 /**
