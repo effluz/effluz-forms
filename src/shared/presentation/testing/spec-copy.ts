@@ -27,3 +27,43 @@ export function specCopyRows(...specPaths: string[]): Map<string, { en: string; 
   }
   return rows;
 }
+
+/**
+ * The first table under the `##` to `####` heading with this text, keyed by each row's first
+ * cell, the other cells as the value. For tables whose keys are not `group.name`, such as the
+ * renderer's fixed chrome copy and message catalog. Test-only; throws when the heading or its
+ * table is missing, so a renamed heading fails the copy test instead of passing vacuously.
+ */
+export function specTableRows(specPath: string, heading: string): Map<string, string[]> {
+  const lines = readFileSync(path.resolve(REPO_ROOT, specPath), "utf8").split("\n");
+  const isHeading = (line: string) => /^#{1,6} /.test(line);
+  const start = lines.findIndex(
+    (line) => /^#{2,4} /.test(line) && line.replace(/^#+ /, "").trim() === heading,
+  );
+  if (start === -1) throw new Error(`No heading "${heading}" in ${specPath}`);
+
+  const rows = new Map<string, string[]>();
+  let index = start + 1;
+  while (
+    index < lines.length &&
+    !isHeading(lines[index] ?? "") &&
+    !(lines[index] ?? "").startsWith("|")
+  ) {
+    index += 1;
+  }
+  if (!(lines[index] ?? "").startsWith("|")) {
+    throw new Error(`No table under heading "${heading}" in ${specPath}`);
+  }
+  index += 2; // the header row and the separator row
+  for (; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (!line.startsWith("|")) break;
+    const cells = line
+      .replace(/^\||\|$/g, "")
+      .split("|")
+      .map((cell) => cell.trim());
+    const [key, ...values] = cells;
+    if (key) rows.set(key, values);
+  }
+  return rows;
+}
