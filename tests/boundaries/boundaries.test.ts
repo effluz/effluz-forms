@@ -192,6 +192,14 @@ describe("layer boundaries", () => {
     );
     expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });
+
+  it("forbids notifications importing any other module", async () => {
+    const rules = await lintVirtual(
+      "src/modules/notifications/application/boundary-probe-subs.ts",
+      `import { sanitizeReturnTo } from "@/modules/identity/application";\nexport const x = sanitizeReturnTo;\n`,
+    );
+    expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
+  });
 });
 
 describe("files outside a layer folder", () => {
