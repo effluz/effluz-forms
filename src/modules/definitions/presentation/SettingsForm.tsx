@@ -353,7 +353,7 @@ export function SettingsForm(props: SettingsFormProps) {
                 type="checkbox"
                 name={FIELD.botChallenge}
                 defaultChecked={values.botChallenge}
-                {...aria("challenge", [id("challenge", "hint")])}
+                {...aria("challenge", [id("challenge", "hint"), id("challenge", "unavailable")])}
               />
               <span>
                 <Bilingual k="set.challenge" />
@@ -361,6 +361,7 @@ export function SettingsForm(props: SettingsFormProps) {
             </label>
             {errorRows("challenge")}
             {hint("challenge", "set.challenge_hint")}
+            {hint("challenge", "set.challenge_unavailable", "unavailable")}
           </div>
         </Section>
 

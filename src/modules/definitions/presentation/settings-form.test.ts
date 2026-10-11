@@ -406,6 +406,17 @@ describe("SettingsForm", () => {
     }
   });
 
+  it("tells staff the bot challenge is not available yet, next to the setting", () => {
+    const html = render();
+    const ids = describedBy(control(html, "botChallenge"));
+    const texts = ids.map((id) => {
+      const start = html.indexOf(tagWithId(html, id));
+      return html.slice(start, html.indexOf("</p>", start));
+    });
+    expect(texts.join(" ")).toContain(copy["set.challenge_hint"].en);
+    expect(texts.join(" ")).toContain(copy["set.challenge_unavailable"].en);
+  });
+
   it("disables the prefix after the first submission and still posts its value", () => {
     expect(control(render(), "referencePrefix")).not.toContain("disabled");
     const html = render({ hasSubmissions: true });
