@@ -185,6 +185,22 @@ describe("layer boundaries", () => {
     expect(rules.filter((m) => m.ruleId?.startsWith("boundaries/"))).toEqual([]);
   });
 
+  it("forbids media importing definitions, since MODULE_DEPS gives media no edges", async () => {
+    const rules = await lintVirtual(
+      "src/modules/media/application/boundary-probe-defs.ts",
+      `import { publicUrl } from "@/modules/definitions/application";\nexport const p = publicUrl;\n`,
+    );
+    expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
+  });
+
+  it("allows submissions to import media's public entry point", async () => {
+    const rules = await lintVirtual(
+      "src/modules/submissions/application/boundary-probe-media.ts",
+      `import { stageFile } from "@/modules/media/application";\nexport const s = stageFile;\n`,
+    );
+    expect(rules).toEqual([]);
+  });
+
   it("forbids submissions importing review's application layer", async () => {
     const rules = await lintVirtual(
       "src/modules/submissions/application/boundary-probe.ts",
