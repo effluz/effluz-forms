@@ -27,14 +27,15 @@
 }
 
 /* The QR preview: a white card with the code at 240 px, radius.md, space.4 padding.
- * The code is always dark on white, whatever the surrounding theme. */
+ * The card is literal white (the design-system white token value), not a theme
+ * surface: the code is always dark on white, whatever the surrounding theme. */
 .qr {
   align-self: flex-start;
   margin: 0;
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--surface-card);
+  background: #ffffff;
 }
 
 .qr img {

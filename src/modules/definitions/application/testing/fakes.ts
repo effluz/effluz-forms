@@ -13,8 +13,9 @@
  *   throws, a non-UUID id names no row). `findForUpdate` answers like the
  *   plain read: one process needs no locks. Rows are deep-copied in
  *   and out, so a caller can never mutate what is stored; the version store
- *   offers no mutation at all. `update` stamps `updatedAt` from the clock, as
- *   the adapter stamps `now()`. `listCalls` records `list` arguments.
+ *   offers no mutation at all. `update` stores the `updatedAt` it is given, as
+ *   the adapter writes it (callers stamp it from their clock), and keeps the
+ *   stored `createdAt`. `listCalls` records `list` arguments.
  * - `FakeSubmissionStats`: `receive(formId, ...dates)` records submissions,
  *   from which `summary`, `countReceivedAfter`, `countOlderThan` and `hasAny`
  *   answer; `setAnswerCounts(formId, counts)` scripts `answerCounts`.
@@ -110,7 +111,6 @@ export class InMemoryFormRepository implements FormRepository {
     this.store.forms.set(form.id, {
       ...structuredClone(form),
       createdAt: stored.createdAt,
-      updatedAt: this.clock.now(),
     });
     return Promise.resolve("updated");
   }

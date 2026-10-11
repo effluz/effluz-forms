@@ -99,6 +99,18 @@ describe("applyLifecycle", () => {
     expect((await deps.forms.findById(formId))?.archivedAt).toEqual(deps.clock.now());
   });
 
+  it("stamps updatedAt with the clock when the status changes", async () => {
+    const deps = makeDefinitionsDeps();
+    const formId = await seeded(deps, "published", true);
+    deps.clock.advance(60_000);
+
+    await applyLifecycle(deps, EDITOR, { formId, action: "close" });
+
+    const form = await deps.forms.findById(formId);
+    expect(form?.updatedAt).toEqual(deps.clock.now());
+    expect(form?.updatedAt).not.toEqual(form?.createdAt);
+  });
+
   it("clears archivedAt on unarchive and lands a published form on closed", async () => {
     const deps = makeDefinitionsDeps();
     const formId = await seeded(deps, "archived", true);

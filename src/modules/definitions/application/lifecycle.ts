@@ -36,7 +36,7 @@ export async function applyLifecycle(
     const archivedAt =
       input.action === "archive" ? now : input.action === "unarchive" ? null : fresh.archivedAt;
     // A status change never touches the slug, so `slug_taken` cannot happen.
-    await deps.forms.update(uow, { ...fresh, status, archivedAt });
+    await deps.forms.update(uow, { ...fresh, status, archivedAt, updatedAt: now });
     await deps.audit.record(
       uow,
       {

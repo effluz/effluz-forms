@@ -154,6 +154,21 @@ describe("editDraft", () => {
     expect(deps.audit.entries).toHaveLength(0);
   });
 
+  it("stamps the form updatedAt with the clock when the title is mirrored", async () => {
+    const { deps, formId, revision } = await setup();
+    deps.clock.advance(MINUTE_MS);
+
+    await editDraft(deps, EDITOR, {
+      formId,
+      baseRevision: revision,
+      commands: [{ kind: "rename_form", title: { en: "Open day", es: "Día abierto" } }],
+    });
+
+    const form = await deps.forms.findById(formId);
+    expect(form?.updatedAt).toEqual(deps.clock.now());
+    expect(form?.updatedAt).not.toEqual(form?.createdAt);
+  });
+
   it("mirrors a rename onto the form title", async () => {
     const { deps, formId, revision } = await setup();
     const title = { en: "Open day", es: "Día abierto" };

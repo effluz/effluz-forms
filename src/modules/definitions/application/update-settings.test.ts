@@ -69,6 +69,22 @@ describe("updateSettings", () => {
     ]);
   });
 
+  it("stamps updatedAt with the clock when a setting changes", async () => {
+    const deps = makeDefinitionsDeps();
+    const formId = await seeded(deps);
+    const before = await currentSettings(deps, formId);
+    deps.clock.advance(60_000);
+
+    await updateSettings(deps, EDITOR, {
+      formId,
+      settings: { ...before, botChallenge: !before.botChallenge },
+    });
+
+    const form = await deps.forms.findById(formId);
+    expect(form?.updatedAt).toEqual(deps.clock.now());
+    expect(form?.updatedAt).not.toEqual(form?.createdAt);
+  });
+
   it("writes nothing when no setting changed", async () => {
     const deps = makeDefinitionsDeps();
     const formId = await seeded(deps);

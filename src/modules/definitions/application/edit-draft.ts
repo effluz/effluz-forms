@@ -79,6 +79,7 @@ export async function editDraft(
         ...freshForm,
         title: applied.document.title,
         languages: applied.document.languages,
+        updatedAt: now,
       });
       if (result === "slug_taken") throw new Error(`form ${formId} slug conflict on update`);
     }

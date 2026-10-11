@@ -185,6 +185,18 @@ describe("publishForm", () => {
     });
   });
 
+  it("stamps the form updatedAt with the clock when it publishes", async () => {
+    const deps = makeDefinitionsDeps();
+    const formId = await publishableForm(deps);
+    deps.clock.advance(60_000);
+
+    await publishForm(deps, EDITOR, previewed(deps, formId, 1));
+
+    const form = deps.store.forms.get(formId);
+    expect(form?.updatedAt).toEqual(deps.clock.now());
+    expect(form?.updatedAt).not.toEqual(form?.createdAt);
+  });
+
   it("records form_published with the version number", async () => {
     const deps = makeDefinitionsDeps();
     const formId = await publishableForm(deps);
@@ -323,7 +335,8 @@ describe("publishForm", () => {
     deps.store.drafts.set(formId, {
       ...stored,
       revision: stored.revision + 1,
-      document: document([NAME, CITY]),
+      // A blank label is a publish issue: the revision check must win anyway.
+      document: document([NAME, field("f_blank", "", "")]),
     });
 
     expect(

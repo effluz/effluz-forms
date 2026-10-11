@@ -169,6 +169,7 @@ export async function publishForm(
       currentVersionId: version.id,
       currentVersionNumber: number,
       status: fresh.status === "draft" ? "published" : fresh.status,
+      updatedAt: now,
     });
     // The slug is unchanged, so another owner would mean corrupt data.
     if (updated === "slug_taken") throw new Error(`form ${form.id} lost its slug`);

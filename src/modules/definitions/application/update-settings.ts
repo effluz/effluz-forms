@@ -86,7 +86,9 @@ export async function updateSettings(
     const { slug, changed } = decided;
     if (changed.length === 0) return { ok: true, changed };
 
-    if ((await deps.forms.update(uow, { ...fresh, slug, settings })) === "slug_taken") {
+    if (
+      (await deps.forms.update(uow, { ...fresh, slug, settings, updatedAt: now })) === "slug_taken"
+    ) {
       return { ok: false, code: "slug_taken" };
     }
     const base = { actorEmail: actor.email, targetId: form.id, ip: actor.ip };
