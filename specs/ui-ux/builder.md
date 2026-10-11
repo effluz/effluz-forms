@@ -169,7 +169,7 @@ Title pair, description pair (markdown), visibility condition (see Logic).
 | Single choice | options list (label pair per option, drag or keyboard reorder, add, remove), display: radio or dropdown. Dropdown is offered only above 6 options with a note that the renderer falls back to radio otherwise |
 | Multiple choice | options list |
 | Checkbox | none |
-| Consent | consent text pair (markdown), the checklist, "Insert template" button |
+| Consent | consent text pair (plain text: paragraphs separated by a blank line, no markup), the checklist, "Insert template" button |
 | File upload | kinds: Photos, Videos, Both; max files (1 to 10); max size per file up to the system maximum; a note on the video pass-through notice the renderer adds |
 | Section | title pair, description pair (markdown) |
 

@@ -126,18 +126,47 @@ The step-by-step flow is in `use-cases/sign-in.md`.
 Layered, cheapest first:
 
 1. **Proxy rate limit** per IP on form submission routes.
-2. **Honeypot field** hidden from humans; a filled honeypot is a silent accept
-   that stores nothing.
-3. **Minimum time-to-submit** measured from form render; faster than a human
-   is a silent accept.
+2. **Honeypot field** hidden from humans: an input named `website-url`
+   placed off-screen, `aria-hidden="true"`, `tabindex="-1"`,
+   `autocomplete="off"`. A filled honeypot on any page post is a silent
+   accept: the in-progress record and its staged files are deleted and
+   nothing is stored.
+3. **Minimum time-to-submit** of 3 seconds, measured from the render of
+   page 1: the first post carries the render time in the hidden field
+   `_rendered`, clamped to the last 24 hours and stored on the in-progress
+   record as `started_at`; an absent or unreadable value counts as the time
+   of that first post. Faster than that is a silent accept. A person cannot
+   read and complete even a one-field form with consent in 3 seconds.
 4. **Bot challenge** (Cloudflare Turnstile, proposed) only on the final step
    and only when the form's settings enable it. It costs accessibility and
-   must never be the first line.
+   must never be the first line. Not built yet: a form with it enabled
+   renders without it.
 5. **Upload limits** enforced at the proxy (body size) and the app (count,
    type by content, decode success).
 
 Silent accepts return the normal success screen. Telling a bot it was caught
 teaches it.
+
+### In-progress cookie
+
+The renderer sets two cookies. `effluz_fill`: `Path=/f/<slug>`, `HttpOnly`,
+`SameSite=Lax`, `Max-Age=86400`, plus `Secure` in production. While a form is
+being filled its value is the random id of the in-progress record; after a
+stored submission it is `done.<submit token>` and after a silent accept
+`decoy.<reference>`, so Back after Submit shows the confirmation again. It
+carries no answers. `SameSite=Lax` keeps cross-site posts from reaching the
+record, and Next refuses a Server Action post whose `Origin` is not this
+host, which is why the public routes need no CSRF token. A value that is
+none of these shapes is treated as absent.
+
+`effluz_fill_state` (same path and flags, `Max-Age=600`) carries a refused
+page post's files to the page it redirects to, as the Settings tab does,
+as base64url JSON
+`{ at, page, refusedFiles: [{ field, code, name, params }] }`: at most 10
+files, names cut to 80 characters and dropped when it would not fit. The
+page shows it only while `refused` equals `at` and `page` is the page
+shown; the next post that goes through clears it. No database ever holds
+a file name.
 
 ## Staff-authored content
 
@@ -163,12 +192,23 @@ untrusted input:
   | File size | 10 MB per image, 10 MB per video, 100 MB per submission |
   | Retention | 1 to 36 months |
 
+  The per-submission size counts every file staged on the in-progress record,
+  early uploads included; a file that would pass it is refused with
+  `submission too large`.
+
 ## Transport and headers
 
 - TLS everywhere, HTTP redirected, HSTS enabled after the first week.
-- Content-Security-Policy with no inline scripts, `frame-ancestors 'none'`,
-  `Referrer-Policy: no-referrer` on admin pages so Dropbox temporary links
-  never leak through referrers.
+- Content-Security-Policy with no inline scripts except Next's nonce-bearing
+  bootstrap on the renderer, allowed by a per-request nonce,
+  `frame-ancestors 'none'`, `Referrer-Policy: no-referrer` on admin pages so
+  Dropbox temporary links never leak through referrers.
+- The renderer's pages (`/f/<slug>`, both the page and its form posts) get a
+  per-request nonce from the proxy:
+  `script-src 'self' 'nonce-<n>' 'strict-dynamic'` (plus `'unsafe-eval'` in
+  development only), `style-src 'self' 'unsafe-inline'`,
+  `img-src 'self' blob: data:`, `connect-src 'self'`, `object-src 'none'`,
+  `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`.
 - Admin routes are not linked from public pages and are excluded from search
   indexing.
 

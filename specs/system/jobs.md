@@ -21,11 +21,11 @@ null.
 
 Handlers are registered by `type` in the worker's composition root
 (`src/app/worker.ts`). Each handler is a small application-layer function
-that receives the payload and a context with the job id, the attempt number,
-a logger already tagged with the job, and the unit of work, queue and clock
-ports. Only `jobs.cleanup` and `identity.cleanup` are registered so far; the
-other types in "Job types in the first release" arrive with the modules that
-own them.
+that receives the payload and a context with the job id, the attempt number, the
+job's `maxAttempts`, a logger already tagged with the job, and the unit of work,
+queue and clock ports. Registered today: `jobs.cleanup`, `identity.cleanup`,
+`media.upload`, `media.delete`, `email.submitter_confirmation` and
+`email.staff_notification`.
 
 ## The `job` table
 
@@ -97,6 +97,11 @@ endpoint's `deadJobs`. Listing dead jobs with a retry action is part of
 `use-cases/operate-jobs.md`; the error-tracker event arrives with the tracker
 (`observability.md`).
 
+A handler that throws `PermanentJobError` (from
+`src/shared/application/ports/job-queue.ts`) makes the job `dead` at once with
+its message, for failures a retry cannot fix, such as an email address the
+provider rejects.
+
 **Heartbeat.** Every completed poll upserts one row in `worker_heartbeat`:
 
 | Column | Purpose |
@@ -121,8 +126,10 @@ parallel jobs. Scaling means raising that number, then adding a second
 
 ## Handler rules
 
-- **Idempotent.** A handler may run twice. Uploads check `exists` first,
-  emails record the provider message id before sending is considered done.
+- **Idempotent.** A handler may run twice. Uploads `put` by key, which
+  overwrites, and record the reference before deleting the staging copy; emails
+  record the provider message id in the `email_delivery` table, not on the job,
+  and skip a key already recorded.
 - **Small.** One external effect per job. Fan out by enqueuing more jobs.
 - **Tested in isolation** with fake ports. Worker plumbing is tested once in
   `src/shared/`.
@@ -140,20 +147,21 @@ Two workers racing at a bucket boundary could enqueue twice; that is accepted
 because handlers are idempotent.
 
 Initial set: `retention.purge` daily, `email.staff_digest` daily per form,
-`backup.database` nightly, `jobs.cleanup` daily, `identity.cleanup` daily.
-Only the last two are scheduled today. `jobs.cleanup` deletes succeeded jobs
-finished more than 30 days ago and logs the count; removing expired
-in-progress submission records (older than 24 hours) and their staged files
-joins it when `submissions` exists. `identity.cleanup` deletes sign-in
-attempts past their expiry and admin sessions past the idle or absolute
-limit, writes no audit entries, and logs the two counts.
+`backup.database` nightly, `jobs.cleanup` daily, `identity.cleanup` daily. Only
+the last two are scheduled today. `jobs.cleanup` deletes succeeded jobs finished
+more than 30 days ago and logs the count; it also removes in-progress submission
+records past their 24 hours, their staged files first, through cleanup steps the
+worker's composition root passes in, so `shared` never imports `submissions`.
+`identity.cleanup` deletes sign-in attempts past their expiry and admin sessions
+past the idle or absolute limit, writes no audit entries, and logs the two
+counts.
 
 ## Job types in the first release
 
 | Type | Trigger | Effect |
 |---|---|---|
-| `media.upload` | Submission stored | Staging to Dropbox, media row to `stored` |
-| `media.delete` | Retention purge or admin delete | Remove from Dropbox and staging |
+| `media.upload` | Submission stored | Staging to durable storage, media row to `stored` with its reference, staging copy deleted; on the last attempt the row becomes `failed` and staging is kept |
+| `media.delete` | Retention purge or admin delete | Remove the durable file, the staging copy and the media row, in that order |
 | `email.submitter_confirmation` | Submission stored, version defines one | Confirmation in the submitter's locale |
 | `email.staff_notification` | Submission stored, form cadence is per submission | Link to the manager, no content |
 | `email.staff_digest` | Daily schedule per form with daily cadence | List of new references with links, skipped when empty |
@@ -161,3 +169,5 @@ limit, writes no audit entries, and logs the two counts.
 | `backup.database` | Nightly schedule | Encrypted dump to Dropbox backup folder |
 | `jobs.cleanup` | Daily schedule | Prune old succeeded jobs, expired in-progress records and their staged files |
 | `identity.cleanup` | Daily schedule | Delete expired sign-in attempts and expired admin sessions, no audit entries |
+
+Payloads: `media.*` carry `{ mediaId }`, `email.*` carry `{ submissionId }`.

@@ -35,3 +35,7 @@ account `tluzcando@gmail.com`, not a Business team.
   backups. Recovery codes and a second trusted recovery contact must be set
   up before the first production deploy. Moving to a Business team later is
   a token swap, not a code change.
+- The Dropbox adapter calls the HTTP API with `fetch` and no SDK: five endpoints
+  and the refresh-token exchange are less code to review than an SDK's surface,
+  and a local fake server can stand in for Dropbox in tests. Adopting the SDK
+  later is an adapter change.

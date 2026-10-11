@@ -13,10 +13,12 @@ Each tier is an adapter of the same port.
 
 | Operation | Behavior |
 |---|---|
-| `put(stream, key, contentType)` | Store the bytes. Returns a provider reference. Idempotent for the same key. |
+| `put(bytes, key, contentType)` | Store the bytes (files are capped at 10 MB, so no stream is needed). Returns a provider reference. Idempotent for the same key: Dropbox writes with `mode: overwrite`. |
 | `viewUrl(ref, ttl)` | A URL that serves the file for at most `ttl`. |
 | `delete(ref)` | Remove the file. Succeeds if it is already gone. |
 | `exists(ref)` | For upload idempotency checks. |
+| `read(ref)` | Staging only: the bytes, for the upload job. |
+| `deletePrefix(prefix)` | Staging only: remove every file under a prefix. |
 
 Keys are human-readable so staff can browse the Dropbox folder, and carry
 no personal data:
@@ -32,12 +34,19 @@ slug of the field label in the form's first language, truncated to 40
 characters. Example: `forms/historia-prematuro-2026/HP-0042/01-sube-hasta-10-fotos.jpg`.
 The original filename is never used.
 
+Staged files are named `in-progress/<record id>/<file id>.<ext>`: random ids
+only, so expiring a record removes its files with one prefix delete. Local refs
+are the key itself; Dropbox refs are the key with a leading `/` inside the App
+folder.
+
 ## Adapters
 
 **Local disk (staging).** Root at `/srv/effluz-forms/data/staging`, outside the
 web root. `viewUrl` returns an app route that streams the file to an
 authenticated admin only. Used by every environment, and the only durable tier
-in tests.
+in tests. `MEDIA_PROVIDER=local` (the default outside production) also uses
+local disk as the durable tier, rooted at `MEDIA_DURABLE_DIR` (default
+`./data/durable`); production refuses it.
 
 **Dropbox (durable).** An app registered under the Dropbox account
 `tluzcando@gmail.com` using an App folder, so the token can reach nothing
@@ -47,6 +56,14 @@ in memory. `viewUrl` wraps the temporary-link API and the result is cached in
 process for slightly less than its validity window so the admin page does not
 hit the API on every render. Respects rate-limit responses by retrying through
 the job system, never inline.
+
+`MEDIA_PROVIDER=dropbox` with `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET` and
+`DROPBOX_REFRESH_TOKEN`. The adapter calls the HTTP API with `fetch` (no SDK):
+`oauth2/token` for the refresh-token exchange, `files/upload`,
+`files/get_metadata`, `files/delete_v2` and `files/get_temporary_link`.
+`DROPBOX_API_URL` and `DROPBOX_CONTENT_URL` exist so tests can point it at a
+local fake. A 401 renews the access token once; a 429 or 5xx fails the job so
+the job system retries it.
 
 Any further provider (S3-compatible, Supabase Storage, Google Drive) is a new
 adapter and an ADR. No other code changes.
@@ -62,10 +79,16 @@ Applied by the application layer before `put`, independent of provider:
 - **Images** are re-encoded, which strips all metadata (EXIF, XMP, GPS).
   Submitters rarely know their photos carry location. Anything that fails
   decoding is a validation error shown to the submitter, not a job failure.
-- **Videos** are stored as received: pass-through bytes, container and
-  codec checked by content only, no re-encoding, no metadata stripping
-  guarantee. The renderer tells the submitter this before they upload. A
-  file whose container cannot be parsed is rejected as a validation error.
+  JPEG, PNG and WebP are re-encoded to the same format with the EXIF orientation
+  applied first; HEIC is decoded with `libheif-js` and encoded as JPEG (ADR
+  0023). Inputs above 50 megapixels are refused as unreadable.
+- **Videos** are stored as received: pass-through bytes, container checked
+  by content (no codec inspection in the first release), no re-encoding, no
+  metadata stripping guarantee. The renderer tells the submitter this before
+  they upload. A file whose container cannot be parsed is rejected as a
+  validation error. The container check walks the ISO base media file format
+  boxes: the first box is `ftyp`, every box size fits the file, and a `moov`
+  box is present.
 - Rename to the key scheme above. The original filename is not stored.
 
 ## Staff-uploaded header images

@@ -37,9 +37,12 @@ Rules:
   Every `definitions` use case that changes an existing form (edit draft,
   publish, lifecycle, delete, settings) locks the `form` row; the ones that
   write the draft (edit draft, publish) lock the `form_draft` row after it,
-  always in that order. Reads outside a unit of work are for display and early
-  refusals. These are transactional row locks, held until the unit of work
-  ends; they are not editor-visible locks (see
+  always in that order. The submissions intake locks the
+  `submission_in_progress` row, then the `form` row (through
+  `allocateReference`), always in that order; taking a reference does not change
+  `form.updated_at`, since a submission is not a form edit. Reads outside a unit
+  of work are for display and early refusals. These are transactional row locks,
+  held until the unit of work ends; they are not editor-visible locks (see
   `use-cases/create-and-edit-form.md`).
 
 ## Connections
@@ -63,14 +66,15 @@ Rules:
 
   | Table | Owner | Notes |
   |---|---|---|
-  | `form` | `definitions` | `slug` (unique), `title` (jsonb `LocalizedText`) and `languages` (`bilingual`, `en`, `es`), both mirrored from the draft document so the list never reads documents, `status` (`draft`, `published`, `closed`, `archived`), `settings` (jsonb), `current_version_id` and `current_version_number` (null until the first publish), `archived_at` |
+  | `form` | `definitions` | `slug` (unique), `title` (jsonb `LocalizedText`) and `languages` (`bilingual`, `en`, `es`), both mirrored from the draft document so the list never reads documents, `status` (`draft`, `published`, `closed`, `archived`), `settings` (jsonb), `current_version_id` and `current_version_number` (null until the first publish), `archived_at`, `next_reference` (integer, starts at 1): the sequence of submission references, advanced only by `allocateReference` under the form row lock (ADR 0025) |
   | `form_draft` | `definitions` | one row per form, `form_id` is the key (deleted with the form); `document` (jsonb, mutable), `revision` (starts at 1, bumped by every write; an edit applies only to the revision it was based on), `updated_by`, `audited_by` and `audited_at` (the last `draft_saved` audit entry, for coalescing) |
   | `form_version` | `definitions` | `form_id`, `number` (unique per form), `document` (jsonb), `published_at`, `published_by`. **Never updated or deleted after insert**; the trigger `form_version_no_update` rejects both. |
   | `form_visit` | `definitions` | `form_id`, `email`, `last_opened_at`: when each staff member last opened each form, for the "new submissions" count. Key (`form_id`, `email`); deleted with the form. |
-  | `submission_in_progress` | `submissions` | opaque token, form_version_id, locale, answers so far (jsonb), submit token, expires_at. Personal data; purged after 24 hours. |
-  | `submission` | `submissions` | form_id, form_version_id, locale, answers (jsonb, **immutable after insert, trigger-enforced**), consent (jsonb), received_at, reference (unique per form), status, curated_answers (jsonb), published_post_url, status_changed_by, status_changed_at |
+  | `submission_in_progress` | `submissions` | `id` (the random value of the `effluz_fill` cookie), `form_id`, `form_version_id` (the pinned version), `locale`, `page_key`, `answers` (jsonb, only valid answers), `files` (jsonb, staged files per field key), `pending` (jsonb, the last refused post's typed values and issues, or null; never a file name), `submit_token` (uuid), `started_at`, `expires_at` (24 hours after creation). Personal data; deleted at submit or by `jobs.cleanup` after expiry. |
+  | `submission` | `submissions` | `form_id`, `form_version_id`, `locale`, `answers` (jsonb, **immutable after insert**: the trigger `submission_answers_immutable` rejects an update that changes it), `consent` (jsonb), `received_at`, `reference` (unique per form, `submission_form_reference_key`), `submit_token` (unique, `submission_submit_token_key`, so a repeated Submit finds the first submission), `status` (`new`, `viewed`, `edited`, `published`; default `new`), `curated_answers` (jsonb, default `{}`), `published_post_url`, `status_changed_by`, `status_changed_at` |
   | `submission_edit` | `review` | submission_id, field_key, text, source (`manual`, `suggested`), editor, created_at. Append-only. |
-  | `media` | `media` | submission_id, field_key, status, provider_ref, content_type, size |
+  | `media` | `media` | `submission_id`, `form_id`, `field_key`, `position` (1-based within the field), `kind` (`image`, `video`), `status` (`staged`, `stored`, `failed`), `content_type`, `size`, `staging_ref` (null once the staging copy is gone), `durable_key`, `provider_ref` (null until stored). No foreign key to `submission`: deletion goes through `media.delete` so a provider outage cannot leave a row pointing at nothing. |
+  | `email_delivery` | `notifications` | `delivery_key` (unique: `<job type>:<submission id>`), `provider_message_id`. Lets a retried email job see the message was sent (ADR 0025). |
   | `schema_migration` | `shared` | the ledger: `id` (the four-digit migration id, text), `name`, `applied_at`. Created by the runner itself, not by a migration file. |
   | `job` | `shared` | see `jobs.md` |
   | `worker_heartbeat` | `shared` | one row per worker process: `worker_id` (unique), `last_seen_at`. See `jobs.md`. |
@@ -89,10 +93,12 @@ Rules:
 - `answers` is personal data as a whole. Retention and export treat the
   document, never individual keys.
 - Indexes: `submission (form_id, received_at desc)` for review listing;
-  `form (slug)` unique (`form_slug_key`) and `form (status)`;
-  `audit_log (target_id, created_at desc, id desc)` (`audit_log_target_idx`)
-  for the per-target activity listing and its `(created_at, id)` cursor; GIN
-  on `answers` only if a real query needs it.
+  `submission_in_progress (expires_at)` for cleanup; the unique
+  `media (submission_id, field_key, position)`, which also serves lookups by
+  submission; `form (slug)` unique (`form_slug_key`) and `form (status)`;
+  `audit_log (target_id, created_at desc, id desc)` (`audit_log_target_idx`) for
+  the per-target activity listing and its `(created_at, id)` cursor; GIN on
+  `answers` only if a real query needs it.
 - No soft deletes for submissions. Retention means the row is gone. A form
   that has been published or has submissions is archived, never deleted; one
   that never was and has none can be deleted (audited), which removes its

@@ -28,10 +28,12 @@ code.
    return the same page with messages and focus on the first error. Success
    stores the page's answers in a server-side in-progress record keyed by an
    opaque cookie and advances to the next visible page.
-5. File fields upload as soon as a file is chosen, with per-file progress,
-   type and size checks on both sides, and the ability to remove a file.
-   Each accepted file is re-encoded without metadata and written to staging
-   under a random key, linked to the in-progress record.
+5. File fields upload as soon as a file is chosen, with per-file progress, the
+   ability to remove a file, and type and size checks on both sides: with script
+   the browser pre-checks the size and the declared kind before uploading (cheap
+   and advisory), and the server decides by content. Each accepted file is
+   re-encoded without metadata and written to staging under a random key, linked
+   to the in-progress record.
 6. The last page shows "Submit" instead of Next. If the form enables the bot
    challenge it appears here.
 7. On submit, the server re-validates the entire submission against the

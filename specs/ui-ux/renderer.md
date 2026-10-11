@@ -27,6 +27,8 @@ Use case: `use-cases/fill-and-submit-form.md`. Model: `form-definition.md`.
 - Page 1 only: the version's header image, when set, above the title,
   following the header image rules in `specs/design.md`. It loads lazily
   and the title never waits for it.
+- First pass: no version can carry a header image until the builder uploads one,
+  so the renderer leaves it out; it arrives with the builder plan.
 - Body: page title, page description, fields in order, then the navigation
   row.
 - Bottom: the privacy footer, present on every page including confirmation.
@@ -54,6 +56,9 @@ Use case: `use-cases/fill-and-submit-form.md`. Model: `form-definition.md`.
 - Bot challenge widget, when enabled, sits above Submit on the last page
   with a text explanation and a visible fallback link to the accessibility
   challenge the provider offers.
+- First pass: the challenge is not built. A form with it enabled renders without
+  it; the honeypot and the minimum fill time in `system/security.md` still
+  apply.
 
 ### Confirmation
 
@@ -69,7 +74,9 @@ Use case: `use-cases/fill-and-submit-form.md`. Model: `form-definition.md`.
 
 Each is one heading, one sentence, the privacy footer, no form content. Copy
 below. Not found returns HTTP 404; closed and not yet open return 200 with
-`noindex`.
+`noindex`. These screens and Session expired show both languages, the page
+language first, since no language has been chosen. Not found has no privacy
+footer: without a form there is no retention period to state.
 
 ### Session expired
 
@@ -112,6 +119,15 @@ Without script: a native `<input type="file" multiple accept="...">`. Files
 are sent with the page's form post and validated server-side; the page
 re-renders with results.
 
+Without script, each staged file is listed as `file_row` (the original name is
+not kept) with a Remove button that submits the page form with that file; the
+page re-renders with its answers kept. A post with more files than the field
+allows stages none of them and reports `files max`. With script, a chosen file
+larger than the field allows, or of a kind it does not take by its declared
+type, is refused at once without uploading; the server still checks every file
+by content. Every file staged for one in-progress record counts toward the
+per-submission size in `system/security.md`.
+
 With script, the same input is enhanced:
 
 - Choosing files starts an upload per file immediately. Each file shows a
@@ -134,7 +150,9 @@ With script, the same input is enhanced:
 
 - **When.** On blur after the field was first interacted with, then on every
   change once the field has an error, and for the whole page on Next or
-  Submit. Never on first focus or while typing in a clean field.
+  Submit. Never on first focus or while typing in a clean field. With script,
+  the field is checked by the server on blur (`POST /f/<slug>/check`), so the
+  browser applies exactly the server's rules and ships none of them.
 - **Where.** Below the control, in the error slot, in red with an icon and
   the message. The field's border changes too; color is never the only cue.
 - **Page errors.** If Next or Submit finds errors, an error summary renders
@@ -146,7 +164,14 @@ With script, the same input is enhanced:
   the field label in the current locale; sentence case is preserved from the
   label.
 - **Server round trip.** Without script, the server renders the same summary
-  and messages. The markup is identical so tests cover both paths at once.
+  and messages. The markup is identical so tests cover both paths at once. Every
+  page post ends in a redirect (303), as the manager's Settings tab does. A
+  refused one redirects to `GET /f/<slug>?refused=<at>`: the page shows the
+  values and issues stored with the in-progress record and, from the short-lived
+  cookie `effluz_fill_state` (`system/security.md`, section In-progress cookie),
+  the refused files' messages, only while `refused` matches the cookie's `at`.
+  Every other post redirects to `GET /f/<slug>`. A refused file's name appears
+  only in that cookie and on the page it redirects to: it is never stored.
 
 ### Message catalog
 
@@ -177,9 +202,17 @@ With script, the same input is enhanced:
 | file wrong type | {file} is not a supported type. Use {kinds} | {file} no es un tipo permitido. Usa {kinds} |
 | file unreadable | {file} could not be read. Try another file | No se pudo leer {file}. Prueba con otro archivo |
 | upload failed | {file} did not upload. Check your connection and retry | {file} no se subió. Revisa tu conexión y reintenta |
+| min length one | {label} must have at least {n} character | {label} debe tener al menos {n} carácter |
+| max length one | {label} must have no more than {n} character | {label} no debe tener más de {n} carácter |
+| choice min one | Select at least {n} option for {label} | Selecciona al menos {n} opción en {label} |
+| choice max one | Select no more than {n} option for {label} | Selecciona como máximo {n} opción en {label} |
+| files min one | Upload at least {n} file for {label} | Sube al menos {n} archivo en {label} |
+| files max one | You can upload up to {n} file for {label} | Puedes subir hasta {n} archivo en {label} |
+| submission too large | {file} would take this form's files past {size} in total | {file} haría que los archivos de este formulario pasen de {size} en total |
 
-Pluralization follows each language's rules; `{n}` of 1 uses the singular
-form, handled by the copy layer, not by concatenation.
+Pluralization follows each language's rules: when `Intl.PluralRules` gives `one`
+for `{n}` (or `{count}`), the `… one` row is used, otherwise the plain row. In
+`submission too large`, `{size}` is the per-submission cap.
 
 ## Navigation and state
 
@@ -237,10 +270,13 @@ form, handled by the copy layer, not by concatenation.
 | Measure | Target |
 |---|---|
 | HTML for a page, compressed | under 30 KB |
-| Script for enhancement, compressed | under 50 KB, loaded `defer` |
+| Script for enhancement, compressed | under 150 KB for the renderer route's client bundle, loaded `defer` |
 | First page interactive on a throttled 3G profile | under 3 seconds |
 | Server render of a page | under 200 ms at the 95th percentile |
 | Images in the page | the wordmark as SVG, and on page 1 the optional header image at most 300 KB |
+
+The e2e suite measures the HTML of every page of the reference form and the sum
+of the compressed scripts the page loads, and fails above these budgets.
 
 Fonts come from `design-system/` and are self-hosted with `font-display:
 swap`. No third-party scripts except the bot challenge when enabled.
@@ -291,9 +327,33 @@ The only strings the renderer owns. Everything else is staff-authored.
 | submit_failed | Your answers were not sent. Check your connection and try again. | Tus respuestas no se enviaron. Revisa tu conexión e inténtalo de nuevo. |
 | offline | You seem to be offline. We will continue when you reconnect. | Parece que no tienes conexión. Continuaremos cuando vuelvas a conectarte. |
 | privacy_footer | This form is run by Effluz. Answers are stored in the United States and deleted after {retention} months. To request deletion, write to {contact}. | Este formulario es de Effluz. Las respuestas se guardan en Estados Unidos y se eliminan después de {retention} meses. Para pedir que se eliminen, escribe a {contact}. |
+| switch_to_en | English | English |
+| switch_to_es | Español | Español |
+| wordmark | Effluz | Effluz |
+| date_day | Day | Día |
+| date_month | Month | Mes |
+| date_year | Year | Año |
+| files_limits_videos | Videos up to {size} each. | Videos de hasta {size} cada uno. |
+| kinds_images | JPEG, PNG, WebP or HEIC photos | fotos JPEG, PNG, WebP o HEIC |
+| kinds_videos | MP4 or MOV videos | videos MP4 o MOV |
+| kinds_mixed | JPEG, PNG, WebP or HEIC photos, or MP4 or MOV videos | fotos JPEG, PNG, WebP o HEIC, o videos MP4 o MOV |
+| file_row | File {n}, {size} | Archivo {n}, {size} |
+| removed | {file} removed | Se quitó {file} |
+| honeypot_label | Leave this field empty | Deja este campo vacío |
+| error_summary_heading_one | Please fix 1 problem before continuing | Corrige 1 problema para continuar |
+| files_count_one | {count} of 1 file | {count} de 1 archivo |
+| file_unnamed | File {n} | Archivo {n} |
 
 `{contact}` is the configured privacy contact address. `{size}` and `{date}`
 are formatted per locale.
+
+`switch_to_*` name the target language in that language. `wordmark` is the text
+the wordmark slot shows until `design-system/assets/` holds the SVG. `{kinds}`
+in the file messages is `kinds_images`, `kinds_videos` or `kinds_mixed`.
+`file_row` names a staged file without script. `honeypot_label` labels the
+hidden anti-spam field, which assistive technology never reaches. `file_unnamed`
+stands for `{file}` in a refused file's message when the name did not fit in the
+cookie; `{n}` is the file's place among the refused ones.
 
 ## Confirmation email, fixed parts
 
@@ -308,8 +368,21 @@ template wraps the body with:
 
 Plain-text and HTML versions carry the same words. No images, no tracking.
 
+## Routes
+
+| Route | What it is |
+|---|---|
+| `GET /f/<slug>` | The current screen: a form page, the confirmation, or a closed, not open, not found or expired screen (`?expired=1` asks for the expired screen; `?refused=<at>` shows the refused files of the post that redirected there) |
+| `POST /f/<slug>` | The page form, posted to a Server Action: Next, Back, Submit, a language switch or a Remove. Every post redirects (303): a refused one to `GET /f/<slug>?refused=<at>`, the others to `GET /f/<slug>` |
+| `POST /f/<slug>/files` | Early upload of one file with script; JSON |
+| `DELETE /f/<slug>/files/<file id>` | Removes a staged file with script; 204 |
+| `POST /f/<slug>/check` | Checks one field on blur; JSON with the message or null |
+| `GET /f/<slug>/restart` | Clears the in-progress cookie and returns to page 1 ("Start again", "Fill in another form") |
+
 ## Test fixtures
 
 The renderer's presentation tests cover each field type in each state and
 each screen above, in both locales. The e2e suite completes the reference
-form on a phone viewport with script enabled and once with script disabled.
+form on a phone viewport with script enabled and once with script disabled. The
+script-enabled run uses a real Chromium on a phone viewport (ADR 0024); the
+script-disabled run talks HTTP to the built app.
