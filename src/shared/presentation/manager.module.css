@@ -7,7 +7,7 @@
 
 .shell {
   /* color.text.default (12.1:1), color.text.muted (6.2:1) on the staff page and cards */
-  --text: #372549;
+  --text: #1a1423;
   --text-muted: #774c60;
   /* color.surface.page.staff, color.surface.card, color.surface.subtle, color.surface.selected */
   --surface-page: #f4f3fa;

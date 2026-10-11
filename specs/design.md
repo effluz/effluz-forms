@@ -50,7 +50,8 @@ uses only the semantic layer.
 
 | Name | Hex | On white | Role |
 |---|---|---|---|
-| plum | `#372549` | 13.8:1 | Text, primary actions, headings |
+| ink | `#1A1423` | 18.0:1 | Body text and headings on light surfaces |
+| plum | `#372549` | 13.8:1 | Primary actions, focus borders, links, inverse surfaces |
 | berry | `#6C344E` | 9.4:1 | Secondary text, hover states of plum |
 | mauve | `#774C60` | 7.0:1 | Muted text, borders on light surfaces |
 | rose | `#B75D69` | 4.4:1 | Accent only: focus ring, links on light surfaces at 18 px or bold, selected states, highlights. **Never body text, never a white-label button** |
@@ -74,8 +75,8 @@ distinct from rose so an error never looks like an accent.
 
 ### Rules
 
-- Text is plum on light surfaces, blush on plum surfaces. Muted text is
-  mauve, never a transparent plum.
+- Text is ink on light surfaces, blush on plum surfaces. Secondary text is
+  berry, muted text is mauve, never a transparent ink.
 - Rose appears at most once per view as an accent, plus focus rings.
 - Status is conveyed by text and icon together; color is reinforcement.
 - Gradients, transparency overlays and shadows carry no meaning.
@@ -190,7 +191,8 @@ WCAG 2.2 AA is the floor. Design-level commitments beyond it:
 
 Three layers, named so the dark theme later changes only the second:
 
-1. **Brand**: `brand.plum`, `brand.blush`, raw values. Never used in code.
+1. **Brand**: `brand.ink`, `brand.plum`, `brand.blush`, raw values. Never
+   used in code.
 2. **Semantic**: `color.text.default`, `color.surface.page.public`,
    `color.action.primary.bg`, `space.4`, `radius.md`, `font.size.body`.
    This is what components and layouts use.
