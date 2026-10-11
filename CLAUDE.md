@@ -46,6 +46,7 @@ src/
     infrastructure/         adapters: storage, email, uploads, external services
     presentation/           screens, components, view models, copy bindings
   shared/                   kernel: value objects, ports and helpers used by two or more modules
+    domain/form-model/      the form model: the contract every module consumes, importable by every layer
 tests/                      integration and end-to-end tests, fixtures, test helpers
 ops/                        server provisioning script, Compose files, runbooks
 ```

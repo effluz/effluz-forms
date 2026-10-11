@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 import type { SignInAttempt, SignInAttemptStore } from "../application/ports/sign-in-attempt-store";
-import { isUuid } from "./uuid";
+import { isUuid } from "@/shared/infrastructure/uuid";
 
 interface AttemptRow {
   id: string;

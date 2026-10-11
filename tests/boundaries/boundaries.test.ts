@@ -111,10 +111,38 @@ describe("layer boundaries", () => {
     expect(rules.filter((m) => m.ruleId?.startsWith("boundaries/"))).toEqual([]);
   });
 
-  it("lets definitions use form-model's public API but not review's", async () => {
+  it("lets a module domain use the shared form model but not another module's entry point", async () => {
+    const ok = await lintVirtual(
+      "src/modules/definitions/domain/boundary-probe-form-model.ts",
+      `import { LIMITS } from "@/shared/domain/form-model";\nexport const l = LIMITS;\n`,
+    );
+    // No message at all: an unresolved import would surface as a type-aware lint error.
+    expect(ok).toEqual([]);
+    const bad = await lintVirtual(
+      "src/modules/definitions/domain/boundary-probe-entry.ts",
+      `import { sanitizeReturnTo } from "@/modules/identity/application";\nexport const s = sanitizeReturnTo;\n`,
+    );
+    expect(bad.map((m) => m.ruleId)).toContain("boundaries/dependencies");
+  });
+
+  it("treats nested form model files as shared domain", async () => {
+    const ok = await lintVirtual(
+      "src/shared/domain/form-model/field-types/boundary-probe-nested.ts",
+      `import { z } from "zod";\nimport { LIMITS } from "../limits";\nexport const s = z.string().max(LIMITS.shortTextMax);\n`,
+    );
+    // No message at all: an unresolved import would surface as a type-aware lint error.
+    expect(ok).toEqual([]);
+    const bad = await lintVirtual(
+      "src/shared/domain/form-model/field-types/boundary-probe-module.ts",
+      `import { sanitizeReturnTo } from "@/modules/identity/application";\nexport const s = sanitizeReturnTo;\n`,
+    );
+    expect(bad.map((m) => m.ruleId)).toContain("boundaries/dependencies");
+  });
+
+  it("lets definitions use identity's public API but not review's", async () => {
     const ok = await lintVirtual(
       "src/modules/definitions/application/boundary-probe-ok.ts",
-      `import { LIMITS } from "@/modules/form-model/application";\nexport const l = LIMITS;\n`,
+      `import { sanitizeReturnTo } from "@/modules/identity/application";\nexport const s = sanitizeReturnTo;\n`,
     );
     expect(ok.filter((m) => m.ruleId?.startsWith("boundaries/"))).toEqual([]);
     await lintVirtual(
@@ -128,14 +156,14 @@ describe("layer boundaries", () => {
     expect(bad.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });
 
-  it("forbids definitions reaching past form-model's application entry point", async () => {
+  it("forbids definitions reaching past identity's application entry point", async () => {
     await lintVirtual(
-      "src/modules/form-model/application/boundary-probe-deep.ts",
+      "src/modules/identity/application/boundary-probe-deep.ts",
       `export const y = 1;\n`,
     );
     const rules = await lintVirtual(
       "src/modules/definitions/application/boundary-probe-deep.ts",
-      `import { y } from "@/modules/form-model/application/boundary-probe-deep";\nexport const z = y;\n`,
+      `import { y } from "@/modules/identity/application/boundary-probe-deep";\nexport const z = y;\n`,
     );
     expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });
@@ -171,6 +199,19 @@ describe("files outside a layer folder", () => {
       `import { GoogleOidcAdmin } from "@/modules/identity/infrastructure/google-oidc";\nexport const g = GoogleOidcAdmin;\n`,
     );
     expect(boundaryRules(rules)).not.toEqual([]);
+  });
+
+  it("lets the composition root import the shared domain but keeps module domains off other modules", async () => {
+    const ok = await lintVirtual(
+      "src/app/boundary-probe-registry.ts",
+      `import { buildDefaultRegistry } from "@/shared/domain/form-model";\nexport const r = buildDefaultRegistry;\n`,
+    );
+    expect(boundaryRules(ok)).toEqual([]);
+    const bad = await lintVirtual(
+      "src/modules/definitions/domain/boundary-probe-identity.ts",
+      `import { sanitizeReturnTo } from "@/modules/identity/application";\nexport const s = sanitizeReturnTo;\n`,
+    );
+    expect(boundaryRules(bad)).toContain("boundaries/dependencies");
   });
 
   it("refuses a stray shared file importing a module", async () => {

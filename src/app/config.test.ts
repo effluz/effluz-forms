@@ -90,4 +90,60 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...base, SERVICE: "cron" })).toThrow(/SERVICE/);
     expect(() => loadConfig({ ...base, LOG_LEVEL: "verbose" })).toThrow(/LOG_LEVEL/);
   });
+
+  describe("notificationAllowedDomains", () => {
+    const env = { ...base, GOOGLE_ALLOWED_HOSTED_DOMAIN: "effluz.com" };
+
+    it("puts the hosted domain first, then the cleaned partner list", () => {
+      const c = loadConfig({
+        ...env,
+        NOTIFICATION_ALLOWED_DOMAINS: "Partner.Example, other.example",
+      });
+      expect(c.notificationAllowedDomains).toEqual([
+        "effluz.com",
+        "partner.example",
+        "other.example",
+      ]);
+    });
+    it("is just the hosted domain when the variable is empty or absent", () => {
+      expect(
+        loadConfig({ ...env, NOTIFICATION_ALLOWED_DOMAINS: "" }).notificationAllowedDomains,
+      ).toEqual(["effluz.com"]);
+      expect(loadConfig(env).notificationAllowedDomains).toEqual(["effluz.com"]);
+    });
+    it.each([
+      "partner",
+      "a.example.com/x",
+      "@partner.example",
+      "partner..example",
+      "par ty.example",
+    ])(
+      "fails to load on the malformed entry %j, naming the variable and not the value",
+      (entry) => {
+        const attempt = () =>
+          loadConfig({ ...env, NOTIFICATION_ALLOWED_DOMAINS: `ok.example,${entry}` });
+        expect(attempt).toThrow(/NOTIFICATION_ALLOWED_DOMAINS/);
+        expect(attempt).not.toThrow(entry);
+      },
+    );
+    it("accepts a list of well-formed domains with surrounding spaces and capitals", () => {
+      const c = loadConfig({
+        ...env,
+        NOTIFICATION_ALLOWED_DOMAINS: " Mail.Partner-One.example , two.example ",
+      });
+      expect(c.notificationAllowedDomains).toEqual([
+        "effluz.com",
+        "mail.partner-one.example",
+        "two.example",
+      ]);
+    });
+    it("drops empty entries and duplicates, including the hosted domain", () => {
+      const c = loadConfig({
+        ...env,
+        GOOGLE_ALLOWED_HOSTED_DOMAIN: "Effluz.com",
+        NOTIFICATION_ALLOWED_DOMAINS: " ,EFFLUZ.com,a.example,,A.example , ",
+      });
+      expect(c.notificationAllowedDomains).toEqual(["effluz.com", "a.example"]);
+    });
+  });
 });

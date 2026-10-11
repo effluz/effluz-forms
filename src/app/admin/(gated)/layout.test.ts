@@ -104,4 +104,12 @@ describe("admin session gate", () => {
     expect(html).toContain('name="csrf" value="csrf-1"');
     expect(html).toContain("page content");
   });
+
+  it("renders the manager shell with Forms as the current section", async () => {
+    seedSession();
+    request.cookies.set(COOKIE, SESSION_ID);
+    const html = await render();
+    expect(html).toMatch(/<a [^>]*href="\/admin\/forms"[^>]*aria-current="page"[^>]*>Forms/);
+    expect(html).toMatch(/<main [^>]*>page content<\/main>/);
+  });
 });

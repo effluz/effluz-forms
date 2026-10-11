@@ -9,7 +9,7 @@ import {
   parseVersion,
   validateForPublish,
   validateSubmission,
-} from "@/modules/form-model/application";
+} from "@/shared/domain/form-model";
 import { referenceFormDraft, referenceSubmission } from "./reference-form";
 
 const registry = buildDefaultRegistry();

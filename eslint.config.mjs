@@ -16,13 +16,12 @@ const thirdParty = (...source) => ({ module: { origin: ["external", "core"], sou
 // public entry point (application/index.ts) of the modules listed here; modules absent
 // from the table get none.
 const MODULE_DEPS = {
-  "form-model": [],
   identity: [],
   media: [],
   notifications: [],
-  definitions: ["form-model", "identity"],
-  submissions: ["form-model", "definitions", "media", "notifications"],
-  review: ["form-model", "definitions", "submissions", "media", "identity"],
+  definitions: ["identity"],
+  submissions: ["definitions", "media", "notifications"],
+  review: ["definitions", "submissions", "media", "identity"],
 };
 const moduleOf = (type, module) => ({ element: { type, captured: { module } } });
 // A module's single public entry point: its application/index.ts file.
@@ -48,7 +47,7 @@ const moduleLayerPolicies = Object.entries(MODULE_DEPS).flatMap(([module, deps])
   })),
 );
 
-const frameworks = ["react", "react-dom", "next", "next/*"];
+const frameworks = ["react", "react/*", "react-dom", "react-dom/*", "next", "next/*"];
 // The Next entry files that must sit at the src root (src/proxy.ts and its test).
 const rootEntry = { file: { categories: "root-entry" } };
 
@@ -144,6 +143,7 @@ export default tseslint.config(
                 to: [
                   element("app"),
                   rootEntry,
+                  element("shared-domain"),
                   element("shared-application"),
                   element("shared-infrastructure"),
                   element("shared-presentation"),
@@ -164,6 +164,28 @@ export default tseslint.config(
               from: [element("module-application"), element("shared-application")],
               disallow: { to: thirdParty(...frameworks) },
               message: "application is framework-free",
+            },
+            {
+              from: [element("module-infrastructure"), element("shared-infrastructure")],
+              disallow: { to: thirdParty(...frameworks) },
+              message: "infrastructure is framework-free",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // The form model has one entry point, so its internal layout can change (ADR 0022).
+    files: ["src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/shared/domain/form-model/*"],
+              message: "Import from @/shared/domain/form-model, the entry point (ADR 0022).",
             },
           ],
         },

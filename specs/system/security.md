@@ -105,8 +105,12 @@ The step-by-step flow is in `use-cases/sign-in.md`.
 - **CSRF.** Each session has a random token issued at sign-in and stored with
   it. Every state-changing admin form embeds it in a hidden `csrf` field, and
   the server compares it with the session's token in constant time. A mismatch
-  answers `403` and leaves the session alone. Today the only such form is
-  sign-out; every later state-changing admin route follows the same rule.
+  answers `403` and leaves the session alone. Every state-changing admin route
+  follows the rule: sign-out, the manager's create, lifecycle and delete
+  routes (through `requireCsrf` in `src/app/admin/_lib/request.ts`) and the
+  Settings server action, which on a mismatch redirects back with its
+  out-of-date banner instead of answering `403`. A manager form refused this
+  way shows the `auth.stale_*` page.
 - Sign-out destroys the server record, not just the cookie. A sign-out POST
   that arrives without the session cookie changes nothing, writes no audit
   entry and sets no cookie, so a cross-site post cannot clear someone's cookie
@@ -196,10 +200,32 @@ answered, so it is not optional.
 - **Written with the change it records.** A row joins the same unit of work as
   the state change, so both commit or neither does. A rejected sign-in has no
   state change and uses a unit of work of its own.
+- **Reading.** `identity` exports an `AuditLogReader` for other modules'
+  activity views: entries of one target, newest first, filterable by action,
+  actor and an upper time bound, at most 200 per call, plus the distinct
+  actors of a target for filter menus. Paging uses the pair `(created_at,
+  id)` as its cursor (`before` with `beforeId`), so entries written at the
+  same instant are never skipped at a page boundary. It is read-only and
+  never exposes the table itself.
 - **Identity's actions:** `sign_in`, `sign_in_rejected`, `sign_out`,
   `session_expired` and `sessions_revoked`. Other modules register their own.
+- **Definitions' actions.** Eleven, each with the form's id as target and the
+  request IP:
+
+  | Action | Details |
+  |---|---|
+  | `form_created` | `languages`; `duplicateOf` (the source form's id) when copied |
+  | `draft_saved` | `commands`, the number of commands in the saved batch; at most one entry per editor per five minutes |
+  | `draft_language_mode_changed` | `languages`, the new mode |
+  | `form_published` | `number`, the version published |
+  | `form_closed`, `form_reopened`, `form_archived`, `form_unarchived` | none |
+  | `form_deleted` | `slug` |
+  | `form_settings_changed` | `keys`, the changed setting keys joined by commas (`slug` among them when the link name changed) |
+  | `retention_shortened` | `from` and `to` in months, `count` of submissions the next purge removes; written only when that count is above zero and the editor confirmed |
+
+  The constant list is `definitionsAuditActions` in the module's public API.
 - **Details never carry an address.** Values are strings, numbers or booleans,
-  and the write throws if any string contains `@`. Today's details are the
+  and the write throws if any string contains `@`. Identity's details are the
   attempted domain on `sign_in_rejected`, the expiry reason (`idle_expired` or
   `absolute_expired`) on `session_expired`, and the number of sessions on
   `sessions_revoked`. That last entry names the operator as actor when the

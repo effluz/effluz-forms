@@ -1,0 +1,266 @@
+/*
+ * The forms list and the New form page, inside the manager shell. Shared
+ * primitives (buttons, table, badge, field, input, dialog) come from
+ * src/shared/presentation/manager.module.css, and so do the color variables
+ * (`--text`, `--surface-card`, `--border`, ...), which `.shell` defines from
+ * design-system/tokens.json. Every other value is a token, named in a comment.
+ */
+
+/* The heading and the New form button on one row; space.3 gap, space.4 below. */
+.pageHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+/* The heading's own margin is carried by the row. */
+.pageHeader > h1 {
+  margin: 0;
+}
+
+/* Search: label above, input and button on one row; space.2 and space.3 gaps,
+ * space.5 below. */
+.search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin: 0 0 24px;
+}
+
+/* The field grows up to the Dialog's 560 px width (design-system/components.md). */
+.searchField {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 560px;
+}
+
+/* A form's Spanish title beneath its English one, at font.weight.regular. */
+.title [lang="es"] {
+  display: block;
+  font-weight: 400;
+}
+
+/* The version beside a badge: font.size.staff.small in color.text.muted, space.2 apart. */
+.version {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A new count above zero: font.weight.semibold, so it stands out without color. */
+.newCount {
+  font-weight: 600;
+}
+
+/* Times in a row: font.features.tabularNumbers, each line kept whole. */
+.time {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The UTC time on its own line: font.size.staff.small in color.text.muted. */
+.utc {
+  display: block;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* The actions menu: a disclosure anchored to its summary. */
+.menu {
+  position: relative;
+  display: inline-block;
+}
+
+/* Every actions cell is its own stacking context (above the row link), so the
+ * cell with the open menu is lifted over the cells of the rows below it. */
+td:has(> .menu[open]) {
+  z-index: 3;
+}
+
+/* The summary is a secondary button: size.touchTarget tall, space.1 and space.4
+ * padding, border.width.default in color.action.secondary.border, radius.md,
+ * font.size.staff.button at font.weight.medium. */
+.menuButton {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 4px 16px;
+  border: 1px solid var(--primary-bg);
+  border-radius: 12px;
+  background: var(--surface-card);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  list-style: none;
+}
+
+.menuButton::-webkit-details-marker {
+  display: none;
+}
+
+/* color.action.secondary.hoverBg */
+.menuButton:hover,
+.menu[open] > .menuButton {
+  background: var(--secondary-hover);
+}
+
+/* Inside the button the Spanish line sits beside the English one, space.1 apart,
+ * at font.size.staff.small. */
+.menuButton [lang="es"] {
+  display: inline;
+  margin-left: 4px;
+  color: inherit;
+  font-size: 13px;
+}
+
+/* Menu (design-system/components.md): min width 200 px, radius.md,
+ * shadow.floating, color.surface.card, color.border.default, space.1 padding;
+ * it sits above the rows below it. */
+.menuList {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  min-width: 200px;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-card);
+  box-shadow: var(--shadow-floating);
+  list-style: none;
+}
+
+/* A divider (color.border.default) above the first lifecycle action, space.1 apart. */
+.menuDivider {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+/* Items: size.touchTarget tall, space.1 and space.4 padding, color.text.default,
+ * font.size.staff.label. */
+.menuLink {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 44px;
+  padding: 4px 16px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* color.surface.subtle, keeping an underline so hover is not color alone. */
+.menuLink:hover {
+  background: var(--surface-subtle);
+  text-decoration: underline;
+}
+
+/* font.size.staff.small */
+.menuLink [lang="es"] {
+  font-size: 13px;
+}
+
+/* Text kept for assistive technology only. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The empty state and the no-results line: color.surface.card with
+ * color.border.default, radius.md, space.5 padding. */
+.empty {
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+
+.empty > p {
+  margin: 0 0 16px;
+}
+
+.empty > p:last-child {
+  margin: 0;
+}
+
+/* A group of choices: no browser border, legend styled as a field label
+ * (font.size.staff.label, font.weight.medium, font.lineHeight.label), space.2
+ * below it and space.5 below the group. */
+.fieldset {
+  margin: 0 0 24px;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* One radio and its label: a size.touchTarget row, space.2 gap; the radio is
+ * size.iconDefault in color.action.primary.bg. */
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.choice input {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--primary-bg);
+}
+
+/* The source select sits under the Duplicate choice: space.1 above, indented by
+ * space.6 (the radio plus its gap), so it lines up with the label. */
+.nested {
+  margin: 4px 0 0 32px;
+}
+
+/* Hints: font.size.staff.small in color.text.muted. */
+.hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Errors: color.text.error at font.size.staff.label and font.weight.medium; the
+ * message itself names the problem, so color is never the only signal. */
+.error {
+  margin: 0;
+  color: var(--error);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.error [lang="es"] {
+  color: inherit;
+}
+
+/* An invalid input: color.border.error at border.width.focus. */
+.invalid {
+  border: 2px solid var(--error);
+}

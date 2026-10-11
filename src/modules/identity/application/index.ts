@@ -8,12 +8,14 @@ export type { CompleteSignInResult } from "./complete-sign-in";
 export type { AdminIdentity } from "./ports/admin-identity";
 export type { SessionRepository } from "./ports/session-repository";
 export type { AuditLog } from "./ports/audit-log";
+export type { AuditLogReader, AuditRecord, AuditQuery } from "./ports/audit-log-reader";
+export { AUDIT_PAGE_MAX } from "./ports/audit-log-reader";
 export type { SignInAttemptStore } from "./ports/sign-in-attempt-store";
 
 export { startSignIn, sanitizeReturnTo } from "./start-sign-in";
 export { completeSignIn } from "./complete-sign-in";
 export { currentSession } from "./current-session";
-export { signOut } from "./sign-out";
+export { signOut, constantTimeEqual } from "./sign-out";
 export { revokeSessionsForEmail } from "./revoke-sessions";
 export { auditActions, assertNoPersonalData } from "../domain/audit";
 export { IDLE_HOURS, ABSOLUTE_DAYS, sessionCookieMaxAgeSeconds } from "../domain/session";

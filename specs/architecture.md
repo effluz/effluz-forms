@@ -1,6 +1,7 @@
 # System Architecture
 
-Status: first pass, revised 2026-10-09 for the form builder model (ADR 0009).
+Status: first pass, revised 2026-10-10 for the definitions module and the
+manager's forms pages (ADRs 0016, 0021, 0022).
 Core decisions are accepted and recorded in `decisions/`. Two tooling choices
 remain proposed; see Open items.
 
@@ -64,6 +65,10 @@ imports the application layer directly and never loads Next.js.
 | **Builder** | Staff | `/admin/forms/<id>/edit` | `definitions` |
 | **Manager** | Staff | `/admin/...` | `definitions` (lifecycle, settings), `review` (submissions) |
 
+The manager's routes, their guards and which of them are built are listed in
+`ui-ux/manager.md`, "Routes". The builder route is a placeholder page until
+the builder plan lands.
+
 ## Modules
 
 Code is organized by capability under `src/modules/`, each with the four
@@ -72,18 +77,23 @@ this table and go through each module's public application API.
 
 | Module | Responsibility | May depend on |
 |---|---|---|
-| `form-model` | The contract in `form-definition.md`: field type registry, validation rules, condition evaluation, publish validation. Pure domain, no I/O. | `shared` |
 | `identity` | Staff sign-in, sessions, audit log | `shared` |
 | `media` | `MediaStorage` port and adapters, photo processing, media records | `shared` |
 | `notifications` | Email templates and the `EmailSender` port; job handlers for email | `shared` |
-| `definitions` | Forms, drafts, versions, lifecycle, operational settings, QR codes, translation suggestions | `form-model`, `identity` |
-| `submissions` | Public rendering of a published version, server validation, intake transaction, enqueuing jobs | `form-model`, `definitions`, `media`, `notifications` |
-| `review` | Listing, viewing, exporting, downloading and deleting submissions; curation status and text edits; dead job retry | `form-model`, `definitions`, `submissions`, `media`, `identity` |
+| `definitions` | Forms, drafts, versions, lifecycle, operational settings, QR codes, translation suggestions | `identity` |
+| `submissions` | Public rendering of a published version, server validation, intake transaction, enqueuing jobs | `definitions`, `media`, `notifications` |
+| `review` | Listing, viewing, exporting, downloading and deleting submissions; curation status and text edits; dead job retry | `definitions`, `submissions`, `media`, `identity` |
 
 `shared/` holds the kernel: `LocalizedText`, ids, `Clock`, `UnitOfWork`,
 `JobQueue`, logging, and nothing that belongs to one module.
 
 Adding a module or an edge to this table requires an ADR.
+
+The form model is the contract in `form-definition.md` (field type registry,
+validation rules, condition evaluation, publish validation; pure domain, no
+I/O). It lives in the shared kernel at `src/shared/domain/form-model/`, with
+`@/shared/domain/form-model` as its entry point, and every layer of every
+module may import it, `domain/` included (ADR 0022).
 
 ## Ports
 
@@ -99,8 +109,10 @@ or a module's public API:
 | `EmailSender` | Send a bilingual transactional message | SMTP2GO | `system/email.md` |
 | `AdminIdentity` | Start a staff sign-in and complete it into verified claims or a refusal reason; the admission policy is identity's own domain rule | Google OpenID Connect | `system/security.md` |
 | `AuditLog` | Append one entry to the audit log inside the current unit of work. Owned by `identity`, which exports it and the audit action list for other modules | Postgres (`audit_log`, append-only by trigger) | `system/security.md` |
+| `AuditLogReader` | List audit entries for a target, newest first and capped, paged by the composite cursor `(created_at, id)` (`before` plus `beforeId`), plus the distinct actors for a filter menu. Owned by `identity`, which exports it for other modules' activity views | Postgres (`audit_log`) | `system/security.md` |
+| `SubmissionStats` | Read-only submission figures `definitions` needs: totals and last received time per form, submissions since a time, submissions older than a retention age, answers per field key, whether any exist. Owned by `definitions` | None: a null adapter answers zeros until the `submissions` module supplies one | `ui-ux/manager.md` |
 | `Clock`, `IdGenerator`, `Logger` | Determinism in tests; structured logging with defensive redaction | System clock, random UUIDs, pino | `system/observability.md` (`Logger`) |
-| `FieldTypeRegistry` | Look up a field type's validator, normalizer, exporter | In-code registry in `form-model` | `form-definition.md` |
+| `FieldTypeRegistry` | Look up a field type's validator, normalizer, exporter | In-code registry in `shared/domain/form-model` | `form-definition.md` |
 | `Translator` | Suggest a translation of staff-authored text; available to `definitions` only | DeepL API | `decisions/0010` |
 | `TextCorrector` | Suggest spelling and grammar corrections for one text answer; available to `review` only | DeepL Write | `decisions/0011` |
 
@@ -120,21 +132,27 @@ from the module's public API solely so the composition root can assemble
 because Next requires that file at the `src` root; the same rules apply to it
 as to `src/app/`. ESLint admits exactly that file (and its test) through the
 `root-entry` file category, and any other file outside a layer still fails
-the boundaries check. Route handlers and server actions are thin: parse input,
-call a use case, map the result to a response. A use case must be callable
-from a test, from the worker, and from a route handler without change. No
-React or Next.js import may appear in `domain/`, `application/`, or
-`infrastructure/`.
+the boundaries check. The composition root may also import the shared domain,
+to wire registries such as `buildDefaultRegistry()`. Route handlers and server
+actions are thin: parse input, call a use case, map the result to a response.
+Server actions live only in `src/app/**/actions.ts`; today that is the
+Settings tab's save. A use case must be callable from a test, from the
+worker, and from a route handler without change. No React or Next.js import
+may appear in `domain/`, `application/`, or `infrastructure/`.
 
 ## Publishing data flow
 
-1. Staff edit the draft in the builder. Every save is validated structurally
-   by `form-model` and written to the draft row.
+1. Staff edit the draft in the builder. The builder sends typed commands
+   with the draft revision it last saw; each batch is applied to the stored
+   document, validated structurally by the form model and written to the
+   draft row with the revision advanced, or refused as stale.
 2. Publish runs the full publish validation (labels, translations, consent,
    retention, condition references). Failures are returned as a list the
    builder shows inline.
-3. In one transaction: the draft becomes an immutable version row, the form
-   points at it, a new draft is cloned from it, and an audit entry is written.
+3. In one transaction, with the form and draft rows locked: the draft becomes
+   an immutable version row, the form points at it, the draft row stays as the
+   base of the next edits (its revision advances), and an audit entry is
+   written.
 4. The renderer serves the new version on the next request. No cache to
    invalidate beyond the per-process definition cache keyed by version id.
 
@@ -142,7 +160,7 @@ React or Next.js import may appear in `domain/`, `application/`, or
 
 1. The browser requests `/f/<slug>`. `submissions` loads the published version
    and renders page one in the chosen locale.
-2. Each page posts to `app`. Server-side, `form-model` evaluates conditions
+2. Each page posts to `app`. Server-side, the form model evaluates conditions
    and validation rules against the version. Answers to hidden fields are
    discarded. Photos are written to the local staging directory under random
    names with metadata (EXIF, including GPS) stripped.
@@ -187,6 +205,11 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 - No configuration value is ever logged.
 - `PRIVACY_CONTACT_EMAIL` is the one configuration value shown to the
   public, in the renderer's privacy footer and consent template.
+- `PUBLIC_BASE_URL` is the public origin (no path); public links and QR codes
+  are built on it. `NOTIFICATION_ALLOWED_DOMAINS` is an optional,
+  comma-separated list of partner domains that form notification recipients
+  may use besides the Workspace domain `GOOGLE_ALLOWED_HOSTED_DOMAIN`, which
+  is always allowed.
 
 ## Technology decisions
 
@@ -206,6 +229,7 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 | Postgres access | `pg` (node-postgres) with hand-written SQL and plain `.sql` migrations; no ORM | accepted | `decisions/0017` |
 | OpenID Connect client | `openid-client` v6 behind the `AdminIdentity` port; sessions and sign-in attempts in our own tables | accepted | `decisions/0018` |
 | Logging | `pino` behind the `Logger` port, JSON to stdout with redaction | accepted | `decisions/0019` |
+| QR codes | `qrcode` library, rendered locally in `definitions` infrastructure | accepted | `decisions/0021` |
 | Error tracking | Sentry with PII scrubbing | proposed | `system/observability.md` |
 | Bot challenge | Cloudflare Turnstile on the final step | proposed | `system/security.md` |
 

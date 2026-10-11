@@ -10,6 +10,27 @@ export function testPool(): Pool {
   return pool;
 }
 
+/**
+ * Resolves once `count` sessions of this database wait on a lock; rejects after
+ * `timeoutMs`. Lets a test prove a statement blocks without guessing a delay.
+ */
+export async function waitForLockWaiters(
+  target: Pool,
+  count = 1,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const { rows } = await target.query<{ n: number }>(
+      `select count(*)::int as n from pg_stat_activity
+        where datname = current_database() and wait_event_type = 'Lock'`,
+    );
+    if ((rows[0]?.n ?? 0) >= count) return;
+    if (Date.now() > deadline) throw new Error(`no ${String(count)} lock waiter(s) appeared`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 /** Empties every application table, keeping the migration ledger. */
 export async function truncateAll(target: Pool): Promise<void> {
   const { rows } = await target.query<{ tablename: string }>(

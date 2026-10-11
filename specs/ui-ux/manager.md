@@ -6,6 +6,16 @@ first pass, 2026-10-09. Use cases: `sign-in.md`, `publish-form.md`,
 `operate-jobs.md`. The builder is its own surface, `ui-ux/builder.md`,
 reached from here.
 
+## Build status
+
+Built: the shell, the Forms list, the New form page, the form overview with
+its lifecycle actions, and the Settings, Share and Activity tabs. Pending, each
+with its own plan: the Submissions tab and everything under review (list,
+drawer, export), the Operations page, the Audit page, the banner above the
+Forms list, the language menu and keyboard shortcuts of the shell, and the
+builder (its route is a placeholder). The sections below specify the target;
+the "First pass" notes say what the built pages do today.
+
 ## Principles
 
 1. **Forms first.** The home screen is the list of forms with what is new.
@@ -28,6 +38,47 @@ button. Every page has an `<h1>` and a breadcrumb from Forms downward.
 Responsive tiers match the builder: three-column layouts from 1280 px,
 two from 768, single column with full-screen panels below.
 
+First pass: Operations and Audit appear in the navigation as disabled links
+(`aria-disabled`, no `href`) until their pages exist. There is no language
+preference yet, so every string shows English with the Spanish line beneath
+it, marked `lang="es"`; identical text shows once. The language menu and the
+keyboard shortcuts entry wait for the manager's first client component.
+
+## Routes
+
+All routes sit under `/admin`, which the proxy gates (`src/proxy.ts`).
+
+| Route | What it is |
+|---|---|
+| `GET /admin` | Redirects to `/admin/forms` |
+| `GET /admin/forms` | Forms list (`?tab=`, `?q=`) |
+| `GET /admin/forms/new` | New form page (`?error=` and the carried-back values) |
+| `POST /admin/forms/create` | Creates a form, 303 to its overview or back to the New form page. A route cannot sit beside the page at `/admin/forms`, hence the name |
+| `GET /admin/forms/[id]` | Form overview, which is the Submissions tab (`?action=` opens a lifecycle confirmation, `?error=` shows a refusal) |
+| `GET /admin/forms/[id]/settings`, `share`, `activity` | The other tabs |
+| `GET /admin/forms/[id]/edit` | Builder placeholder |
+| `POST /admin/forms/[id]/lifecycle` | Close, reopen, archive or unarchive, 303 to the overview |
+| `POST /admin/forms/[id]/delete` | Delete a never-published form, 303 to the list |
+| `GET /admin/forms/[id]/qr.png?size=1024\|2048`, `qr.svg` | QR downloads (`?download=1` makes the SVG an attachment; without it the SVG is the preview) |
+| Settings server action | `saveSettings` in `(gated)/forms/[id]/settings/actions.ts`, posted by the Settings tab |
+
+Every handler that changes data answers a handled form post with a 303 (Post/
+Redirect/Get). A request without a session gets the sign-in redirect (302), a
+stale or missing token the `auth.stale_*` page (403), and a tampered body a bare
+400. `src/app/admin/_lib/request.ts` holds the guards: `requireSession` returns
+the active session or a redirect to sign-in, and `requireCsrf` adds the check of
+the form's `csrf` field against the session token. Both take the page to return
+to after sign-in, since sign-in returns with a GET. The proxy does the same for
+a POST that arrives without a session: it returns to the page that posted
+(`create` to the New form page, `lifecycle` and `delete` to the overview), never
+to the route and never with a query. Bare 400 and 404 answers carry
+`Cache-Control: no-store` (`plain` in `request.ts`). Pages read the session
+through `pageSession` (`_lib/page.ts`), and every page or layout that does so
+exports `instant = false`, which lets it block on the session and the database
+under Cache Components. The QR routes need a session but no CSRF token, as they
+change nothing; their answers are `private, no-cache`, so a draft's new slug
+shows at once.
+
 ## Forms list (home)
 
 - Tabs: **Active** (draft and published), **Closed**, **Archived**. Counts
@@ -35,9 +86,21 @@ two from 768, single column with full-screen panels below.
 - Table columns: title, status badge with version, new submissions since
   this user last opened the form (bold when above zero), total submissions,
   last submission time, close date if set, actions menu.
-- Sorted by last submission time, then title. Search by title or slug.
+- Sorted by last submission time (forms with none last), then title. Search by
+  title or slug. Submission figures come from the `SubmissionStats` port;
+  until the submissions module supplies one every form shows zero.
 - Row click opens the form overview. Actions menu: Open, Edit in builder,
-  Share, Settings, and the lifecycle actions allowed for its status.
+  Share, Settings, and the lifecycle actions allowed for its status. Each
+  lifecycle action opens its confirmation on the form overview; Delete is
+  offered there only. Without JavaScript the menu is a disclosure of links,
+  named after its form, reached with Tab.
+- Search is a plain GET form that keeps the current tab. Tab counts do not
+  depend on the search. A tab or search with no forms says
+  `home.none_here`; `home.empty` is only for an installation with no forms
+  at all.
+- Dates show in both the form's time zone and UTC, both visible:
+  `YYYY-MM-DD HH:mm` followed by the zone name, with the UTC time on a
+  second line. An empty date cell reads `home.none` to assistive technology.
 - "New form" button opens the dialog specified in `ui-ux/builder.md`.
 - A banner appears above the list only when something is wrong: worker
   heartbeat stale, dead jobs present, last backup older than two days. It
@@ -57,6 +120,28 @@ Lifecycle actions confirm in a dialog that states the effect in one
 sentence, for example "People with the link will see that the form is
 closed. Submissions already received are kept." Delete is offered only when
 the use case allows it and requires typing the slug.
+
+First pass, without JavaScript:
+
+- The public URL is a read-only input labelled `sh.url`, with
+  `form.url_hint` beneath it. There is no Copy button until the page has a
+  script; Content Security Policy rules out an inline one.
+- The language mode uses the `new.*` names. Open and close dates use
+  `set.opens` and `set.closes`, shown in the form's time zone and in UTC.
+- The lifecycle menu is a disclosure of links named `home.actions`. Each
+  link opens its confirmation on the overview (`?action=close`, `reopen`,
+  `archive`, `unarchive` or `delete`). The confirmation is a page section
+  that posts to `/admin/forms/<id>/lifecycle` or `/admin/forms/<id>/delete`.
+  An action the form no longer allows shows `form.error_transition`.
+- A closed or archived form shows its banner with the Reopen or Unarchive
+  action.
+- A refused deletion returns with `form.error_slug_mismatch`, with the
+  confirmation open again, or `form.error_not_allowed`.
+- Submissions is the only tab without a page of its own: the overview shows
+  `form.submissions_soon` until review exists, and the tab is shown, not
+  linked, from the other tabs.
+- Edit in builder leads to a placeholder page with the form's title,
+  `builder.placeholder`, and links to Settings and Share.
 
 ## Submissions tab
 
@@ -147,18 +232,69 @@ discard warning on navigation:
 Each field has a help line. Save confirms in a toast and writes the audit
 entry.
 
+First pass, without JavaScript:
+
+- The tab is one form posted to a server action, which always redirects
+  back to the tab (Post/Redirect/Get); it is not a route handler. A refused
+  save keeps the values as submitted and the reasons in the cookie
+  `effluz_settings_state`, scoped to the tab's path, httpOnly, `SameSite=Lax`,
+  living 600 seconds, and returns with `refused` set to the save's time (in
+  milliseconds); the tab shows that state only for that value. A save that
+  goes through clears the cookie and returns with `saved`. The cookie may
+  carry the submitted notification addresses, staff data already held in the
+  database; when the state would not fit a cookie the values are dropped and
+  the tab shows the stored ones.
+- After a refusal each issue sits under its field, linked with
+  `aria-describedby`, the field marked `aria-invalid`. An issue with no
+  field of its own (`set.err_malformed` on the whole payload,
+  `set.err_stale`) is a banner above the sections.
+- Recipients are a text area, one address per line; blank lines are
+  ignored. The empty list shows `set.no_recipients`.
+- The time zone sits in Availability with `set.timezone_hint`, since the
+  open and close times are entered in it; the daily summary hour uses it
+  too. Each set time also shows in UTC.
+- Shortening retention below existing submissions shows `set.retention_warn`
+  in a warning banner. The footer then shows a second, destructive button,
+  `set.retention_confirm`, after Save and described by the warning, that
+  confirms the purge. Save stays the form's first submit button, so Enter in
+  a field never confirms a purge.
+- A save that succeeds returns to the tab with a success banner,
+  `set.saved`, in place of the toast. `set.discard_warn` shows beside Save
+  after a refused save. The warning on navigating away with unsaved edits
+  needs JavaScript and is not built yet.
+- The reference prefix and the slug are disabled, not hidden, once locked;
+  their hints say why.
+
 ## Share tab
 
-Public URL with Copy. QR code preview with download as PNG (1024 px and
-2048 px) and SVG, and a print-ready PDF with the form title and URL under
-the code. A warning when the form is not currently reachable: closed,
-archived, or outside its date window. Short guidance: "The QR code and link
-stay the same when you publish changes."
+Public URL in a read-only, selectable field. Its Copy button needs script
+and waits for the manager's first client component (`sh.copy` and
+`sh.copied` are bound for it; the first pass has no Copy button). QR code
+preview, rendered locally by the `qrcode` library (`decisions/0021`), with
+download as PNG (1024 px and 2048 px) and SVG; the preview and the downloads
+encode exactly the public URL, and the files are named
+`<slug>-qr-<size>.png` and `<slug>-qr.svg`. A print-ready PDF with the form
+title and URL under the code is planned and has no link until it exists. A
+warning when the form is not currently reachable: never published, closed,
+archived, or outside its date window, with the reason in words
+(`sh.reason_*`). The link and QR stay available meanwhile. Short guidance:
+"The QR code and link stay the same when you publish changes."
 
 ## Activity tab
 
-The audit log filtered to this form: time, actor, action, target with a
-link where one exists. Filter by actor and action. Export as CSV.
+The audit log filtered to this form, newest first: time (shown in UTC, as
+`YYYY-MM-DD HH:mm UTC`), actor, action (plain words, `au.action_*`), and
+target. Every entry of this tab concerns the form itself, so the target is a
+link to the overview, followed by the entry's details when it has any. An
+action written by another module is shown as stored. Filter by actor and
+action with a plain GET form, so a filtered view is a shareable link. A page
+holds 50 entries; "Older entries" appears only when older ones exist and
+continues from the oldest one shown. The cursor is the pair (time, id) of that
+entry, so entries written at the same instant are never skipped. A filter value
+the menus do not list (an actor no longer in the list, an action of another
+module) is added as an option, so the menus always show the filter in force.
+Export as CSV comes with the audit page and has no control here
+until then.
 
 ## Operations page
 
@@ -181,6 +317,11 @@ explains that entries are kept for one year.
 
 - **Loading**: skeleton rows, never a spinner on a blank page.
 - **Errors**: inline, with Retry; the shell stays usable.
+- **Not found**: a form route for an unknown form shows, inside the shell,
+  a breadcrumb back to Forms, the `<h1>` `shell.not_found_title`, one
+  sentence (`shell.not_found_body`) and one link (`shell.not_found_back`) to
+  the Forms list, with status 404. The lifecycle and delete routes send an
+  unknown form to its overview, which shows this page.
 - **Closed or archived form**: a banner in the overview explaining what
   the public sees and how to reopen.
 - **Submission deleted while open**: the drawer shows "This submission was
@@ -253,12 +394,26 @@ builder (status names, New form dialog).
 | home.banner_dead | {count} jobs need attention. | {count} trabajos necesitan atención. |
 | home.banner_backup | The last backup is older than two days. | La última copia de seguridad tiene más de dos días. |
 | home.see_operations | See Operations | Ver Operaciones |
+| home.search_submit | Search | Buscar |
+| home.none_here | No forms to show here. | No hay formularios para mostrar aquí. |
+| home.version | v{n} | v{n} |
+| home.actions | Actions | Acciones |
+| home.open | Open | Abrir |
+| home.none | None | Ninguna |
 | shell.wordmark | Effluz | Effluz |
 | shell.signed_in_as | Signed in as {name} | Sesión iniciada como {name} |
-| admin.home_placeholder | Admin area, coming soon | Área de administración, próximamente |
+| shell.skip_to_main | Skip to main content | Saltar al contenido principal |
+| shell.main_nav | Main navigation | Navegación principal |
+| shell.breadcrumb | Breadcrumb | Ruta de navegación |
+| shell.cancel | Cancel | Cancelar |
+| shell.not_found_title | Form not found | Formulario no encontrado |
+| shell.not_found_body | It may have been deleted, or the link is out of date. The forms list shows what exists today. | Puede haber sido eliminado o el enlace está desactualizado. La lista de formularios muestra lo que existe hoy. |
+| shell.not_found_back | Back to forms | Volver a los formularios |
 
-`admin.home_placeholder` is the heading of the interim admin home and goes
-away when the forms list ships.
+`shell.main_nav` and `shell.breadcrumb` name the two navigation landmarks
+for assistive technology. `shell.cancel` is the cancel link of every
+confirmation dialog. `shell.not_found_*` is the page a form route shows for
+an unknown form (see "States").
 
 ### Sign-in and access
 
@@ -277,9 +432,13 @@ Pages outside the session gate, from `use-cases/sign-in.md`.
 | auth.error_retry | Try again | Intentar de nuevo |
 | auth.csrf_title | Sign-out did not go through | No se pudo cerrar la sesión |
 | auth.csrf_body | This page was out of date. Open the admin area again and sign out from there. | Esta página estaba desactualizada. Vuelve a abrir el área de administración y cierra la sesión desde allí. |
+| auth.stale_title | This page was out of date | Esta página estaba desactualizada |
+| auth.stale_body | Nothing was saved. Open the admin area again and try once more. | No se guardó nada. Vuelve a abrir el área de administración e inténtalo otra vez. |
 
-The out-of-date page reuses `auth.error_retry` for its link back to the
-admin area.
+The out-of-date pages reuse `auth.error_retry` for their link back to the
+admin area. `auth.csrf_*` is the page behind a refused sign-out;
+`auth.stale_*` is the page behind any other manager form refused for a
+wrong CSRF token.
 
 ### Form overview and lifecycle
 
@@ -303,6 +462,13 @@ admin area.
 | life.delete_body | This form has never been published and has no submissions. Deleting it cannot be undone. Type the link name to confirm. | Este formulario nunca se publicó y no tiene respuestas. Eliminarlo no se puede deshacer. Escribe el nombre del enlace para confirmar. |
 | life.banner_closed | This form is closed. People with the link see a closed message. | Este formulario está cerrado. Quienes tengan el enlace ven un mensaje de cierre. |
 | life.banner_archived | This form is archived. | Este formulario está archivado. |
+| form.error_transition | That action is no longer available for this form. Reload to see its current status. | Esa acción ya no está disponible para este formulario. Recarga para ver su estado actual. |
+| builder.placeholder | The builder is coming soon. Settings and sharing already work. | El constructor llegará pronto. La configuración y el enlace ya funcionan. |
+| life.unarchive_body | The form moves back to Closed, or to Draft if it was never published. | El formulario vuelve a Cerrado, o a Borrador si nunca se publicó. |
+| form.url_hint | Select the link and copy it. | Selecciona el enlace y cópialo. |
+| form.error_slug_mismatch | The link name did not match. Nothing was deleted. | El nombre del enlace no coincide. No se eliminó nada. |
+| form.error_not_allowed | This form can no longer be deleted because it was published or has submissions. Archive it instead. | Este formulario ya no se puede eliminar porque se publicó o tiene respuestas. Archívalo en su lugar. |
+| form.submissions_soon | Submission review is coming soon. Received so far: {count}. | La revisión de respuestas llegará pronto. Recibidas hasta ahora: {count}. |
 
 ### Submissions list
 
@@ -399,6 +565,7 @@ admin area.
 | set.months | months | meses |
 | set.retention_hint | Counted from each submission. Deletion is permanent. | Se cuenta desde cada respuesta. La eliminación es permanente. |
 | set.retention_warn | Shortening to {n} months will delete {count} submissions on the next run. | Reducir a {n} meses eliminará {count} respuestas en la próxima ejecución. |
+| set.retention_confirm | Delete them and save | Eliminarlas y guardar |
 | set.prefix | Reference prefix | Prefijo de referencia |
 | set.prefix_hint | Used in reference numbers and folder names. Fixed after the first submission. | Se usa en los números de referencia y nombres de carpeta. Fijo después de la primera respuesta. |
 | set.availability | Availability | Disponibilidad |
@@ -414,6 +581,24 @@ admin area.
 | set.save | Save settings | Guardar configuración |
 | set.saved | Settings saved | Configuración guardada |
 | set.discard_warn | You have unsaved changes. | Tienes cambios sin guardar. |
+| set.recipients_lines | One address per line. | Una dirección por línea. |
+| set.no_recipients | No one will get an email about new submissions. They still appear here. | Nadie recibirá un correo sobre las nuevas respuestas. Seguirán apareciendo aquí. |
+| set.timezone_hint | Used for the open and close times and the daily summary. | Se usa para las horas de apertura y cierre y para el resumen diario. |
+| set.err_recipient_domain | {address} is not on an allowed domain. | {address} no es de un dominio permitido. |
+| set.err_recipient_syntax | {address} is not an email address. | {address} no es una dirección de correo. |
+| set.err_too_many_recipients | Enter at most {max} addresses. | Escribe como máximo {max} direcciones. |
+| set.err_prefix_format | Use 2 to 6 capital letters or digits. | Usa de 2 a 6 letras mayúsculas o dígitos. |
+| set.err_retention_range | Enter a whole number from {min} to {max}. | Escribe un número entero de {min} a {max}. |
+| set.err_date_order | The close time must be after the open time. | La hora de cierre debe ser posterior a la de apertura. |
+| set.err_timezone_unknown | Choose a time zone from the list. | Elige una zona horaria de la lista. |
+| set.err_hour_range | Choose an hour from the list. | Elige una hora de la lista. |
+| set.err_malformed | This value could not be read. Check it and save again. | No se pudo leer este valor. Revísalo y vuelve a guardar. |
+| set.err_slug_locked | The link name cannot change after publishing. | El nombre del enlace no se puede cambiar después de publicar. |
+| set.err_prefix_locked | The prefix cannot change after the first submission. | El prefijo no se puede cambiar después de la primera respuesta. |
+| set.err_slug_taken | That link name is taken. | Ese nombre de enlace ya existe. |
+| set.err_slug_format | Use 3 to 64 lowercase letters, numbers and hyphens. | Usa de 3 a 64 minúsculas, números y guiones. |
+| set.err_slug_reserved | That link name is reserved. Choose another. | Ese nombre de enlace está reservado. Elige otro. |
+| set.err_stale | This page was out of date, so nothing was saved. Reload it and try again. | Esta página estaba desactualizada, así que no se guardó nada. Recárgala e inténtalo otra vez. |
 | sh.url | Public link | Enlace público |
 | sh.copy | Copy | Copiar |
 | sh.copied | Copied | Copiado |
@@ -424,6 +609,11 @@ admin area.
 | sh.pdf | Print sheet (PDF) | Hoja para imprimir (PDF) |
 | sh.unreachable | The form is not reachable right now: {reason}. The link and QR will work once it is. | El formulario no está disponible ahora: {reason}. El enlace y el QR funcionarán cuando lo esté. |
 | sh.stable | The QR code and link stay the same when you publish changes. | El código QR y el enlace no cambian cuando publicas cambios. |
+| sh.reason_draft | it has not been published | todavía no se ha publicado |
+| sh.reason_closed | it is closed | está cerrado |
+| sh.reason_archived | it is archived | está archivado |
+| sh.reason_not_open | it is not open yet | todavía no abre |
+| sh.reason_past_close | its close date has passed | su fecha de cierre ya pasó |
 
 ### Operations and audit
 
@@ -452,6 +642,24 @@ admin area.
 | au.when | When | Cuándo |
 | au.export | Export CSV | Exportar CSV |
 | au.retention | Entries are kept for one year. | Las entradas se conservan un año. |
+| au.any_actor | Everyone | Todas las personas |
+| au.any_action | All actions | Todas las acciones |
+| au.apply | Filter | Filtrar |
+| au.empty | No activity matches. | Ninguna actividad coincide. |
+| au.system | System | Sistema |
+| au.target_form | This form | Este formulario |
+| au.older | Older entries | Entradas anteriores |
+| au.action_form_created | Form created | Formulario creado |
+| au.action_draft_saved | Draft saved | Borrador guardado |
+| au.action_draft_language_mode_changed | Languages changed | Idiomas cambiados |
+| au.action_form_published | Form published | Formulario publicado |
+| au.action_form_closed | Form closed | Formulario cerrado |
+| au.action_form_reopened | Form reopened | Formulario reabierto |
+| au.action_form_archived | Form archived | Formulario archivado |
+| au.action_form_unarchived | Form restored from archive | Formulario restaurado del archivo |
+| au.action_form_deleted | Form deleted | Formulario eliminado |
+| au.action_form_settings_changed | Settings changed | Configuración cambiada |
+| au.action_retention_shortened | Retention shortened | Retención acortada |
 
 ## Test fixtures
 

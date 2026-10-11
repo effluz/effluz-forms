@@ -15,6 +15,7 @@ import { createLogger } from "@/shared/infrastructure/logging/logger";
  */
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname, search } = request.nextUrl;
+  const method = request.method;
   if (pathname === "/admin/auth" || pathname.startsWith("/admin/auth/")) return NextResponse.next();
 
   let logger: Logger | undefined;
@@ -30,7 +31,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     });
     if (current.state === "active") return NextResponse.next();
     return NextResponse.redirect(
-      new URL(signInPath(`${pathname}${withoutRsc(search)}`), container.config.publicBaseUrl),
+      new URL(signInPath(returnPath(method, pathname, search)), container.config.publicBaseUrl),
       302,
     );
   } catch (e) {
@@ -42,6 +43,19 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.redirect(new URL(ERROR_PATH, publicBaseUrl ?? request.url), 302);
   }
+}
+
+/**
+ * Where sign-in returns to, which it does with a GET. A GET or HEAD request returns to
+ * itself, query included. Any other method hit a route that only answers POST, so it
+ * returns to the page that posted: the New form page for `create`, the form's overview
+ * for `lifecycle` and `delete`, and for a server action its own page; never a query,
+ * which may carry what was typed. See specs/ui-ux/manager.md, "Routes".
+ */
+function returnPath(method: string, pathname: string, search: string): string {
+  if (method === "GET" || method === "HEAD") return `${pathname}${withoutRsc(search)}`;
+  if (pathname === "/admin/forms/create") return "/admin/forms/new";
+  return pathname.replace(/\/(lifecycle|delete)$/, "");
 }
 
 /**

@@ -51,7 +51,7 @@ version.
 | Saving | Saving… | Appears only if a save takes longer than 500 ms |
 | Offline | Offline, changes kept on this device | Changes queue in local storage and replay on reconnect; conflicts resolve last-save-wins per field |
 | Signed out | Session expired, changes kept on this device | Button "Sign in again"; after sign-in the queue replays |
-| Conflict | Updated by {name} | Shown on the field that changed under you; your panel refreshes to the saved value |
+| Conflict | Updated by {name} | The save came back stale (`create-and-edit-form.md`): the builder takes the stored draft, re-applies your pending edits over it, and shows this on a field that changed under you; your panel refreshes to the saved value |
 
 ### Presence
 
@@ -96,6 +96,12 @@ navigate, Enter adds and focuses the new field's label.
 | Consent and layout | Consent, Section |
 
 Names and one-line descriptions are in Fixed chrome copy.
+
+A new field is created with an empty label and the starting settings of its
+type (`form-definition.md`, "New field starting values"): a choice field has
+two empty options, an upload accepts images and one file, a section has an
+empty title, a consent field has empty text with no checklist item ticked.
+Fields that are still incomplete show their issue badge until filled in.
 
 ## Panel
 
@@ -288,6 +294,22 @@ title, editable). **Duplicate** lists the editor's forms with search; the
 copy takes the latest draft, all settings except slug, dates and
 recipients, and gets a new title "Copy of {title}" and a new slug to
 confirm. Both land in the builder with the first page selected.
+
+The first pass is a page at `/admin/forms/new` that works without
+JavaScript: one form posting both choices to `/admin/forms/create`, which
+answers with a 303 to the new form, or back to the page with `?error=` and
+the refusal code. The link name may be left empty, and the server then makes
+it from the title (`new.slug_auto`). A title typed for a language the chosen
+mode does not use is dropped. Duplicate is a select of the active and closed
+forms (archived ones are left out), and its title is typed rather than
+prefilled. A refusal shows one error row on the field concerned:
+`new.slug_taken`, `new.slug_reserved`, `new.slug_hint` for a malformed link
+name, `new.title_missing` and `new.source_missing`. The redirect carries the
+typed values back (titles, language mode, link name, choice and source), so
+the page comes back filled in; a value is not carried when it is longer than
+its field allows in a redirect (titles 500 characters, a link name 64, a
+source id 36), and its input then comes back empty.
+Until the builder exists, a created form opens on its overview.
 
 ## Keyboard reference
 
@@ -597,6 +619,14 @@ builder owns; strings staff type are not here.
 | new.slug_taken | That link name is taken | Ese nombre de enlace ya existe |
 | new.copy_of | Copy of {title} | Copia de {title} |
 | new.create | Create | Crear |
+| new.start | Start from | Empezar desde |
+| new.source | Form to duplicate | Formulario a duplicar |
+| new.source_missing | Choose a form to duplicate | Elige un formulario para duplicar |
+| new.title_en | Title in English | Título en inglés |
+| new.title_es | Title in Spanish | Título en español |
+| new.title_missing | Enter a title in each language the form uses | Escribe un título en cada idioma que usa el formulario |
+| new.slug_auto | Optional. Left empty, it is made from the title. | Opcional. Si lo dejas vacío, se crea a partir del título. |
+| new.slug_reserved | That link name is reserved. Choose another. | Ese nombre de enlace está reservado. Elige otro. |
 
 ## Test fixtures
 

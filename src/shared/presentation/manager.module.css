@@ -1,0 +1,703 @@
+/*
+ * The manager shell and its primitives. Every value is a token from
+ * design-system/tokens.json (staff surfaces), named in a comment; the standards
+ * are in design-system/components.md and the tiers in specs/ui-ux/manager.md,
+ * "Shell": single column below 768 px, two columns from 768, three from 1280.
+ */
+
+.shell {
+  /* color.text.default (12.1:1), color.text.muted (6.2:1) on the staff page and cards */
+  --text: #372549;
+  --text-muted: #774c60;
+  /* color.surface.page.staff, color.surface.card, color.surface.subtle, color.surface.selected */
+  --surface-page: #f4f3fa;
+  --surface-card: #ffffff;
+  --surface-subtle: #eff0f5;
+  --surface-selected: #eacdc2;
+  /* color.border.default */
+  --border: #eff0f5;
+  /* color.action.primary: bg, fg (13.8:1), hoverBg */
+  --primary-bg: #372549;
+  --primary-fg: #fff3ef;
+  --primary-hover: #6c344e;
+  /* color.action.secondary.hoverBg */
+  --secondary-hover: #eff0f5;
+  /* color.action.destructive: bg, fg (7.4:1) */
+  --destructive-bg: #9b1c1c;
+  --destructive-fg: #ffffff;
+  /* color.action.disabledFg */
+  --disabled-fg: #774c60;
+  /* color.text.link.hover */
+  --link-hover: #b75d69;
+  /* color.focus.ring (3.9:1 on the staff page and cards) */
+  --focus: #b75d69;
+  /* color.text.error (6.6:1 on cards), also color.border.error */
+  --error: #9b1c1c;
+  /* shadow.floating */
+  --shadow-floating: 0 8px 24px rgba(55, 37, 73, 0.16);
+
+  box-sizing: border-box;
+  min-height: 100vh;
+  background: var(--surface-page);
+  color: var(--text);
+  /* font.family.sans, font.size.staff.body, font.lineHeight.body */
+  font-family: Poppins, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.shell *,
+.shell *::before,
+.shell *::after {
+  box-sizing: inherit;
+}
+
+/* The Spanish line beneath the English one: color.text.muted, font.weight.regular. */
+.es {
+  display: block;
+  color: #774c60;
+  font-weight: 400;
+}
+
+/* Focus: color.focus.ring at border.width.focus with a 2 px offset. */
+.shell a:focus-visible,
+.shell button:focus-visible,
+.shell input:focus-visible,
+.shell select:focus-visible,
+.shell textarea:focus-visible,
+.shell summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Skip link, visible on focus only. space.2, space.4, radius.md, z.toast. */
+.skip {
+  position: absolute;
+  top: 8px;
+  left: 16px;
+  z-index: 40;
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+
+.skip:focus-visible {
+  transform: none;
+}
+
+.skip .es {
+  color: inherit;
+}
+
+/* Header: surface.card, border.default, space.3 vertical and space.4 horizontal. */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 12px 16px;
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Wordmark: text until the SVG is in design-system/assets; font.size.staff.heading. */
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  /* size.touchTarget */
+  min-height: 44px;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.nav {
+  order: 3;
+  flex-basis: 100%;
+}
+
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Nav links: size.touchTarget, space.1 and space.3 padding, radius.md, font.size.staff.label. */
+.navLink {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 44px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+a.navLink[href]:hover {
+  background: var(--surface-subtle);
+}
+
+/* The current section: 2 px color.action.primary.bg underline, as for Tabs. A real
+ * border (transparent elsewhere, so nothing shifts) survives forced-colors mode. */
+.navLink {
+  border-bottom: 2px solid transparent;
+  border-radius: 12px 12px 0 0;
+}
+
+.navLink[aria-current="page"] {
+  border-bottom-color: var(--primary-bg);
+}
+
+/* A section that does not exist yet: color.action.disabledFg, not interactive. */
+.navLink[aria-disabled="true"] {
+  color: var(--disabled-fg);
+  cursor: default;
+}
+
+/* Below 768 px: a disclosure, no JavaScript. */
+.navSummary {
+  min-height: 44px;
+  padding: 4px 12px;
+  border: 1px solid var(--primary-bg);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.navMenu[open] > .navSummary {
+  margin-bottom: 8px;
+}
+
+.navBar {
+  display: none;
+}
+
+.account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-left: auto;
+}
+
+/* font.size.staff.small, font.lineHeight.small */
+.who {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.signOut {
+  margin: 0;
+}
+
+/* Main: space.5 vertical, space.4 horizontal on narrow screens. */
+.main {
+  padding: 24px 16px;
+}
+
+.main:focus {
+  outline: none;
+}
+
+/* A page's <h1>: font.size.staff.display, font.weight.semibold, font.lineHeight.tight, space.4 below. */
+.pageTitle {
+  margin: 0 0 16px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* Content tiers: one column below 768 px, two from 768, three from 1280. space.5 gaps. */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+}
+
+@media (min-width: 768px) {
+  /* breakpoint.md: the navigation is a bar of links in the header. */
+  .header {
+    flex-wrap: nowrap;
+    padding: 12px 24px;
+    gap: 24px;
+  }
+
+  .nav {
+    order: 0;
+    flex-basis: auto;
+  }
+
+  .navMenu {
+    display: none;
+  }
+
+  .navBar {
+    display: flex;
+    flex-direction: row;
+  }
+
+  .main {
+    padding: 32px 24px;
+  }
+
+  .columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  /* breakpoint.xl: space.6 padding. */
+  .main {
+    padding: 32px;
+  }
+
+  .columns {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Buttons: staff height 40 px within a 44 px target, space.4 padding, radius.md,
+ * font.size.staff.button at font.weight.medium. */
+.button,
+.primary,
+.destructive {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 44px;
+  padding: 4px 16px;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  /* motion.duration.fast, motion.easing */
+  transition: background-color 120ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Secondary: color.action.secondary. */
+.button {
+  background: var(--surface-card);
+  color: var(--text);
+  border: 1px solid var(--primary-bg);
+}
+
+.button:hover {
+  background: var(--secondary-hover);
+}
+
+.primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border: 1px solid var(--primary-bg);
+}
+
+.primary:hover {
+  background: var(--primary-hover);
+}
+
+.destructive {
+  background: var(--destructive-bg);
+  color: var(--destructive-fg);
+  border: 1px solid var(--destructive-bg);
+}
+
+/* Inside a button the Spanish line keeps the button's own (AA) colors; font.size.staff.small. */
+.button .es,
+.primary .es,
+.destructive .es {
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Breadcrumbs: font.size.staff.small, space.2 gaps, space.4 below. */
+.breadcrumbs {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breadcrumbs li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.crumbSeparator {
+  color: var(--text-muted);
+}
+
+/* Links: color.text.link, hover color.text.link.hover keeping the underline. */
+.link {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.link:hover {
+  color: var(--link-hover);
+}
+
+.crumbCurrent {
+  font-weight: 500;
+}
+
+/* Tabs: underline style, 2 px color.action.primary.bg, labels at font.weight.medium. */
+.tabs {
+  margin: 0 0 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-decoration: none;
+  /* A real border survives forced-colors mode; transparent until current. */
+  border-bottom: 2px solid transparent;
+}
+
+a.tab[href]:hover {
+  background: var(--surface-subtle);
+}
+
+.tab[aria-current="page"] {
+  border-bottom-color: var(--primary-bg);
+}
+
+.tab[aria-disabled="true"] {
+  color: var(--disabled-fg);
+  cursor: default;
+}
+
+/* Counts: color.text.muted with font.features.tabularNumbers. */
+.count {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Table (staff): radius.md card around it; surface.subtle header; 48 px rows;
+ * border.default dividers; space.3 cell padding. */
+.tableWrap {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table caption {
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.table th {
+  padding: 12px;
+  background: var(--surface-subtle);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.table td {
+  height: 48px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.row {
+  position: relative;
+}
+
+.row:hover {
+  background: var(--surface-subtle);
+}
+
+/* A row with a destination is clickable across its width (Fitts's Law). */
+.rowLink {
+  color: var(--text);
+  font-weight: 500;
+  text-decoration: underline;
+}
+
+.rowLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+/* A cell holding its own controls sits above the row link, so they stay clickable. */
+.interactiveCell {
+  position: relative;
+  z-index: 1;
+}
+
+/* Numeric columns: right aligned with font.features.tabularNumbers. */
+.table .end {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The column header repeated in each cell, only for the stacked layout below. */
+.cellLabel {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  /* Narrow widths: each row is a stacked card with the same data. */
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .table tbody,
+  .table tr,
+  .table td {
+    display: block;
+  }
+
+  .table tr {
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .table td {
+    height: auto;
+    padding: 4px 12px;
+    border-top: 0;
+  }
+
+  .table .end {
+    text-align: left;
+  }
+
+  .cellLabel {
+    display: block;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+}
+
+/* Badge: 24 px tall, space.2 padding, radius.sm, font.weight.medium, font.size.staff.small. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0 8px;
+  /* Transparent, so forced-colors mode still draws the badge's outline. */
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* The Spanish line of a badge sits beside the English, in the badge's own color. */
+.badge .es {
+  display: inline;
+  margin-left: 4px;
+  color: inherit;
+}
+
+/* neutral: color.surface.subtle with color.text.default */
+.neutral {
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+
+/* info: color.surface.selected with color.text.default */
+.info {
+  background: var(--surface-selected);
+  color: var(--text);
+}
+
+/* success: color.surface.success with color.text.success (6.2:1) */
+.success {
+  background: #e6f2ec;
+  color: #1f6b4a;
+}
+
+/* warning: color.surface.warning with color.text.warning (6.8:1) */
+.warning {
+  background: #fff4d6;
+  color: #7a4b00;
+}
+
+/* danger: color.surface.error with color.text.error (6.6:1) */
+.danger {
+  background: #fbecec;
+  color: #9b1c1c;
+}
+
+/* Banner: full width, radius.md, space.4 padding, a border so it reads in forced colors. */
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 0 24px;
+  padding: 16px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.banner .es {
+  color: inherit;
+}
+
+/* The action is a tertiary button: color.action.tertiary. */
+.bannerAction {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 44px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  color: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+}
+
+/* Dialog: max width 560 px, radius.lg, surface.card, shadow.floating, space.5 padding. */
+.dialog {
+  max-width: 560px;
+  margin: 0 auto 24px;
+  padding: 24px;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(55, 37, 73, 0.16);
+}
+
+/* font.size.staff.heading, font.lineHeight.heading */
+.dialogTitle {
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.dialogBody {
+  margin: 0 0 24px;
+}
+
+.dialogForm {
+  margin: 0;
+}
+
+/* Field: label above at font.weight.medium with a space.2 gap. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 24px;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* The value to type in a typed confirmation: font.family.mono on color.surface.subtle,
+ * radius.sm, space.1 and space.2 padding. */
+.expected {
+  align-self: flex-start;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+/* Text input: staff height 40 px within a 44 px target, space.3 padding, radius.md,
+ * color.border.input (7.0:1), focus adds color.border.inputFocus. */
+.input {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #774c60;
+  border-radius: 12px;
+  background: var(--surface-card);
+  color: var(--text);
+  font: inherit;
+}
+
+.input:focus-visible {
+  border-color: #372549;
+}
+
+/* Button row right aligned, secondary then primary; space.3 gap. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .primary,
+  .destructive {
+    transition: none;
+  }
+}

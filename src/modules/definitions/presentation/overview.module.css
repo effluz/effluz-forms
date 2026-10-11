@@ -1,0 +1,122 @@
+/*
+ * The form overview and the builder placeholder, inside the manager shell.
+ * Shared primitives come from src/shared/presentation/manager.module.css and
+ * the actions menu from forms.module.css; these are the overview's own pieces.
+ * Every value is a token from design-system/tokens.json (staff surfaces),
+ * named in a comment.
+ */
+
+/* Title and status on the left, actions on the right; they wrap on narrow
+ * screens. space.3 gaps, space.4 below. */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.heading > h1 {
+  margin: 0 0 8px;
+}
+
+/* The Spanish title beneath the English one, in the heading's own color. */
+.heading > h1 [lang="es"] {
+  display: block;
+  color: inherit;
+  font-weight: 400;
+}
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+/* The version beside a badge: font.size.staff.small in color.text.muted. */
+.version {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Buttons in a row with space.3 gaps. */
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* The public URL and the facts in a card: color.surface.card, color.border.default,
+ * radius.md, space.5 padding and gaps, space.5 below. */
+.facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  margin: 0 0 24px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+
+@media (min-width: 768px) {
+  .facts {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+
+.url {
+  margin: 0;
+}
+
+/* Hints: font.size.staff.small in color.text.muted. */
+.hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Term above value, space.1 apart, space.4 between pairs; terms at
+ * font.size.staff.label and font.weight.medium. */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+}
+
+.list dt {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.list dd {
+  margin: 0;
+}
+
+/* Times: font.features.tabularNumbers. */
+.moment {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The UTC time beneath the local one, in color.text.muted. */
+.utc {
+  display: block;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* "Closing in {n} days": font.weight.semibold, so it stands out without color. */
+.closing {
+  display: block;
+  margin-top: 4px;
+  font-weight: 600;
+}

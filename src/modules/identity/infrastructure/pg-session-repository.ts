@@ -3,7 +3,7 @@ import { txOf } from "@/shared/infrastructure/postgres/tx";
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 import type { SessionRepository } from "../application/ports/session-repository";
 import type { Session } from "../domain/session";
-import { isUuid } from "./uuid";
+import { isUuid } from "@/shared/infrastructure/uuid";
 
 interface SessionRow {
   id: string;

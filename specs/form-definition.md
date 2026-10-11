@@ -39,6 +39,7 @@ Labels and options are always plain text.
 
 ```
 Version
+  title                        LocalizedText, required; the renderer's <h1> and browser title
   languages: bilingual | en | es
   headerImage?                 { ref, alt: LocalizedText }  shown on page 1 only, see specs/design.md
   pages[]                      ordered, at least one
@@ -86,11 +87,32 @@ of the same question line up.
 
 Each type is implemented once as a registered capability that provides: the
 builder editor for its settings, the renderer component, the server validator,
-the storage normalizer, the export formatter, and the review display. A type
-missing any of these fails the conformance suite.
+the storage normalizer, the export formatter, the review display, and the
+starting settings a newly added field gets (the `defaultSettings` hook, ADR
+0016). A type missing any of these fails the conformance suite.
 
 Adding a type: see `CLAUDE.md`, "Adding a capability". Removing a type is not
 supported while any version uses it.
+
+### New field starting values
+
+Adding a field creates it with a fresh key, an empty label, not required, not
+personal, no rules, and the smallest settings its type accepts, so a field
+can be added before it is complete. Publish validation, not parsing, reports
+what is still missing. Changing a field to a compatible type keeps the
+settings the new type accepts and otherwise uses these values.
+
+| Type | Starting settings |
+|---|---|
+| `short_text`, `phone`, `date`, `checkbox` | none |
+| `long_text` | 4 rows |
+| `email` | not marked as the submitter's address |
+| `number` | decimals allowed, no unit |
+| `single_choice` | two options with generated keys and empty labels, shown as radio buttons |
+| `multiple_choice` | two options with generated keys and empty labels |
+| `consent` | empty text; no checklist item ticked as covered |
+| `file_upload` | `image` only, one file, the system maximum size per file |
+| `section` | empty title, no description |
 
 ### Export formats
 
@@ -164,15 +186,18 @@ draft --publish--> published --close--> closed --archive--> archived
 - `published`: the current version is live at `/f/<slug>`. Open and close
   dates can narrow that window.
 - `closed`: public URL shows a closed message. Submissions remain reviewable.
-- `archived`: hidden from the default manager list. Reversible.
+- `archived`: hidden from the default manager list. Reversible: unarchive
+  returns the form to `closed`, or to `draft` when it was never published.
+  Cannot publish while archived.
 - A form with submissions cannot be deleted, only archived. Submissions are
   removed by retention or explicit, audited deletion.
 
-Publishing validates the draft: at least one page with one input field, no
-unlabeled field, all translations present for bilingual forms, consent
-present when required, retention set, no dangling condition references,
-alt text present in each required language when a header image is set, at most
-one consent field, and the consent field is never conditional.
+Publishing validates the draft: a title in every required language, at least
+one page with one input field, no unlabeled field, all translations present
+for bilingual forms, consent present when required, retention set, no
+dangling condition references, alt text present in each required language
+when a header image is set, at most one consent field, and the consent field
+is never conditional.
 
 ## Submissions
 

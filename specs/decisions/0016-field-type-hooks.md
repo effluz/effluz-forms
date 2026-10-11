@@ -2,6 +2,9 @@
 
 Status: accepted
 Date: 2026-10-10
+Amended 2026-10-10: the form model moved to the shared kernel, ADR 0022
+Amended 2026-10-10: a required `defaultSettings(ids)` hook gives the smallest
+settings a newly added field parses with; the conformance suite checks it
 
 ## Context
 
@@ -11,8 +14,8 @@ the submitter email and text caps, until the `definitions` module starts.
 
 ## Decision
 
-`FieldTypeDefinition` gains optional hooks, and the two consumers read them
-without knowing any type id:
+`FieldTypeDefinition` gains hooks, and the consumers read them without
+knowing any type id (all optional except the last):
 
 - `localizedSettingsTexts`: staff-authored texts inside settings, each with a
   path relative to the settings and a blank code, or null for optional text.
@@ -25,6 +28,10 @@ without knowing any type id:
   type's code.
 - `neverHidden`: conditions never hide the field.
 - `consentRecord`: extracts the consent record from a valid answer.
+- `defaultSettings(ids)` (required, unlike the others): the smallest
+  settings the type's schema accepts, with keys drawn from `ids`. The
+  `add_field` command uses it for a new field, and a compatible
+  `change_field_type` falls back to it when the old settings do not parse.
 
 Text caps are derived from the declared `maxLength` of any type. The
 conformance suite checks that hook results are well formed, that an

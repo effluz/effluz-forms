@@ -117,6 +117,14 @@ with a 2 px offset.
   `shadow.floating`, backdrop `rgba(55,37,73,0.4)`; heading, body, button
   row right aligned with secondary then primary; focus trapped, Esc closes
   unless destructive confirmation requires typing.
+- The no-JavaScript confirmation form (manager lifecycle and delete
+  confirmations) is an in-page `<section role="dialog">` labelled by its
+  heading and described by its body, with a cancel link instead of Esc and
+  no focus trap or backdrop. Revisit it when a client-side dialog exists.
+- Typed confirmation shows the value to type beneath the label, in
+  `font.family.mono` on `surface.subtle`, linked to the input with
+  `aria-describedby`; the input's `title` names the value so the browser's
+  validation message does too.
 
 ## Drawer
 
@@ -129,6 +137,12 @@ with a 2 px offset.
 - Anchored to its button, min width 200 px, radius `radius.md`, shadow,
   items 40 px tall, destructive items in `text.error` separated by a
   divider, keyboard navigable with arrows and type-ahead.
+- No-JS first pass: a `<details>` disclosure whose `<summary>` is a
+  secondary button and whose items are links, reached with Tab rather than
+  arrows. When every row of a table has one, the summary also carries the
+  row's name for assistive technology. A divider separates the lifecycle
+  actions. Revisit with arrows and type-ahead once a client-side menu
+  exists.
 
 ## Table (staff)
 
@@ -142,8 +156,15 @@ with a 2 px offset.
 ## Tabs
 
 - Underline style: 2 px `color.action.primary.bg` under the active tab,
-  labels in weight medium, counts in `text.muted`. `role="tablist"` with
-  arrow key navigation.
+  labels in weight medium, counts in `text.muted`. The underline is a real
+  border, so it survives forced-colors mode.
+- Tabs that move between pages (the manager's forms list and form overview)
+  are links in a list, the current one marked `aria-current="page"`; they
+  work without JavaScript and are navigation, not an ARIA tablist. A tab
+  whose page does not exist yet is a link without `href` and with
+  `aria-disabled="true"`.
+- Tabs that switch panels within one page use `role="tablist"` with arrow
+  key navigation.
 
 ## Chip (filter)
 

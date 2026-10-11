@@ -1,9 +1,9 @@
-// Placeholder admin home. The manager plan replaces it with the forms list.
-import { AdminHomePlaceholder } from "@/modules/identity/presentation/AdminHomePlaceholder";
-import { pageMetadata } from "@/modules/identity/presentation/metadata";
+import { redirect } from "next/navigation";
 
-export const metadata = pageMetadata("admin.home_placeholder");
+/** A redirect has no instant shell to validate; dev reports it otherwise. */
+export const instant = false;
 
+/** The admin home is the forms list; see specs/ui-ux/manager.md, "Principles". */
 export default function AdminHome() {
-  return <AdminHomePlaceholder />;
+  redirect("/admin/forms");
 }

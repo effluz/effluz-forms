@@ -1,16 +1,12 @@
+import type { Text } from "@/shared/presentation/copy";
+
 /**
- * Copy bindings for the sign-in pages and the interim admin shell. The text is
- * owned by specs/ui-ux/manager.md, "Fixed chrome copy" ("Shell and home" and
- * "Sign-in and access"); `copy.test.ts` keeps this object equal to those rows.
+ * Copy bindings for the sign-in pages. The text is owned by specs/ui-ux/manager.md,
+ * "Fixed chrome copy" ("Sign-in and access"); `copy.test.ts` keeps this object equal
+ * to those rows. The shell's copy, sign-out included, is in
+ * src/shared/presentation/copy.ts.
  */
 export const copy = {
-  "nav.sign_out": { en: "Sign out", es: "Cerrar sesión" },
-  "shell.wordmark": { en: "Effluz", es: "Effluz" },
-  "shell.signed_in_as": { en: "Signed in as {name}", es: "Sesión iniciada como {name}" },
-  "admin.home_placeholder": {
-    en: "Admin area, coming soon",
-    es: "Área de administración, próximamente",
-  },
   "auth.denied_title": {
     en: "This account cannot access the admin area",
     es: "Esta cuenta no puede acceder al área de administración",
@@ -43,11 +39,14 @@ export const copy = {
     en: "This page was out of date. Open the admin area again and sign out from there.",
     es: "Esta página estaba desactualizada. Vuelve a abrir el área de administración y cierra la sesión desde allí.",
   },
-} as const satisfies Record<string, { en: string; es: string }>;
+  "auth.stale_title": {
+    en: "This page was out of date",
+    es: "Esta página estaba desactualizada",
+  },
+  "auth.stale_body": {
+    en: "Nothing was saved. Open the admin area again and try once more.",
+    es: "No se guardó nada. Vuelve a abrir el área de administración e inténtalo otra vez.",
+  },
+} as const satisfies Record<string, Text>;
 
 export type CopyKey = keyof typeof copy;
-
-/** Replaces `{name}` placeholders. The result is rendered as text, never as markup. */
-export function fill(text: string, vars: Record<string, string>): string {
-  return text.replace(/\{(\w+)\}/g, (whole, key: string) => vars[key] ?? whole);
-}

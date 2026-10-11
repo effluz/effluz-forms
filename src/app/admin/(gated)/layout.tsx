@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { getContainer } from "@/app/container";
 import { currentSession } from "@/modules/identity/application";
-import { AdminShell } from "@/modules/identity/presentation/AdminShell";
 import { signInPath } from "@/modules/identity/presentation/http";
+import { ManagerShell } from "@/shared/presentation/ManagerShell";
 
 /**
  * Lets this segment block on the session read: with Cache Components a top-level
@@ -25,9 +25,12 @@ export default async function GatedLayout({ children }: { children: ReactNode })
   const current = await currentSession(container.identity, { sessionId, meta: { ip: null } });
   // src/proxy.ts already redirected with the real request path; this is the second line.
   if (current.state !== "active") redirect(signInPath("/admin"));
+  // A layout does not know the request path, so it cannot tell which section is
+  // current. Forms is the only section with pages today; when Operations and Audit
+  // ship, give each its own layout (or pass the section down) instead of this constant.
   return (
-    <AdminShell name={current.session.name} csrfToken={current.session.csrfToken}>
+    <ManagerShell name={current.session.name} csrfToken={current.session.csrfToken} current="forms">
       {children}
-    </AdminShell>
+    </ManagerShell>
   );
 }
