@@ -32,7 +32,9 @@ The job handler looks the data up at run time, renders, sends, and records
 the provider id in the `email_delivery` table (owned by `notifications`)
 under the key `<job type>:<submission id>` before the job succeeds. A retry
 that finds the key sends nothing. A submission that no longer exists, or no
-longer has an address, ends the job without sending.
+longer has an address, ends the job without sending. The data comes through
+the `MessageSource` port, owned by `notifications` and implemented by
+`submissions`, which returns what an email needs from a submission id.
 
 ## Templates
 

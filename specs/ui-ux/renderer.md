@@ -31,7 +31,8 @@ Use case: `use-cases/fill-and-submit-form.md`. Model: `form-definition.md`.
   so the renderer leaves it out; it arrives with the builder plan.
 - Body: page title, page description, fields in order, then the navigation
   row.
-- Bottom: the privacy footer, present on every page including confirmation.
+- Bottom: the privacy footer, present on every page including confirmation
+  (not found excepted).
 - Touch targets at least 44 by 44 px. Inputs are full width. Buttons in the
   navigation row are full width on phones, side by side from 480 px.
 - Typography, color, spacing and focus styles come from `design-system/`.
@@ -72,7 +73,8 @@ Use case: `use-cases/fill-and-submit-form.md`. Model: `form-definition.md`.
 
 ### Closed, not yet open, not found
 
-Each is one heading, one sentence, the privacy footer, no form content. Copy
+Each is one heading, one sentence, the privacy footer (not found excepted),
+no form content. Copy
 below. Not found returns HTTP 404; closed and not yet open return 200 with
 `noindex`. These screens and Session expired show both languages, the page
 language first, since no language has been chosen. Not found has no privacy

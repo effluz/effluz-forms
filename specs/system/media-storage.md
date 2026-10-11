@@ -16,7 +16,7 @@ Each tier is an adapter of the same port.
 | `put(bytes, key, contentType)` | Store the bytes (files are capped at 10 MB, so no stream is needed). Returns a provider reference. Idempotent for the same key: Dropbox writes with `mode: overwrite`. |
 | `viewUrl(ref, ttl)` | A URL that serves the file for at most `ttl`. |
 | `delete(ref)` | Remove the file. Succeeds if it is already gone. |
-| `exists(ref)` | For upload idempotency checks. |
+| `exists(ref)` | Existence check; uploads rely on `put` overwriting by key. |
 | `read(ref)` | Staging only: the bytes, for the upload job. |
 | `deletePrefix(prefix)` | Staging only: remove every file under a prefix. |
 
