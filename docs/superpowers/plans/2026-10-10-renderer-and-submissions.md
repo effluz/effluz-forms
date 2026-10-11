@@ -4,66 +4,76 @@
 
 **Goal:** The public can open a published form at `/f/<slug>`, fill it page by page on a phone with or without JavaScript, upload photos and videos, and submit it; the submission, its media rows and its jobs are stored in one transaction, and the worker uploads the media to durable storage and sends the emails.
 
-**Architecture:** Three new modules. `media` owns the `MediaStorage` port, the image pipeline (content sniffing, re-encoding with metadata stripped), the local disk and Dropbox adapters, the `media` table and the `media.upload` and `media.delete` handlers. `notifications` owns the `EmailSender` and `EmailRenderer` ports, the SMTP2GO and Mailpit adapters, delivery idempotency and the two email handlers; its templates live in `src/shared/presentation/email/` and are wired at the composition root. `submissions` owns the in-progress record, the intake transaction, the `submission` table, the real `SubmissionStats` adapter and the public renderer's presentation; it reaches forms and versions only through new read and reference-allocation use cases in `definitions`' public API. Pages are server components under `src/app/f/[slug]/` and every post is a route handler that answers with Post/Redirect/Get, so the whole flow works without script; small client components add early uploads, blur checks (answered by the server, so the browser never ships the rules), focus handling and offline waiting.
+**Architecture:** Three new modules. `media` owns the `MediaStorage` port, the image pipeline (content sniffing, re-encoding with metadata stripped), the local disk and Dropbox adapters, the `media` table and the `media.upload` and `media.delete` handlers. `notifications` owns the `EmailSender` and `EmailRenderer` ports, the SMTP2GO and Mailpit adapters, delivery receipts and the two email handlers; its templates live in `src/shared/presentation/email/` and are wired at the composition root. `submissions` owns the in-progress record, the intake transaction, the `submission` table, the real `SubmissionStats` adapter and the public renderer's presentation; it reaches forms and versions only through new read and reference-allocation use cases in `definitions`' public API. Pages are server components under `src/app/f/[slug]/`; the page form posts to one Server Action that answers a refused page directly (so a refused file's name never needs storing) and redirects every other post, and uploads, blur checks and restart are route handlers beside it, so the whole flow works without script; small client components add early uploads, blur checks (answered by the server, so the browser never ships the rules), focus handling, offline waiting and the submit states.
 
-**Tech Stack:** Next.js 16 (App Router, route handlers, server components, Cache Components on), React 19, TypeScript strict, Zod 4, `pg` with hand-written SQL, Vitest, pino, and new: `sharp`, `libheif-js`, `file-type` (ADR 0023). Dropbox and SMTP2GO through plain `fetch`, no SDK.
+**Tech Stack:** Next.js 16 (App Router, Server Actions, route handlers, server components, Cache Components on), React 19, TypeScript strict, Zod 4, `pg` with hand-written SQL, Vitest, pino, and new: `sharp`, `libheif-js`, `file-type` (ADR 0023), `@playwright/test` with Chromium for the browser run (ADR 0024). Dropbox and SMTP2GO through plain `fetch`, no SDK.
 
-**Spec:** `specs/architecture.md` ("Modules", "Ports", "Submission data flow" steps 1 to 5, "Configuration and secrets"), `specs/use-cases/fill-and-submit-form.md`, `specs/ui-ux/renderer.md` (all), `specs/form-definition.md` ("Field types in the first release", "Validation", "Conditional logic", "Submissions", "Privacy rules enforced by the model"), `specs/system/media-storage.md`, `specs/system/jobs.md`, `specs/system/email.md`, `specs/system/security.md` ("Public form abuse protection", "Staff-authored content", "Transport and headers"), `specs/system/database.md`, `specs/system/observability.md` ("Logging"), `specs/design.md`, `design-system/`, `specs/use-cases/reference-form-preemie-stories.md`, `specs/ui-ux/manager.md` ("Settings tab"), ADRs 0002, 0003, 0006, 0008, 0016, 0022.
+**Spec:** `specs/architecture.md` ("Modules", "Ports", "Submission data flow" steps 1 to 5, "Configuration and secrets"), `specs/use-cases/fill-and-submit-form.md`, `specs/ui-ux/renderer.md` (all), `specs/form-definition.md` ("Field types in the first release", "Validation", "Conditional logic", "Submissions", "Privacy rules enforced by the model"), `specs/system/media-storage.md`, `specs/system/jobs.md`, `specs/system/email.md`, `specs/system/security.md` ("Public form abuse protection", "Staff-authored content", "Transport and headers"), `specs/system/database.md`, `specs/system/observability.md` ("Logging"), `specs/design.md`, `design-system/`, `specs/use-cases/reference-form-preemie-stories.md`, `specs/ui-ux/manager.md` ("Settings tab"), `specs/ui-ux/builder.md` (the consent row), ADRs 0002, 0003, 0006, 0008, 0016, 0022.
 
-Decisions taken with the project owner before writing (2026-10-10): this plan covers "Submission data flow" steps 1 to 5 with the three modules above, the renderer, the intake transaction, the four job handlers, a real `SubmissionStats` adapter and the `jobs.cleanup` extension; review, Operations, Audit, `email.staff_digest`, `retention.purge`, `backup.database`, the builder and DeepL are later plans. `sharp` with `libheif-js` re-encodes images and `file-type` sniffs content (ADR 0023); Dropbox and SMTP2GO go through `fetch`; local email goes to Mailpit; the enhancement layer is React client components with a 150 KB compressed budget; the bot challenge is not built (honeypot and minimum fill time only); bundle size and page weight are tested here.
+Decisions taken with the project owner before writing (2026-10-10): this plan covers "Submission data flow" steps 1 to 5 with the three modules above, the renderer, the intake transaction, the four job handlers, a real `SubmissionStats` adapter and the `jobs.cleanup` extension; review, Operations, Audit, `email.staff_digest`, `retention.purge`, `backup.database`, the builder and DeepL are later plans. `sharp` with `libheif-js` re-encodes images and `file-type` sniffs content (ADR 0023); Dropbox and SMTP2GO go through `fetch`; local email goes to Mailpit; the enhancement layer is React client components with a 150 KB compressed budget; the bot challenge is not built (honeypot and minimum fill time only); bundle size and page weight are tested here. Decisions taken with the project owner on 2026-10-11: the plan is written as tests and interfaces; consent text renders as plain escaped paragraphs (`form-definition.md` is the contract, Task 1 corrects `builder.md`); the browser run with script is in this plan, with Playwright and Chromium only (Task 30, ADR 0024); the `email_delivery` table stays (ADR 0025).
 
 Decisions taken in this plan (each is repeated, with its reason, in the task that applies it):
 
-- **Reference sequence.** `form.next_reference` (migration `0008_form_reference_counter.sql`, owned by `definitions`), advanced by the exported use case `allocateReference(deps, uow, formId)` under the `form` row lock, which also re-checks that the form is open. `submissions` never writes a `definitions` table. Format `<prefix>-<nnnn>` (`formatReference`), at least four digits. (Task 14)
+- **Reference sequence.** `form.next_reference` (migration `0008_form_reference_counter.sql`, owned by `definitions`), advanced by the exported use case `allocateReference(deps, uow, formId)` under the `form` row lock, which also re-checks that the form is open and leaves `form.updated_at` alone. `submissions` never writes a `definitions` table. Format `<prefix>-<nnnn>` (`formatReference`), at least four digits. (Task 14, ADR 0025)
 - **In-progress cookie.** Name `effluz_fill`, `Path=/f/<slug>`, `HttpOnly`, `SameSite=Lax`, `Max-Age=86400`, `Secure` in production. Its value is the record id while filling, `done.<submit token>` after a stored submission, and `decoy.<reference>` after a silent accept, so the browser's Back button lands on the confirmation. (Task 28)
+- **Page form.** The page form posts to the Server Action `postPage` in `src/app/f/[slug]/actions.ts`, rendered through `useActionState` with the page's own URL as permalink: a refused post is answered with the page itself (HTTP 200 without script), every other post redirects with 303. Uploads, blur checks and restart stay route handlers. (Tasks 18, 25, 28)
+- **Original filename never persisted.** A refused file's name travels only in the answer to its own post (`RefusedFile`, then the action's state); the in-progress record stores typed values and validation issues, never a file name. (Tasks 16, 19, 28)
 - **Staging directory.** The existing `STAGING_DIR` variable; staged files live at `in-progress/<record id>/<file id>.<ext>` so an expired record's files go with one prefix delete. (Tasks 5, 21, 27)
 - **Resolving `/f/<slug>`.** New `definitions` use cases `resolvePublicForm(deps, slug)`, `loadVersion(deps, versionId)` and `loadForm(deps, formId)`; `shareInfo` stays admin-only. (Task 14)
 - **Media keys.** Durable key `forms/<form slug>/<reference>/<nn>-<field slug>.<ext>` with the field slug from the label in the form's first language (English first when bilingual), ASCII, at most 40 characters, `-2`, `-3` appended when two fields of one submission share a slug. Local refs are the key; Dropbox refs are `/` plus the key. (Tasks 5, 9, 21)
-- **Minimum fill time.** 3 seconds from the page 1 render, carried in the hidden `_rendered` field of the first post, clamped to the last 24 hours, stored as `started_at`. An absent or unreadable value counts as the time of that first post. (Tasks 16, 21)
-- **Honeypot.** An input named `website-url` (a hyphen, so it can never be a field key), off-screen, `aria-hidden`, `tabindex="-1"`, `autocomplete="off"`. (Tasks 16, 25)
+- **Minimum fill time.** 3 seconds from the page 1 render, carried in the hidden `_rendered` field of the first post, clamped to the last 24 hours, stored as `started_at`. An absent or unreadable value counts as the time of that first post. Checked at Submit. (Tasks 16, 21)
+- **Honeypot.** An input named `website-url` (a hyphen, so it can never be a field key), off-screen, `aria-hidden`, `tabindex="-1"`, `autocomplete="off"`, checked on every page post: a filled one deletes the record and its staged files and answers the decoy confirmation. (Tasks 16, 21, 25)
+- **Duplicate submit.** The submit token is checked before a reference is taken, and a token met at insert rolls the transaction back, so a duplicate commits nothing. (Task 21)
+- **Per-submission size.** Every file staged for one record counts toward the 100 MB cap, early uploads included. (Task 20)
 - **`file_upload` answers.** The answer is the list of media ids (UUIDs, which `mediaIdSchema` accepts) in upload order; a media row's id is the staged file's id, so the answer, the row and the `media.upload` job payload name the same file. (Tasks 6, 20, 21)
 - **Upload authentication.** The `effluz_fill` cookie names the record; the posted field key must be a visible `file_upload` field of the record's current page; `SameSite=Lax` keeps cross-site posts from carrying the cookie. (Task 20)
 - **Blur validation.** The client asks `POST /f/<slug>/check`, which runs the form model on the server, so the browser applies exactly the server's rules without shipping Zod or the RE2 engine. (Tasks 19, 26, 28)
 - **Templates and the sender.** `EmailSender.send` takes a rendered message; rendering is the `EmailRenderer` port, whose implementation is the template module in `src/shared/presentation/email/`, wired at the composition root (infrastructure may not import presentation). (Tasks 11, 12, 27)
-- **Email idempotency.** A `notifications`-owned `email_delivery` table keyed by `<job type>:<submission id>` stores the provider message id; a retry that finds the key sends nothing. (Tasks 11, 13)
+- **Email idempotency.** A `notifications`-owned `email_delivery` table keyed by `<job type>:<submission id>` stores the provider message id; a retry that finds the key sends nothing. (Tasks 11, 13, ADR 0025)
 - **Local email.** Mailpit's HTTP send API at `MAILPIT_URL` (default `http://127.0.0.1:8025`), so the local adapter returns a message id like the real one. (Task 13)
 - **Staff notification.** One `email.staff_notification` job per submission, sent as one message to the form's recipient list read at run time. (Tasks 11, 21)
-- **Root layouts.** `src/app/layout.tsx` is replaced by one root layout per surface (`src/app/admin/layout.tsx`, `src/app/(home)/layout.tsx`, `src/app/f/[slug]/layout.tsx`) so the renderer's `<html lang>` follows the submitter's language. (Task 28)
+- **Root layouts.** `src/app/layout.tsx` is replaced by one root layout per surface (`src/app/admin/layout.tsx`, `src/app/(home)/layout.tsx`, `src/app/f/[slug]/layout.tsx`) so the renderer's `<html lang>` follows the submitter's language; `src/app/global-not-found.tsx` answers paths outside them. (Task 28)
+- **Consent text.** Plain text, split into paragraphs on blank lines and escaped; never parsed as markup. (Tasks 1, 3, 24)
 - **Header image.** Not rendered in this plan: nothing can set one until the builder plan uploads it and adds its route. (Task 1 spec note)
-- **E2E files.** The reference form allows at most ten files, so the e2e test first posts ten images and one video together (refused with `files_max`, nothing staged) and then nine images and the video (accepted). (Task 29)
+- **Test-only boundary exception.** Test files may import other modules' `application/testing` fakes and `tests/fixtures` or `tests/fakes`; production code may not. (Task 2, ADR 0026)
+- **E2E files.** The reference form allows at most ten files, so the e2e test first posts ten images and one video together (refused with `files_max`, nothing staged) and then nine images and the video (accepted), both after the minimum fill time. (Task 29)
+- **Browser e2e.** Playwright, Chromium only, one phone project, against the built app on a throwaway database; one CI job. (Task 30, ADR 0024)
 
 ## Global Constraints
 
 - WCAG 2.2 AA: "Accessibility baseline is **WCAG 2.2 AA**, non-negotiable, for the public renderer and the admin surfaces alike." "Every input has a programmatic label. Errors are associated with their field and announced to assistive technology." "Color contrast meets AA. Information is never conveyed by color alone." "Respect reduced-motion preferences." "File upload has an accessible alternative path and clear status." (CLAUDE.md)
-- Both languages: "Every staff-authored text has an **English and a Spanish** value" and "Fixed chrome of the builder, renderer and manager has no hardcoded user-facing strings. Its copy lives in the surface's UI/UX spec and is the single source for translations." Renderer copy is bound in `src/modules/submissions/presentation/copy.ts`, email copy in `src/shared/presentation/email/copy.ts`, each with a test that compares it to the spec rows.
+- Both languages: "Every staff-authored text has an **English and a Spanish** value" and "Fixed chrome of the builder, renderer and manager has no hardcoded user-facing strings. Its copy lives in the surface's UI/UX spec and is the single source for translations." Renderer copy is bound in `src/modules/submissions/presentation/copy.ts`, email copy in `src/shared/presentation/email/copy.ts`, each with a test that compares it to the spec rows. Client components receive their strings as props, never the tables.
 - Staff-authored text: "Escaped on every render. The restricted rich-text subset allowed by `form-definition.md` is sanitized server-side with an allowlist; links must be `https` and open with `rel="noopener"`." (security.md)
 - Synthetic data: "Never use real submissions or real PII in tests, fixtures, seeds, logs, screenshots, examples, docs, or commit messages. Generate synthetic data." Addresses use `example.com`, IPs `203.0.113.x`. Test images are generated in code; the one HEIC fixture is a generated solid-color image.
 - Payloads: "Payloads hold identifiers, never personal data. An email job carries the submission id and looks the address up at run time." (jobs.md)
-- Logs: "Logs and error messages must not contain answers, email addresses, file contents, or anything that identifies a submitter. Form and submission ids are fine." File names are never logged.
+- Logs: "Logs and error messages must not contain answers, email addresses, file contents, or anything that identifies a submitter. Form and submission ids are fine." File names are never logged or stored.
 - Photos: "Validate type and size at the boundary, strip metadata, and store them only through the media port." "Verify type by content, not by extension or declared MIME type." "The original filename is never used." (CLAUDE.md, media-storage.md)
 - Migrations: "A migration is a plain `.sql` file named `NNNN_<name>.sql`: four digits, then lowercase letters, digits and underscores." "One global sequence." The next free id is `0006`; this plan uses `0006_media.sql`, `0007_email_delivery.sql`, `0008_form_reference_counter.sql`, `0009_submissions.sql`.
 - Lock discipline: "A use case opens at most one unit of work and never nests them." "Mutating use cases re-read the aggregate inside the unit of work with a row lock (`for update`) before writing, and decide again on the locked rows." The intake locks the in-progress row, then the form row (through `allocateReference`), always in that order.
-- Framework boundary: "No React or Next.js import may appear in `domain/`, `application/`, or `infrastructure/`." Route handlers "parse input, call a use case, and map the result". Module edges are `MODULE_DEPS` in `eslint.config.mjs`: `media: []`, `notifications: []`, `submissions: ["definitions", "media", "notifications"]`.
+- Framework boundary: "No React or Next.js import may appear in `domain/`, `application/`, or `infrastructure/`." Route handlers and Server Actions "parse input, call a use case, and map the result"; Server Actions live only in `src/app/**/actions.ts`. Module edges are `MODULE_DEPS` in `eslint.config.mjs`: `media: []`, `notifications: []`, `submissions: ["definitions", "media", "notifications"]`; test files get the exception of ADR 0026 and nothing more.
 - Performance (renderer.md, as changed in Task 1): HTML for a page, compressed, "under 30 KB"; script for enhancement, compressed, "under 150 KB for the renderer route's client bundle, loaded `defer`"; "First page interactive on a throttled 3G profile under 3 seconds"; "Server render of a page under 200 ms at the 95th percentile".
 - Layout: "Single column, maximum content width 640 px, 16 px side gutters on phones"; "Touch targets at least 44 by 44 px"; "Minimum body text 16 px to prevent mobile zoom on focus". Values come from `design-system/tokens.json` only; each CSS value names its token in a comment.
 - Every page works with script disabled: "Every page is a real HTML form that submits without JavaScript."
-- TypeScript strict with `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`; Conventional Commits scoped `docs`, `shared`, `form-model`, `media`, `notifications`, `definitions`, `submissions`, `app`, `ci`; `pnpm format:check`.
-- Run at most three heavy processes (type checks, test suites, builds) at once on the developer machine.
+- TypeScript strict with `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`; field keys are branded `Key` values (tests build them with `asKey`); Conventional Commits scoped `docs`, `shared`, `form-model`, `media`, `notifications`, `definitions`, `submissions`, `app`, `ci`; `pnpm format:check`.
+- Run at most three heavy processes (type checks, test suites, builds, the browser run) at once on the developer machine.
+- How tests are written here: test listings omit their import lines (each file imports Vitest's functions and the names it uses from the paths in its task's Files and Interfaces). A case list gives each test as its quoted name, its inputs and its expected results; write one `it` per case, through the helper the list names, with exactly those names, inputs and expectations.
 
 ## Review Focus
 
 1. A version republished while someone is on page 3 must not change what they see or what is stored: the record stays on its pinned version and the submission records that version id (Task 21 unit test "completes against the pinned version after a republish").
 2. Going back and changing an answer that hides a page the submitter already filled, including an upload field with staged files, must drop those answers and delete those staged files at submit (Task 21 unit test "discards answers and files of a page hidden by a changed answer").
 3. A form closed between the last page load and the Submit click must refuse the submission with the closed screen and store nothing, even when the close commits while the intake waits on the form row lock (Task 22 integration test "refuses a submission when the form closes during the intake").
-4. A file whose extension or declared type lies (an HTML file named `.jpg`, a PNG named `.heic`), a truncated JPEG, an MP4 with a broken box structure, or a body larger than the field allows must be refused with the specific message and leave nothing in staging (Task 7 adapter tests "ignores names and declared types" and "returns null for a truncated image, a PNG claimed as HEIC, and an unknown type", Task 20 unit test and Task 22 integration test, both "refuses a lying, truncated or oversized file and stages nothing").
-5. A record that expired between the last page and Submit must show the expired screen, store no submission, and have its staged files removed by `jobs.cleanup` (Task 21 unit test "treats an expired record as expired at submit" and Task 22 integration test "jobs.cleanup removes expired records and their staged files").
+4. A file whose extension or declared type lies (an HTML file named `.jpg`), a truncated JPEG, an MP4 with a broken box structure, or a body larger than the field allows must be refused with the specific message and leave nothing in staging (Task 7 adapter tests "ignores names and declared types: HTML is not an image whatever it is called" and "returns null for a truncated JPEG, bytes that do not decode as the type, and an unknown type", Task 20 unit test and Task 22 integration test, both "refuses a lying, truncated or oversized file and stages nothing").
+5. A record that expired between the last page and Submit must show the expired screen, store no submission, and have its staged files removed by `jobs.cleanup` (Task 21 unit test "treats an expired record as expired at submit" and Task 27 unit test "jobs.cleanup removes an expired record and its staged files, and stores no submission", which runs the composed handler the worker registers).
 
 ---
 
 ## File structure
 
 ```
-specs/...                                                   Task 1 edits, ADR 0023, ADR 0002 and 0016 amendments
+specs/...                                                   Task 1 edits, ADRs 0023 to 0026, ADR 0002 and 0008 amendments
+specs/decisions/0016-field-type-hooks.md                    amended in Task 4
+eslint.config.mjs                                           + the test-only exception (ADR 0026)
 src/shared/application/ports/job-queue.ts                   + maxAttempts in the context, PermanentJobError
 src/shared/application/testing/fakes.ts                     + InMemoryJobQueue, RecordingLogger, handlerContext
 src/shared/infrastructure/jobs/worker.ts                    dead at once on PermanentJobError, maxAttempts
@@ -71,6 +81,7 @@ src/shared/infrastructure/jobs/handlers/cleanup.ts          + cleanup steps
 src/shared/domain/rich-text.ts                              the restricted markdown subset
 src/shared/domain/form-model/submission.ts, visibility.ts   + validatePage, visiblePages
 src/shared/domain/form-model/field-type.ts                  + uploadLimits hook (file_upload implements it)
+src/shared/domain/form-model/field-types/conformance-checks.ts  + the upload limits check
 src/shared/presentation/RichText.tsx, rich-text-html.ts     React and HTML renderings of the subset
 src/shared/presentation/testing/spec-copy.ts                + specTableRows
 src/shared/presentation/email/                              copy.ts, layout.ts, confirmation.ts, staff-notification.ts, index.ts
@@ -95,27 +106,31 @@ src/modules/submissions/
          testing/versions.ts
   application/deps.ts, fill-state.ts, ports/{in-progress-repository,submission-repository}.ts,
               version-cache.ts, post-context.ts, view-form.ts, answers.ts, staging.ts, save-page.ts,
-              check-field.ts, upload-file.ts, submit-form.ts, expire.ts, index.ts, testing/fakes.ts
+              check-field.ts, upload-file.ts, silent-accept.ts, submit-form.ts, expire.ts, index.ts, testing/fakes.ts
   infrastructure/migrations/0009_submissions.sql, pg-in-progress-repository.ts,
                  pg-submission-repository.ts, pg-submission-stats.ts, message-source.ts
-  presentation/copy.ts, error-copy.ts, format.ts, messages.ts, decode.ts, field-views.ts,
-               cookies.ts, http.ts, csp.ts, styles.ts, renderer.module.css, error-page.ts,
+  presentation/copy.ts, error-copy.ts, format.ts, messages.ts, decode.ts, field-views.ts, page-form-state.ts,
+               cookies.ts, http.ts, csp.ts, styles.ts, renderer.module.css,
                fields/{types.ts,FieldShell.tsx,text.tsx,number.tsx,date.tsx,choice.tsx,checkbox.tsx,
                        consent.tsx,file-upload.tsx,section.tsx,index.ts},
-               PublicShell.tsx, FormPage.tsx, ErrorSummary.tsx, Progress.tsx, Screens.tsx,
-               client/{bus.ts,upload-queue.ts,form-dom.ts,UploadField.tsx,PageEnhancer.tsx}
-src/app/config.ts, modules.ts, container.ts, worker.ts, worker-handlers.ts
-src/app/layout.tsx (removed) -> src/app/admin/layout.tsx, src/app/(home)/{layout,page}.tsx
-src/app/f/[slug]/layout.tsx, page.tsx, view.ts, not-found.tsx, error.tsx, _lib/respond.ts,
-                answers/route.ts, files/route.ts, files/[fileId]/route.ts, check/route.ts, restart/route.ts
-src/proxy.ts                                                + the renderer's CSP with a nonce on /f
-next.config.ts                                              serverExternalPackages
-tests/support/test-database.ts                              shared by integration and e2e setup
+               PublicShell.tsx, FormPage.tsx, Progress.tsx, Screens.tsx,
+               client/{bus.ts,upload-queue.ts,page-state.ts,form-dom.ts,refused-files.ts,summary.ts,
+                       UploadField.tsx,PageEnhancer.tsx,NavButtons.tsx,ErrorSummary.tsx}
+src/app/config.ts, modules.ts, container.ts, worker.ts, worker-handlers.ts, next-config.test.ts
+src/app/layout.tsx (removed) -> src/app/admin/layout.tsx, src/app/(home)/{layout,page}.tsx, src/app/global-not-found.tsx
+src/app/f/[slug]/layout.tsx, page.tsx, view.ts, actions.ts, not-found.tsx, error.tsx, _lib/respond.ts,
+                files/route.ts, files/[fileId]/route.ts, check/route.ts, restart/route.ts
+src/proxy.ts                                                + the renderer's CSP with a nonce on /f/<slug>
+next.config.ts                                              serverExternalPackages, body size limits, globalNotFound
+tests/support/test-database.ts, app-server.ts               shared by integration, e2e and browser setup
 tests/fakes/media-files.ts, dropbox-api.ts, http-stub.ts
 tests/fixtures/media/synthetic-16x16.heic
-tests/integration/{jobs,media,notifications,definitions,submissions}/*.test.ts
+tests/boundaries/boundaries.test.ts                         + media, notifications, submissions and test-only probes
+tests/integration/{jobs,identity,media,notifications,definitions,submissions}/*.test.ts
 tests/e2e/setup.ts, vitest.d.ts, http.ts, publish.ts, reference-form.test.ts, budgets.test.ts
-vitest.e2e.config.ts, package.json (test:e2e), .github/workflows/ci.yml (+ e2e job)
+tests/browser/global-setup.ts, reference-form.spec.ts; playwright.config.ts
+vitest.e2e.config.ts, vitest.config.ts (excludes tests/e2e), package.json (test:e2e, test:e2e:browser),
+.github/workflows/ci.yml (+ e2e and e2e-browser jobs)
 ```
 
 ---
@@ -123,18 +138,18 @@ vitest.e2e.config.ts, package.json (test:e2e), .github/workflows/ci.yml (+ e2e j
 ### Task 1: Specs and ADRs first
 
 **Files:**
-- Modify: `specs/ui-ux/renderer.md`, `specs/system/security.md`, `specs/system/media-storage.md`, `specs/system/email.md`, `specs/system/jobs.md`, `specs/system/database.md`, `specs/architecture.md`, `specs/decisions/0002-dropbox-first-media-provider.md`
-- Create: `specs/decisions/0023-image-processing.md`
+- Modify: `specs/ui-ux/renderer.md`, `specs/ui-ux/builder.md`, `specs/system/security.md`, `specs/system/media-storage.md`, `specs/system/email.md`, `specs/system/jobs.md`, `specs/system/database.md`, `specs/architecture.md`, `specs/use-cases/fill-and-submit-form.md`, `specs/decisions/0002-dropbox-first-media-provider.md`, `specs/decisions/0008-nextjs-react-application.md`
+- Create: `specs/decisions/0023-image-processing.md`, `0024-browser-end-to-end-tests.md`, `0025-submission-reference-counter-and-email-delivery.md`, `0026-test-only-boundary-exception.md`
 
 **Interfaces:**
-- Produces: the copy rows every later task binds (renderer chrome keys `switch_to_en`, `switch_to_es`, `wordmark`, `date_day`, `date_month`, `date_year`, `files_limits_videos`, `kinds_images`, `kinds_videos`, `kinds_mixed`, `file_row`, `removed`, `honeypot_label`, `error_summary_heading_one`, `files_count_one`; catalog rows `min length one`, `max length one`, `choice min one`, `choice max one`, `files min one`, `files max one`; the email table "Staff notification, fixed parts"), and the written decisions the code follows. The manager row `set.challenge_unavailable` arrives in Task 15.
+- Produces: the copy rows every later task binds (renderer chrome keys `switch_to_en`, `switch_to_es`, `wordmark`, `date_day`, `date_month`, `date_year`, `files_limits_videos`, `kinds_images`, `kinds_videos`, `kinds_mixed`, `file_row`, `removed`, `honeypot_label`, `error_summary_heading_one`, `files_count_one`; catalog rows `min length one`, `max length one`, `choice min one`, `choice max one`, `files min one`, `files max one`, `submission too large`; the email table "Staff notification, fixed parts"), and the written decisions the code follows. The manager row `set.challenge_unavailable` arrives in Task 15; the ADR 0016 amendment in Task 4.
 
 This task changes documents only. Hand-wrap prose at 80 columns; table rows stay on one line.
 
 - [ ] **Step 1: `specs/ui-ux/renderer.md`.**
   1. Performance targets: replace the script row with `| Script for enhancement, compressed | under 150 KB for the renderer route's client bundle, loaded \`defer\` |`, and add under the table: "The e2e suite measures the HTML of every page of the reference form and the sum of the compressed scripts the page loads, and fails above these budgets."
-  2. "Validation and errors", **When.**, append: "With script, the field is checked by the server on blur (`POST /f/<slug>/check`), so the browser applies exactly the server's rules and ships none of them."
-  3. "File upload", after the no-script paragraph, add: "Without script, each staged file is listed as `file_row` (the original name is not kept) with a Remove button that submits the page form with that file; the page re-renders with its answers kept. A post with more files than the field allows stages none of them and reports `files max`."
+  2. "Validation and errors", **When.**, append: "With script, the field is checked by the server on blur (`POST /f/<slug>/check`), so the browser applies exactly the server's rules and ships none of them." **Server round trip.**, append: "A refused page post is answered directly with the page and its messages (HTTP 200); a post that goes through, and every other post, redirects (303) to `GET /f/<slug>`. A refused file's name appears only in that answer: it is never stored."
+  3. "File upload", after the no-script paragraph, add: "Without script, each staged file is listed as `file_row` (the original name is not kept) with a Remove button that submits the page form with that file; the page re-renders with its answers kept. A post with more files than the field allows stages none of them and reports `files max`. With script, a chosen file larger than the field allows, or of a kind it does not take by its declared type, is refused at once without uploading; the server still checks every file by content. Every file staged for one in-progress record counts toward the per-submission size in `system/security.md`."
   4. "Closed, not yet open, not found", append: "These screens and Session expired show both languages, the page language first, since no language has been chosen. Not found has no privacy footer: without a form there is no retention period to state."
   5. "Layout", after the header image bullet, add: "First pass: no version can carry a header image until the builder uploads one, so the renderer leaves it out; it arrives with the builder plan."
   6. "Form page", after the bot challenge bullet, add: "First pass: the challenge is not built. A form with it enabled renders without it; the honeypot and the minimum fill time in `system/security.md` still apply."
@@ -146,7 +161,7 @@ This task changes documents only. Hand-wrap prose at 80 columns; table rows stay
      | Route | What it is |
      |---|---|
      | `GET /f/<slug>` | The current screen: a form page, the confirmation, or a closed, not open, not found or expired screen (`?expired=1` asks for the expired screen) |
-     | `POST /f/<slug>/answers` | The page form: Next, Back, Submit, a language switch or a Remove; always 303 back to `GET /f/<slug>` |
+     | `POST /f/<slug>` | The page form, posted to a Server Action: Next, Back, Submit, a language switch or a Remove. A refused post answers with the page (200); every other post redirects (303) to `GET /f/<slug>` |
      | `POST /f/<slug>/files` | Early upload of one file with script; JSON |
      | `DELETE /f/<slug>/files/<file id>` | Removes a staged file with script; 204 |
      | `POST /f/<slug>/check` | Checks one field on blur; JSON with the message or null |
@@ -173,7 +188,7 @@ This task changes documents only. Hand-wrap prose at 80 columns; table rows stay
      ```
 
      and add below the `{contact}` sentence: "`switch_to_*` name the target language in that language. `wordmark` is the text the wordmark slot shows until `design-system/assets/` holds the SVG. `{kinds}` in the file messages is `kinds_images`, `kinds_videos` or `kinds_mixed`. `file_row` names a staged file without script. `honeypot_label` labels the hidden anti-spam field, which assistive technology never reaches."
-  9. Message catalog, append the singular forms the pluralization sentence requires:
+  9. Message catalog, append the singular forms the pluralization sentence requires and the per-submission size row:
 
      ```markdown
      | min length one | {label} must have at least {n} character | {label} debe tener al menos {n} carácter |
@@ -182,118 +197,132 @@ This task changes documents only. Hand-wrap prose at 80 columns; table rows stay
      | choice max one | Select no more than {n} option for {label} | Selecciona como máximo {n} opción en {label} |
      | files min one | Upload at least {n} file for {label} | Sube al menos {n} archivo en {label} |
      | files max one | You can upload up to {n} file for {label} | Puedes subir hasta {n} archivo en {label} |
+     | submission too large | {file} would take this form's files past {size} in total | {file} haría que los archivos de este formulario pasen de {size} en total |
      ```
 
-     and change the pluralization sentence to: "Pluralization follows each language's rules: when `Intl.PluralRules` gives `one` for `{n}` (or `{count}`), the `… one` row is used, otherwise the plain row."
+     and change the pluralization sentence to: "Pluralization follows each language's rules: when `Intl.PluralRules` gives `one` for `{n}` (or `{count}`), the `… one` row is used, otherwise the plain row. In `submission too large`, `{size}` is the per-submission cap."
+  10. "Test fixtures", append: "The script-enabled run uses a real Chromium on a phone viewport (ADR 0024); the script-disabled run talks HTTP to the built app."
 
-- [ ] **Step 2: `specs/system/security.md`**, "Public form abuse protection": replace items 2 to 4 with
+- [ ] **Step 2: `specs/ui-ux/builder.md`.** In the field settings table, the Consent row's "consent text pair (markdown)" becomes "consent text pair (plain text: paragraphs separated by a blank line, no markup)". `form-definition.md` is the contract: consent text is not one of its four rich-text places.
 
-  ```markdown
-  2. **Honeypot field** hidden from humans: an input named `website-url`
-     placed off-screen, `aria-hidden="true"`, `tabindex="-1"`,
-     `autocomplete="off"`. A filled honeypot is a silent accept that stores
-     nothing.
-  3. **Minimum time-to-submit** of 3 seconds, measured from the render of
-     page 1: the first post carries the render time in the hidden field
-     `_rendered`, clamped to the last 24 hours and stored on the in-progress
-     record as `started_at`; an absent or unreadable value counts as the time
-     of that first post. Faster than that is a silent accept. A person cannot
-     read and complete even a one-field form with consent in 3 seconds.
-  4. **Bot challenge** (Cloudflare Turnstile, proposed) only on the final step
-     and only when the form's settings enable it. It costs accessibility and
-     must never be the first line. Not built yet: a form with it enabled
-     renders without it.
-  ```
+- [ ] **Step 3: `specs/system/security.md`.**
+  1. "Public form abuse protection": replace items 2 to 4 with
 
-  Add a subsection after it:
+     ```markdown
+     2. **Honeypot field** hidden from humans: an input named `website-url`
+        placed off-screen, `aria-hidden="true"`, `tabindex="-1"`,
+        `autocomplete="off"`. A filled honeypot on any page post is a silent
+        accept: the in-progress record and its staged files are deleted and
+        nothing is stored.
+     3. **Minimum time-to-submit** of 3 seconds, measured from the render of
+        page 1: the first post carries the render time in the hidden field
+        `_rendered`, clamped to the last 24 hours and stored on the in-progress
+        record as `started_at`; an absent or unreadable value counts as the time
+        of that first post. Faster than that is a silent accept. A person cannot
+        read and complete even a one-field form with consent in 3 seconds.
+     4. **Bot challenge** (Cloudflare Turnstile, proposed) only on the final step
+        and only when the form's settings enable it. It costs accessibility and
+        must never be the first line. Not built yet: a form with it enabled
+        renders without it.
+     ```
 
-  ```markdown
-  ### In-progress cookie
+     and add a subsection after it:
 
-  The renderer's only cookie is `effluz_fill`: `Path=/f/<slug>`, `HttpOnly`,
-  `SameSite=Lax`, `Max-Age=86400`, plus `Secure` in production. While a form is
-  being filled its value is the random id of the in-progress record; after a
-  stored submission it is `done.<submit token>` and after a silent accept
-  `decoy.<reference>`, so Back after Submit shows the confirmation again. It
-  carries no answers. `SameSite=Lax` keeps cross-site posts from reaching the
-  record, which is why the public routes need no CSRF token. A value that is
-  none of these shapes is treated as absent.
-  ```
+     ```markdown
+     ### In-progress cookie
 
-  "Transport and headers": append "The renderer's pages (`/f/...`) get a per-request nonce from the proxy: `script-src 'self' 'nonce-<n>' 'strict-dynamic'` (plus `'unsafe-eval'` in development only), `style-src 'self' 'unsafe-inline'`, `img-src 'self' blob: data:`, `connect-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`."
+     The renderer's only cookie is `effluz_fill`: `Path=/f/<slug>`, `HttpOnly`,
+     `SameSite=Lax`, `Max-Age=86400`, plus `Secure` in production. While a form is
+     being filled its value is the random id of the in-progress record; after a
+     stored submission it is `done.<submit token>` and after a silent accept
+     `decoy.<reference>`, so Back after Submit shows the confirmation again. It
+     carries no answers. `SameSite=Lax` keeps cross-site posts from reaching the
+     record, and Next refuses a Server Action post whose `Origin` is not this
+     host, which is why the public routes need no CSRF token. A value that is
+     none of these shapes is treated as absent.
+     ```
+  2. Below the limits table, add: "The per-submission size counts every file staged on the in-progress record, early uploads included; a file that would pass it is refused with `submission too large`."
+  3. "Transport and headers": "Content-Security-Policy with no inline scripts" becomes "Content-Security-Policy with no inline scripts except Next's nonce-bearing bootstrap on the renderer, allowed by a per-request nonce", and append "The renderer's pages (`/f/<slug>`, both the page and its form posts) get a per-request nonce from the proxy: `script-src 'self' 'nonce-<n>' 'strict-dynamic'` (plus `'unsafe-eval'` in development only), `style-src 'self' 'unsafe-inline'`, `img-src 'self' blob: data:`, `connect-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`."
 
-- [ ] **Step 3: `specs/system/media-storage.md`.** Under "The `MediaStorage` port", add: "`put` takes the bytes (files are capped at 10 MB, so no stream is needed) and is idempotent for the same key: Dropbox writes with `mode: overwrite`. The staging adapter adds two operations nothing else needs: `read(ref)` returns the bytes for the upload job, and `deletePrefix(prefix)` removes every file under a prefix." Under "Keys", add the staging scheme: "Staged files are named `in-progress/<record id>/<file id>.<ext>`: random ids only, so expiring a record removes its files with one prefix delete. Local refs are the key itself; Dropbox refs are the key with a leading `/` inside the App folder." Under "Adapters", add to each: Local disk: "`MEDIA_PROVIDER=local` (the default outside production) also uses local disk as the durable tier, rooted at `MEDIA_DURABLE_DIR` (default `./data/durable`); production refuses it." Dropbox: "`MEDIA_PROVIDER=dropbox` with `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET` and `DROPBOX_REFRESH_TOKEN`. The adapter calls the HTTP API with `fetch` (no SDK): `oauth2/token` for the refresh-token exchange, `files/upload`, `files/get_metadata`, `files/delete_v2` and `files/get_temporary_link`. `DROPBOX_API_URL` and `DROPBOX_CONTENT_URL` exist so tests can point it at a local fake. A 401 renews the access token once; a 429 or 5xx fails the job so the job system retries it." Under "File handling rules", Images bullet, append: "JPEG, PNG and WebP are re-encoded to the same format with the EXIF orientation applied first; HEIC is decoded with `libheif-js` and encoded as JPEG (ADR 0023). Inputs above 50 megapixels are refused as unreadable." Videos bullet, append: "The container check walks the ISO base media file format boxes: the first box is `ftyp`, every box size fits the file, and a `moov` box is present."
+- [ ] **Step 4: `specs/system/media-storage.md`.**
+  1. "The `MediaStorage` port" table: the `put` row becomes `| \`put(bytes, key, contentType)\` | Store the bytes (files are capped at 10 MB, so no stream is needed). Returns a provider reference. Idempotent for the same key: Dropbox writes with \`mode: overwrite\`. |`, and add two rows: `| \`read(ref)\` | Staging only: the bytes, for the upload job. |` and `| \`deletePrefix(prefix)\` | Staging only: remove every file under a prefix. |`.
+  2. Under "Keys", add the staging scheme: "Staged files are named `in-progress/<record id>/<file id>.<ext>`: random ids only, so expiring a record removes its files with one prefix delete. Local refs are the key itself; Dropbox refs are the key with a leading `/` inside the App folder."
+  3. Under "Adapters", add to each: Local disk: "`MEDIA_PROVIDER=local` (the default outside production) also uses local disk as the durable tier, rooted at `MEDIA_DURABLE_DIR` (default `./data/durable`); production refuses it." Dropbox: "`MEDIA_PROVIDER=dropbox` with `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET` and `DROPBOX_REFRESH_TOKEN`. The adapter calls the HTTP API with `fetch` (no SDK): `oauth2/token` for the refresh-token exchange, `files/upload`, `files/get_metadata`, `files/delete_v2` and `files/get_temporary_link`. `DROPBOX_API_URL` and `DROPBOX_CONTENT_URL` exist so tests can point it at a local fake. A 401 renews the access token once; a 429 or 5xx fails the job so the job system retries it."
+  4. "File handling rules", Images bullet, append: "JPEG, PNG and WebP are re-encoded to the same format with the EXIF orientation applied first; HEIC is decoded with `libheif-js` and encoded as JPEG (ADR 0023). Inputs above 50 megapixels are refused as unreadable." Videos bullet: "container and codec checked by content only" becomes "container checked by content (no codec inspection in the first release)", and append: "The container check walks the ISO base media file format boxes: the first box is `ftyp`, every box size fits the file, and a `moov` box is present."
 
-- [ ] **Step 4: `specs/system/email.md`.** Replace "The `EmailSender` port" section with:
+- [ ] **Step 5: `specs/system/email.md`.**
+  1. Replace "The `EmailSender` port" section with:
 
-  ```markdown
-  ## Ports
+     ```markdown
+     ## Ports
 
-  `EmailRenderer.submitterConfirmation(data)` and
-  `EmailRenderer.staffNotification(data)` return `{ subject, text, html }`.
-  The implementation is the template module in
-  `src/shared/presentation/email/`, wired at the composition root, since
-  infrastructure may not import presentation.
+     `EmailRenderer.submitterConfirmation(data)` and
+     `EmailRenderer.staffNotification(data)` return `{ subject, text, html }`.
+     The implementation is the template module in
+     `src/shared/presentation/email/`, wired at the composition root, since
+     infrastructure may not import presentation.
 
-  `EmailSender.send({ to, subject, text, html }) -> { providerMessageId }`
-  sends one message from `EMAIL_FROM` with `Reply-To: EMAIL_REPLY_TO`. A
-  failure is an `EmailSendError` marked retryable or permanent.
+     `EmailSender.send({ to, subject, text, html }) -> { providerMessageId }`
+     sends one message from `EMAIL_FROM` with `Reply-To: EMAIL_REPLY_TO`. A
+     failure is an `EmailSendError` marked retryable or permanent.
 
-  The job handler looks the data up at run time, renders, sends, and records
-  the provider id in `email_delivery` under the key `<job type>:<submission
-  id>` before the job succeeds. A retry that finds the key sends nothing. A
-  submission that no longer exists, or no longer has an address, ends the job
-  without sending.
-  ```
+     The job handler looks the data up at run time, renders, sends, and records
+     the provider id in the `email_delivery` table (owned by `notifications`)
+     under the key `<job type>:<submission id>` before the job succeeds. A retry
+     that finds the key sends nothing. A submission that no longer exists, or no
+     longer has an address, ends the job without sending.
+     ```
+  2. "Templates", first bullet becomes: "Live in `src/shared/presentation/email/`: `copy.ts` (the fixed parts), `layout.ts` (the shared document), and one module per template, `confirmation.ts` and `staff-notification.ts`. Each template renders English and Spanish (the staff notification is English only), each with a plain-text and an HTML body."
+  3. Add after "Templates":
 
-  Add after "Templates":
+     ```markdown
+     ### Staff notification, fixed parts
 
-  ```markdown
-  ### Staff notification, fixed parts
+     English only. `{date}` is the received time in the form's time zone,
+     followed by UTC. `{link}` is the form's page in the manager until the
+     review plan adds the submission page.
 
-  English only. `{date}` is the received time in the form's time zone,
-  followed by UTC. `{link}` is the form's page in the manager.
+     | Part | English |
+     |---|---|
+     | Subject | New submission to {form title}: {ref} |
+     | Preheader | {form title} received submission {ref} |
+     | Intro | {form title} received a new submission. |
+     | Reference | Reference: {ref} |
+     | Received | Received: {date} |
+     | Link | Open it in the manager: {link} |
+     | Footer | This email carries no answers or files. Sign in to the manager to see them. |
+     ```
+  4. "Local development": replace the first sentence with "Mailpit runs in the dev Compose stack (SMTP on 127.0.0.1:1025, web and API on 127.0.0.1:8025). `EMAIL_PROVIDER=mailpit`, the default outside production, sends through Mailpit's HTTP API (`POST /api/v1/send` at `MAILPIT_URL`), which returns a message id like the real provider. Production refuses it and requires `EMAIL_PROVIDER=smtp2go` with `SMTP2GO_API_KEY`." Add under "Provider": "The adapter posts to `SMTP2GO_API_URL` (default `https://api.smtp2go.com/v3`) `/email/send`. Retryable: network errors, 401, 403, 429, 5xx. Permanent: a 400, or a 200 that reports the recipient failed."
 
-  | Part | English |
-  |---|---|
-  | Subject | New submission to {form title}: {ref} |
-  | Preheader | {form title} received submission {ref} |
-  | Intro | {form title} received a new submission. |
-  | Reference | Reference: {ref} |
-  | Received | Received: {date} |
-  | Link | Open it in the manager: {link} |
-  | Footer | This email carries no answers or files. Sign in to the manager to see them. |
-  ```
-
-  "Local development": replace the first sentence with "Mailpit runs in the dev Compose stack (SMTP on 127.0.0.1:1025, web and API on 127.0.0.1:8025). `EMAIL_PROVIDER=mailpit`, the default outside production, sends through Mailpit's HTTP API (`POST /api/v1/send` at `MAILPIT_URL`), which returns a message id like the real provider. Production refuses it and requires `EMAIL_PROVIDER=smtp2go` with `SMTP2GO_API_KEY`." Add under "Provider": "The adapter posts to `SMTP2GO_API_URL` (default `https://api.smtp2go.com/v3`) `/email/send`. Retryable: network errors, 401, 403, 429, 5xx. Permanent: a 400, or a 200 that reports the recipient failed."
-
-- [ ] **Step 5: `specs/system/jobs.md`.**
+- [ ] **Step 6: `specs/system/jobs.md`.**
   1. "The `JobQueue` port", handler paragraph: change the context list to "the job id, the attempt number, the job's `maxAttempts`, a logger already tagged with the job, and the unit of work, queue and clock ports", and replace "Only `jobs.cleanup` and `identity.cleanup` are registered so far…" with "Registered today: `jobs.cleanup`, `identity.cleanup`, `media.upload`, `media.delete`, `email.submitter_confirmation` and `email.staff_notification`."
   2. "Failure and retry", append: "A handler that throws `PermanentJobError` (from `src/shared/application/ports/job-queue.ts`) makes the job `dead` at once with its message, for failures a retry cannot fix, such as an email address the provider rejects."
-  3. "Handler rules", replace the Idempotent bullet with: "**Idempotent.** A handler may run twice. Uploads `put` by key, which overwrites, and record the reference before deleting the staging copy; emails record the provider message id in `email_delivery` and skip a key already recorded."
+  3. "Handler rules", replace the Idempotent bullet with: "**Idempotent.** A handler may run twice. Uploads `put` by key, which overwrites, and record the reference before deleting the staging copy; emails record the provider message id in the `email_delivery` table, not on the job, and skip a key already recorded."
   4. "Recurring jobs", replace "removing expired in-progress submission records (older than 24 hours) and their staged files joins it when `submissions` exists" with "it also removes in-progress submission records past their 24 hours, their staged files first, through cleanup steps the worker's composition root passes in, so `shared` never imports `submissions`".
-  5. Job types table: `media.upload` effect "Staging to durable storage, media row to `stored` with its reference, staging copy deleted; on the last attempt the row becomes `failed` and staging is kept"; `media.delete` "Remove the durable file, the staging copy and the media row, in that order". Payloads: add a sentence under the table: "Payloads: `media.*` carry `{ mediaId }`, `email.*` carry `{ submissionId }`."
+  5. Job types table: `media.upload` effect "Staging to durable storage, media row to `stored` with its reference, staging copy deleted; on the last attempt the row becomes `failed` and staging is kept"; `media.delete` "Remove the durable file, the staging copy and the media row, in that order". Add under the table: "Payloads: `media.*` carry `{ mediaId }`, `email.*` carry `{ submissionId }`."
 
-- [ ] **Step 6: `specs/system/database.md`**, core tables:
-  - `form`: append "`next_reference` (integer, starts at 1): the sequence of submission references, advanced only by `allocateReference` under the form row lock".
-  - Replace the `submission_in_progress` row with: "`submission_in_progress` | `submissions` | `id` (the random value of the `effluz_fill` cookie), `form_id`, `form_version_id` (the pinned version), `locale`, `page_key`, `answers` (jsonb, only valid answers), `files` (jsonb, staged files per field key), `pending` (jsonb, the last refused post's values and issues, or null), `submit_token` (uuid), `started_at`, `expires_at` (24 hours after creation). Personal data; deleted at submit or by `jobs.cleanup` after expiry."
-  - Replace the `submission` row with: "`submission` | `submissions` | `form_id`, `form_version_id`, `locale`, `answers` (jsonb, **immutable after insert**: the trigger `submission_answers_immutable` rejects an update that changes it), `consent` (jsonb), `received_at`, `reference` (unique per form, `submission_form_reference_key`), `submit_token` (unique, `submission_submit_token_key`, so a repeated Submit finds the first submission), `status` (`new`, `viewed`, `edited`, `published`; default `new`), `curated_answers` (jsonb, default `{}`), `published_post_url`, `status_changed_by`, `status_changed_at`".
-  - Replace the `media` row with: "`media` | `media` | `submission_id`, `form_id`, `field_key`, `position` (1-based within the field), `kind` (`image`, `video`), `status` (`staged`, `stored`, `failed`), `content_type`, `size`, `staging_ref` (null once the staging copy is gone), `durable_key`, `provider_ref` (null until stored). No foreign key to `submission`: deletion goes through `media.delete` so a provider outage cannot leave a row pointing at nothing."
-  - Add a row: "`email_delivery` | `notifications` | `delivery_key` (unique: `<job type>:<submission id>`), `provider_message_id`. Lets a retried email job see the message was sent."
-  - Indexes: add "`submission_in_progress (expires_at)` for cleanup; the unique `media (submission_id, field_key, position)`, which also serves lookups by submission".
+- [ ] **Step 7: `specs/system/database.md`.**
+  1. The lock paragraph under the unit-of-work rules, after "always in that order.", add: "The submissions intake locks the `submission_in_progress` row, then the `form` row (through `allocateReference`), always in that order; taking a reference does not change `form.updated_at`, since a submission is not a form edit."
+  2. Core tables: `form`: append "`next_reference` (integer, starts at 1): the sequence of submission references, advanced only by `allocateReference` under the form row lock (ADR 0025)".
+  3. Replace the `submission_in_progress` row with: "`submission_in_progress` | `submissions` | `id` (the random value of the `effluz_fill` cookie), `form_id`, `form_version_id` (the pinned version), `locale`, `page_key`, `answers` (jsonb, only valid answers), `files` (jsonb, staged files per field key), `pending` (jsonb, the last refused post's typed values and issues, or null; never a file name), `submit_token` (uuid), `started_at`, `expires_at` (24 hours after creation). Personal data; deleted at submit or by `jobs.cleanup` after expiry."
+  4. Replace the `submission` row with: "`submission` | `submissions` | `form_id`, `form_version_id`, `locale`, `answers` (jsonb, **immutable after insert**: the trigger `submission_answers_immutable` rejects an update that changes it), `consent` (jsonb), `received_at`, `reference` (unique per form, `submission_form_reference_key`), `submit_token` (unique, `submission_submit_token_key`, so a repeated Submit finds the first submission), `status` (`new`, `viewed`, `edited`, `published`; default `new`), `curated_answers` (jsonb, default `{}`), `published_post_url`, `status_changed_by`, `status_changed_at`".
+  5. Replace the `media` row with: "`media` | `media` | `submission_id`, `form_id`, `field_key`, `position` (1-based within the field), `kind` (`image`, `video`), `status` (`staged`, `stored`, `failed`), `content_type`, `size`, `staging_ref` (null once the staging copy is gone), `durable_key`, `provider_ref` (null until stored). No foreign key to `submission`: deletion goes through `media.delete` so a provider outage cannot leave a row pointing at nothing."
+  6. Add a row: "`email_delivery` | `notifications` | `delivery_key` (unique: `<job type>:<submission id>`), `provider_message_id`. Lets a retried email job see the message was sent (ADR 0025)."
+  7. Indexes: add "`submission_in_progress (expires_at)` for cleanup; the unique `media (submission_id, field_key, position)`, which also serves lookups by submission".
 
-- [ ] **Step 7: `specs/architecture.md`.**
-  - Ports table: `MediaStorage` row responsibility gains "; staging adds read and prefix delete"; `EmailSender` row becomes "Send one rendered transactional message | SMTP2GO (Mailpit locally)"; add a row `| EmailRenderer | Render the two messages from their data; the implementation is the template module in src/shared/presentation/email | Templates, wired at the composition root | system/email.md |`; add `| MessageSource | The data an email job needs, looked up at run time from a submission id. Owned by notifications, implemented by submissions | Postgres (submissions) | system/email.md |`; the `SubmissionStats` row's first adapter becomes "Postgres, supplied by `submissions` (`PgSubmissionStats`)".
-  - Ports paragraph about repositories: append "`submissions` also owns `submission_in_progress`. `definitions` exports read use cases for the renderer (`resolvePublicForm`, `loadVersion`, `loadForm`) and `allocateReference`, so `submissions` never reads or writes `definitions` tables."
-  - "Submission data flow" step 2: replace "Photos are written to the local staging directory under random names with metadata (EXIF, including GPS) stripped." with "Photos are re-encoded with metadata (EXIF, including GPS) stripped and written to the local staging directory under `in-progress/<record id>/<file id>.<ext>`."
-  - Technology decisions: add `| Image processing | sharp, with libheif-js for HEIC; file-type for content sniffing | accepted | decisions/0023 |`.
-  - "Where the framework is allowed": append "The renderer's posts are route handlers under `src/app/f/[slug]/`, each a thin Post/Redirect/Get."
+- [ ] **Step 8: `specs/architecture.md`.**
+  1. Modules table: the `notifications` row's responsibility becomes "Email rendering and sending ports, delivery receipts, job handlers for email; templates live in `src/shared/presentation/email/`".
+  2. Ports table: `MediaStorage` row responsibility gains "; staging adds read and prefix delete"; `EmailSender` row becomes "Send one rendered transactional message | SMTP2GO (Mailpit locally)"; add `| EmailRenderer | Render the two messages from their data; the implementation is the template module in src/shared/presentation/email | Templates, wired at the composition root | system/email.md |` and `| MessageSource | The data an email job needs, looked up at run time from a submission id. Owned by notifications, implemented by submissions | Postgres (submissions) | system/email.md |`; the `SubmissionStats` row's first adapter becomes "Postgres, supplied by `submissions` (`PgSubmissionStats`)".
+  3. The repositories paragraph, append: "`submissions` also owns `submission_in_progress`. `definitions` exports read use cases for the renderer (`resolvePublicForm`, `loadVersion`, `loadForm`) and `allocateReference`, so `submissions` never reads or writes `definitions` tables."
+  4. "Where the framework is allowed": "Server actions live only in `src/app/**/actions.ts`; today that is the Settings tab's save." becomes "Server actions live only in `src/app/**/actions.ts`: the Settings tab's save and the renderer's page form (`src/app/f/[slug]/actions.ts`), which answers a refused page directly and redirects (303) otherwise. The renderer's uploads, blur checks and restart are route handlers beside it." Append: "Each surface has its own root layout (`src/app/admin/layout.tsx`, `src/app/(home)/layout.tsx`, `src/app/f/[slug]/layout.tsx`), so the public page's `<html lang>` follows the submitter; `src/app/global-not-found.tsx` answers paths outside the three."
+  5. "Submission data flow": step 2, replace "Photos are written to the local staging directory under random names with metadata (EXIF, including GPS) stripped." with "Photos are re-encoded with metadata (EXIF, including GPS) stripped and written to the local staging directory under `in-progress/<record id>/<file id>.<ext>`." Step 3, replace "one `email.staff_notification` per configured recipient group" with "one `email.staff_notification` per submission, sent as one message to the form's recipient list as it stands when the job runs". The paragraph after the list, replace "The staff notification links to the submission in the manager" with "The staff notification links to the form's page in the manager until the review plan adds the submission page, and".
+  6. Technology decisions: add `| Image processing | sharp, with libheif-js for HEIC; file-type for content sniffing | accepted | decisions/0023 |` and `| Browser end-to-end tests | Playwright, Chromium only | accepted | decisions/0024 |`.
 
-- [ ] **Step 8: `specs/ui-ux/manager.md`** changes in Task 15, with the code that binds its new copy row, so the manager copy test (`src/shared/presentation/copy.test.ts`) never sees a spec row without a binding.
+- [ ] **Step 9: `specs/use-cases/fill-and-submit-form.md`**, main flow step 5: "type and size checks on both sides" becomes "type and size checks on both sides: with script the browser pre-checks the size and the declared kind before uploading (cheap and advisory), and the server decides by content".
 
-- [ ] **Step 9: ADR 0002**, Consequences, append: "- The Dropbox adapter calls the HTTP API with `fetch` and no SDK: five endpoints and the refresh-token exchange are less code to review than an SDK's surface, and a local fake server can stand in for Dropbox in tests. Adopting the SDK later is an adapter change."
+- [ ] **Step 10: ADR 0002**, Consequences, append: "- The Dropbox adapter calls the HTTP API with `fetch` and no SDK: five endpoints and the refresh-token exchange are less code to review than an SDK's surface, and a local fake server can stand in for Dropbox in tests. Adopting the SDK later is an adapter change." **ADR 0008**, under the header: "Amended 2026-10-11: each surface has its own root layout so the public page's `<html lang>` follows the submitter, and the renderer's page form is a Server Action that answers a refused page directly".
 
-- [ ] **Step 10: Create `specs/decisions/0023-image-processing.md`:**
+- [ ] **Step 11: Create `specs/decisions/0023-image-processing.md`:**
 
   ```markdown
   # 0023. Image processing with sharp and libheif-js, sniffing with file-type
@@ -337,22 +366,120 @@ This task changes documents only. Hand-wrap prose at 80 columns; table rows stay
   - Swapping any of them is an adapter change behind the two ports.
   ```
 
-- [ ] **Step 11: Check** `pnpm format:check` and re-read each edited section once against the decisions list at the top of this plan.
-- [ ] **Step 12: Commit**
+- [ ] **Step 12: Create `specs/decisions/0024-browser-end-to-end-tests.md`:**
+
+  ```markdown
+  # 0024. Browser end-to-end tests with Playwright
+
+  Status: accepted
+  Date: 2026-10-11
+
+  ## Context
+
+  `ui-ux/renderer.md` asks the e2e suite to complete the reference form on a
+  phone viewport with script enabled. Early uploads with progress, blur checks
+  and the offline banner exist only in a browser; an HTTP client cannot run
+  them. Options were Playwright, Cypress, or WebdriverIO.
+
+  ## Decision
+
+  - `@playwright/test` as a development dependency, Chromium only, run by
+    `pnpm test:e2e:browser` against the built app (`next start`) on a
+    throwaway database, the same way the HTTP e2e suite starts it.
+  - CI installs Chromium with `playwright install --with-deps chromium` in its
+    own job. Locally the browser run counts as one heavy process.
+  - The HTTP suite stays: it is the script-disabled run and owns the budgets.
+
+  ## Consequences
+
+  - One more development dependency and a browser download in CI.
+  - Firefox and WebKit are not covered; adding them is a config change.
+  - Specs live in `tests/browser/*.spec.ts`, outside Vitest's `*.test.ts`.
+  ```
+
+- [ ] **Step 13: Create `specs/decisions/0025-submission-reference-counter-and-email-delivery.md`:**
+
+  ```markdown
+  # 0025. Submission reference counter and email delivery receipts
+
+  Status: accepted
+  Date: 2026-10-11
+
+  ## Context
+
+  References are `<prefix>-<nnnn>` per form (`form-definition.md`), must be
+  consecutive, and must never be taken by an intake that rolls back. Email
+  jobs may run twice, and a provider message must not go out twice.
+
+  ## Decision
+
+  - `form.next_reference` (integer, starts at 1), owned by `definitions` and
+    advanced only by its use case `allocateReference` inside the intake's unit
+    of work, under the `form` row lock taken after the in-progress row lock.
+    The same locked read decides again that the form is open. Taking a number
+    does not touch `form.updated_at`.
+  - `email_delivery`, owned by `notifications`: one row per sent message,
+    unique `delivery_key` = `<job type>:<submission id>`, holding the provider
+    message id. A job records it before succeeding; a run that finds it sends
+    nothing.
+
+  ## Consequences
+
+  - A rolled-back intake gives its number back; references have no gaps
+    except for deleted submissions.
+  - `submissions` never writes a `definitions` table.
+  - Delivery rows are not personal data; they go with the submission when
+    `retention.purge` exists.
+  ```
+
+- [ ] **Step 14: Create `specs/decisions/0026-test-only-boundary-exception.md`:**
+
+  ```markdown
+  # 0026. Test-only exception to the module boundary
+
+  Status: accepted
+  Date: 2026-10-11
+
+  ## Context
+
+  A module exposes one public entry point, and the boundaries lint enforces
+  it. Tests of one module need another module's in-memory fakes (submissions
+  tests drive media and definitions fakes), and some `src/` tests read shared
+  test data from `tests/fixtures/` and `tests/fakes/`.
+
+  ## Decision
+
+  - Files matching `src/**/*.test.{ts,tsx}` or `src/**/testing/**` may import
+    any module's `application/testing/*` and any file under `tests/fixtures/`
+    or `tests/fakes/`.
+  - Production code keeps the single entry point: no other file may import a
+    `testing/` folder or `tests/`, its own module's included.
+  - `eslint.config.mjs` encodes both rules; `tests/boundaries/` probes them.
+
+  ## Consequences
+
+  - Fakes are shared instead of copied, and drift with their ports in one
+    place.
+  - A fake must never be needed by production code; the lint refuses it.
+  ```
+
+- [ ] **Step 15: Check** `pnpm format:check` and re-read each edited section once against the decisions list at the top of this plan.
+- [ ] **Step 16: Commit**
 
   ```bash
   git add specs
-  git commit -m "docs: specify the renderer routes, copy additions, abuse protection, media and email ports, ADR 0023
+  git commit -m "docs: specify the renderer routes, copy additions, abuse protection, media and email ports, ADRs 0023 to 0026
 
   Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   ```
 
 ---
-### Task 2: Shared job plumbing: permanent failures, attempt limits, cleanup steps, fakes
+
+### Task 2: Shared job plumbing and the test-only boundary exception
 
 **Files:**
-- Modify: `src/shared/application/ports/job-queue.ts`, `src/shared/infrastructure/jobs/worker.ts`, `src/shared/infrastructure/jobs/handlers/cleanup.ts`, `src/shared/application/testing/fakes.ts`
-- Test: `tests/integration/jobs/worker.test.ts` (two new cases), `tests/integration/jobs/cleanup.test.ts` (new), `src/shared/application/testing/fakes.test.ts` (new)
+- Modify: `src/shared/application/ports/job-queue.ts`, `src/shared/infrastructure/jobs/worker.ts`, `src/shared/infrastructure/jobs/handlers/cleanup.ts`, `src/shared/application/testing/fakes.ts`, `eslint.config.mjs`
+- Test: `tests/integration/jobs/worker.test.ts` (two new cases), `tests/integration/jobs/cleanup.test.ts` (new), `tests/integration/identity/cleanup.test.ts` (its hand-built context gains `maxAttempts`), `src/shared/application/testing/fakes.test.ts` (new), `tests/boundaries/boundaries.test.ts` (six probes)
 
 **Interfaces:**
 - Produces:
@@ -370,11 +497,12 @@ export interface JobHandlerContext {
   clock: Clock;
 }
 /** Thrown by a handler for a failure no retry can fix: the job becomes dead at once. */
-export class PermanentJobError extends Error {}
+export class PermanentJobError extends Error {}   // constructor(message), name "PermanentJobError"
 
 // handlers/cleanup.ts
 export type CleanupStep = (ctx: JobHandlerContext) => Promise<void>;
-export function createCleanupHandler(store: PgJobStore, steps?: readonly CleanupStep[]): JobHandler;
+/** The store is narrowed to the one method the handler calls, so a unit test can stub it (Task 27). */
+export function createCleanupHandler(store: Pick<PgJobStore, "pruneSucceeded">, steps?: readonly CleanupStep[]): JobHandler;
 
 // testing/fakes.ts additions
 export interface EnqueuedJob { type: string; payload: JobPayload; opts: EnqueueOptions }
@@ -389,7 +517,15 @@ export class RecordingLogger implements Logger { readonly lines: LoggedLine[] } 
 export function handlerContext(over?: Partial<JobHandlerContext>): JobHandlerContext;
 ```
 
-- [ ] **Step 1: Failing tests.** Append to `tests/integration/jobs/worker.test.ts`, inside `describe("Worker")`, and add `PermanentJobError` to the existing `@/shared/application/ports/job-queue` import:
+```js
+// eslint.config.mjs additions
+const TEST_FILES = ["src/**/*.test.{ts,tsx}", "src/**/testing/**/*.{ts,tsx}"];
+// boundaries/files gains { category: "module-testing", pattern: "src/modules/*/application/testing/**" }
+```
+
+Decision (test-only boundary exception, ADR 0026): test code (files matching `TEST_FILES`) may import any module's `application/testing/*` fakes and the helpers under `tests/fixtures/` and `tests/fakes/`; production code keeps the single public entry point and may import neither.
+
+- [ ] **Step 1: Failing job tests.** Append to `tests/integration/jobs/worker.test.ts`, inside `describe("Worker")`, and add `PermanentJobError` to the existing `@/shared/application/ports/job-queue` import:
 
 ```ts
   it("marks a job dead at once when its handler throws PermanentJobError", async () => {
@@ -419,34 +555,35 @@ export function handlerContext(over?: Partial<JobHandlerContext>): JobHandlerCon
 Create `tests/integration/jobs/cleanup.test.ts`:
 
 ```ts
-import { beforeEach, describe, expect, it } from "vitest";
-import type { JobHandlerContext } from "@/shared/application/ports/job-queue";
-import { handlerContext } from "@/shared/application/testing/fakes";
-import { createCleanupHandler } from "@/shared/infrastructure/jobs/handlers/cleanup";
-import { PgJobStore } from "@/shared/infrastructure/jobs/pg-job-store";
-import { testPool, truncateAll } from "../db";
-
 describe("jobs.cleanup", () => {
   const pool = testPool();
-  const clock = { now: () => new Date("2026-10-10T12:00:00Z") };
+  const NOW = new Date("2026-10-10T12:00:00Z");
+  const clock = { now: () => NOW };
   const store = new PgJobStore(pool, clock, { leaseSeconds: 60 });
   beforeEach(() => truncateAll(pool));
 
-  it("runs every cleanup step after pruning, in order, with the job's context", async () => {
-    const order: string[] = [];
-    const ctx = handlerContext();
+  async function succeededJob(finishedAt: Date): Promise<string> {
+    const id = randomUUID();
+    await pool.query("insert into job (id, type, status, finished_at) values ($1, 'x.y', 'succeeded', $2)", [id, finishedAt]);
+    return id;
+  }
+  const exists = async (id: string) => (await pool.query("select 1 from job where id = $1", [id])).rowCount === 1;
+
+  it("prunes succeeded jobs before running the steps, in order, with the job's context", async () => {
+    const old = await succeededJob(new Date("2026-09-01T00:00:00Z"));
+    const seen: string[] = [];
+    const ctx = handlerContext({ clock });
     const handler = createCleanupHandler(store, [
-      (c: JobHandlerContext) => {
-        order.push(`a:${c.jobId}`);
-        return Promise.resolve();
+      async (c: JobHandlerContext) => {
+        seen.push(`a:${c.jobId}:${String(await exists(old))}`);
       },
       () => {
-        order.push("b");
+        seen.push("b");
         return Promise.resolve();
       },
     ]);
     await handler({}, ctx);
-    expect(order).toEqual([`a:${ctx.jobId}`, "b"]);
+    expect(seen).toEqual([`a:${ctx.jobId}:false`, "b"]);
   });
 
   it("runs the remaining steps when one fails, then fails the job", async () => {
@@ -458,18 +595,17 @@ describe("jobs.cleanup", () => {
         return Promise.resolve();
       },
     ]);
-    await expect(handler({}, handlerContext())).rejects.toThrow("step failed");
+    await expect(handler({}, handlerContext({ clock }))).rejects.toThrow("step failed");
     expect(ran).toEqual(["second"]);
   });
 });
 ```
 
+In `tests/integration/identity/cleanup.test.ts`, the `context(logger)` helper returns `maxAttempts: 8` after `attempt: 1` (it builds a `JobHandlerContext` by hand, so the new required field breaks its type check otherwise).
+
 Create `src/shared/application/testing/fakes.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { FakeUnitOfWorkFactory, InMemoryJobQueue, RecordingLogger } from "./fakes";
-
 describe("InMemoryJobQueue", () => {
   it("records jobs, honours unique keys, and fails on request", async () => {
     const queue = new InMemoryJobQueue();
@@ -494,166 +630,36 @@ describe("RecordingLogger", () => {
 });
 ```
 
-- [ ] **Step 2: Run** `pnpm test src/shared/application` and `pnpm db:up && pnpm test:integration tests/integration/jobs`; the new cases fail (missing exports, `maxAttempts` undefined, the job is `failed` instead of `dead`).
+- [ ] **Step 2: Run** `pnpm test src/shared/application` and `pnpm db:up && pnpm test:integration tests/integration/jobs tests/integration/identity`; the new cases fail (missing exports, `maxAttempts` undefined, the job is `failed` instead of `dead`).
 
-- [ ] **Step 3: Implement.** `job-queue.ts`: add `maxAttempts` to `JobHandlerContext` and
+- [ ] **Step 3: Implement.**
+  - `job-queue.ts`: `maxAttempts` in `JobHandlerContext`; `PermanentJobError` with a doc comment linking `specs/system/jobs.md`, "Failure and retry".
+  - `worker.ts`: import `PermanentJobError` as a value; `run()` adds `maxAttempts: job.maxAttempts` to `ctx`. In the handler's `catch`, a `PermanentJobError` goes to `store.markDead(job, workerId, e.message)` and logs `error("job failed permanently", { outcome })` (or `warn("lease lost")` when the outcome is `lost`), then returns; every other error keeps the existing `store.fail` path.
+  - `handlers/cleanup.ts`: `createCleanupHandler(store, steps = [])` prunes succeeded jobs older than 30 days (`store.pruneSucceeded`, logging `pruned succeeded jobs` with the count) **before** any step, then runs every step in order with the job's `ctx`, catching each failure; after the last step it rethrows the first failure, so the job retries. `CleanupStep` is documented as housekeeping another module contributes through the worker's composition root.
+  - `testing/fakes.ts`: `InMemoryJobQueue.enqueue` counts calls (the `failAt`-th call rejects with `injected enqueue failure`), returns null for a `uniqueKey` already recorded, else records copies of payload and options and returns `job-<n>`. `RecordingLogger(lines = [], base = {})` pushes `{ level, msg, fields: { ...base, ...fields } }`; `child` returns a logger over the same array with merged base fields. `handlerContext` defaults: `jobId: "job-under-test"`, `attempt: 1`, `maxAttempts: 8`, a `RecordingLogger`, `FakeUnitOfWorkFactory`, `InMemoryJobQueue`, `FixedClock`. Name the three new fakes in the file header.
 
-```ts
-/**
- * Thrown by a handler for a failure no retry can fix, such as an address the
- * email provider rejects. The worker marks the job dead at once with this
- * message. See specs/system/jobs.md, "Failure and retry".
- */
-export class PermanentJobError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PermanentJobError";
-  }
-}
-```
-
-`worker.ts`: import `PermanentJobError` as a value; in `run()`, add `maxAttempts: job.maxAttempts` to `ctx` and replace the inner `catch (e)` around the handler call with:
-
-```ts
-      } catch (e) {
-        if (e instanceof PermanentJobError) {
-          const outcome = await store.markDead(job, workerId, e.message);
-          if (outcome === "lost") log.warn("lease lost");
-          else log.error("job failed permanently", { outcome });
-          return;
-        }
-        const outcome = await store.fail(job, workerId, e instanceof Error ? e.message : String(e));
-        if (outcome === "lost") log.warn("lease lost");
-        else if (outcome === "dead") log.error("job failed", { outcome });
-        else log.warn("job failed", { outcome });
-        return;
-      }
-```
-
-`handlers/cleanup.ts`:
-
-```ts
-import type { JobHandler, JobHandlerContext } from "@/shared/application/ports/job-queue";
-import type { PgJobStore } from "../pg-job-store";
-
-const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-
-/** Housekeeping another module contributes, passed in by the worker's composition root. */
-export type CleanupStep = (ctx: JobHandlerContext) => Promise<void>;
-
-/**
- * `jobs.cleanup`: prunes succeeded jobs older than 30 days, then runs each
- * cleanup step. Every step runs even when an earlier one fails; the first
- * failure then fails the job, which is retried. See specs/system/jobs.md,
- * "Recurring jobs".
- */
-export function createCleanupHandler(
-  store: PgJobStore,
-  steps: readonly CleanupStep[] = [],
-): JobHandler {
-  return async (_payload, ctx) => {
-    const pruned = await store.pruneSucceeded(new Date(ctx.clock.now().getTime() - RETENTION_MS));
-    ctx.logger.info("pruned succeeded jobs", { pruned });
-    let failure: unknown = null;
-    for (const step of steps) {
-      try {
-        await step(ctx);
-      } catch (e) {
-        failure ??= e;
-      }
-    }
-    if (failure !== null) throw failure;
-  };
-}
-```
-
-Append to `src/shared/application/testing/fakes.ts`, merging the type imports into its import block and naming the three new fakes in the file header:
-
-```ts
-import type { EnqueueOptions, JobHandlerContext, JobPayload, JobQueue } from "../ports/job-queue";
-import type { LogFields, Logger } from "../ports/logger";
-
-export interface EnqueuedJob {
-  type: string;
-  payload: JobPayload;
-  opts: EnqueueOptions;
-}
-
-export class InMemoryJobQueue implements JobQueue {
-  readonly enqueued: EnqueuedJob[] = [];
-  failAt: number | null = null;
-  private calls = 0;
-
-  enqueue(
-    _uow: UnitOfWork,
-    type: string,
-    payload: JobPayload,
-    opts: EnqueueOptions = {},
-  ): Promise<string | null> {
-    const index = this.calls++;
-    if (this.failAt === index) return Promise.reject(new Error("injected enqueue failure"));
-    const key = opts.uniqueKey;
-    if (key !== undefined && this.enqueued.some((j) => j.opts.uniqueKey === key)) {
-      return Promise.resolve(null);
-    }
-    this.enqueued.push({ type, payload: { ...payload }, opts: { ...opts } });
-    return Promise.resolve(`job-${String(this.enqueued.length)}`);
-  }
-
-  ofType(type: string): EnqueuedJob[] {
-    return this.enqueued.filter((j) => j.type === type);
-  }
-}
-
-export interface LoggedLine {
-  level: "debug" | "info" | "warn" | "error";
-  msg: string;
-  fields: LogFields;
-}
-
-export class RecordingLogger implements Logger {
-  constructor(
-    readonly lines: LoggedLine[] = [],
-    private readonly base: LogFields = {},
-  ) {}
-
-  private write(level: LoggedLine["level"], msg: string, fields: LogFields = {}): void {
-    this.lines.push({ level, msg, fields: { ...this.base, ...fields } });
-  }
-  debug(msg: string, fields?: LogFields): void {
-    this.write("debug", msg, fields);
-  }
-  info(msg: string, fields?: LogFields): void {
-    this.write("info", msg, fields);
-  }
-  warn(msg: string, fields?: LogFields): void {
-    this.write("warn", msg, fields);
-  }
-  error(msg: string, fields?: LogFields): void {
-    this.write("error", msg, fields);
-  }
-  child(fields: LogFields): Logger {
-    return new RecordingLogger(this.lines, { ...this.base, ...fields });
-  }
-}
-
-/** A handler context built from fakes, for unit tests of job handlers. */
-export function handlerContext(over: Partial<JobHandlerContext> = {}): JobHandlerContext {
-  return {
-    jobId: "job-under-test",
-    attempt: 1,
-    maxAttempts: 8,
-    logger: new RecordingLogger(),
-    uow: new FakeUnitOfWorkFactory(),
-    queue: new InMemoryJobQueue(),
-    clock: new FixedClock(),
-    ...over,
-  };
-}
-```
-
-- [ ] **Step 4: Run** `pnpm test && pnpm test:integration tests/integration/jobs && pnpm lint && pnpm typecheck && pnpm format:check`.
+- [ ] **Step 4: Run** `pnpm test && pnpm test:integration tests/integration/jobs tests/integration/identity && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 5: Commit** `feat(shared): permanent job failures, attempt limits in the handler context, cleanup steps and job fakes`
+
+- [ ] **Step 6: Failing boundary probes.** **The probe pattern** (every boundary probe in this plan follows it; later tasks list probes as rows "per the probe pattern in Task 2"): `const rules = await lintVirtual(<probe file>, \`import { <name> } from "<target>";\nexport const x = <name>;\n\`)`; "clean" expects `boundaryRules(rules)` to equal `[]` (move `boundaryRules` to file scope so every describe shares it) and no `no-restricted-imports`; "refused by R" expects the rule ids to contain R. Append `describe("test-only boundary exception (ADR 0026)")` to `tests/boundaries/boundaries.test.ts` with these probes (`makeDefinitionsDeps` and identity's `makeDeps` are the existing factories in those modules' `testing/fakes.ts`):
+
+  | Test | Probe file | Imports | Expected |
+  |---|---|---|---|
+  | "lets a module's test import another module's testing fakes" | `src/modules/probe-c/application/boundary-probe-fakes.test.ts` | `makeDeps` from `@/modules/identity/application/testing/fakes` | clean |
+  | "lets a module's testing helper import another module's testing fakes" | `src/modules/probe-c/application/testing/boundary-probe-helper.ts` | `makeDeps` from `@/modules/identity/application/testing/fakes` | clean |
+  | "lets a module's test import tests/fixtures" | `src/modules/probe-c/presentation/boundary-probe-fixture.test.ts` | `referenceFormDraft` from `../../../../tests/fixtures/reference-form` | clean |
+  | "refuses production code importing another module's testing fakes" | `src/modules/definitions/application/boundary-probe-fakes.ts` | `makeDeps` from `@/modules/identity/application/testing/fakes` | refused by `boundaries/dependencies` |
+  | "refuses production code importing its own module's testing fakes" | `src/modules/definitions/application/boundary-probe-own-fakes.ts` | `makeDefinitionsDeps` from `./testing/fakes` | refused by `no-restricted-imports` |
+  | "refuses production code importing tests/fixtures" | `src/modules/definitions/presentation/boundary-probe-fixture.ts` | `referenceFormDraft` from `../../../../tests/fixtures/reference-form` | refused by `no-restricted-imports` |
+
+- [ ] **Step 7: Run** `pnpm test tests/boundaries`: the three "lets" probes fail on `boundaries/dependencies` and the last two fail for want of `no-restricted-imports`; the fourth already passes.
+
+- [ ] **Step 8: Implement** in `eslint.config.mjs`:
+  - Add `TEST_FILES` and the `module-testing` file category above.
+  - Move the `policies` array of `boundaries/dependencies` into a `const POLICIES`; the main block uses it unchanged. Add a block after it, `{ files: TEST_FILES, rules: { "boundaries/dependencies": ["error", { default: "disallow", checkAllOrigins: true, policies: [...POLICIES, TEST_ONLY_POLICY] }] } }` with `TEST_ONLY_POLICY = { allow: { to: { ...element("module-application"), file: { categories: "module-testing" } } } }` and the comment "Test code may use any module's testing fakes (ADR 0026)".
+  - Split the `no-restricted-imports` block: production files (`files: ["src/**/*.{ts,tsx}"]`, `ignores: TEST_FILES`) get the form-model pattern plus `{ group: ["**/testing/*", "**/testing/**"], message: "Testing fakes are for tests only (ADR 0026)." }` and `{ group: ["**/tests/fixtures/*", "**/tests/fakes/*"], message: "Test fixtures are for tests only (ADR 0026)." }`; test files keep the form-model pattern alone.
+- [ ] **Step 9: Run** `pnpm test tests/boundaries && pnpm lint && pnpm format:check`. `pnpm lint` passing shows no production file imports a fake today.
+- [ ] **Step 10: Commit** `chore(ci): let test code import other modules' testing fakes and test fixtures (ADR 0026)`
 
 ---
 
@@ -690,14 +696,11 @@ export function richTextToHtml(blocks: readonly Block[], style: { link: string; 
 export function specTableRows(specPath: string, heading: string): Map<string, string[]>;
 ```
 
-The syntax is `specs/ui-ux/builder.md`, "Markdown inputs": `**bold**`, `_italic_`, lines starting with `- `, lines starting with `1. `, `[text](https://…)`. A blank line separates paragraphs; a single newline is a line break. Anything else renders literally. The parser never yields markup, and both renderers escape every text node. Consent text is not in the subset (`form-definition.md` names four places); `specs/ui-ux/builder.md` calls it a markdown pair, a contradiction this plan reports instead of resolving, and the renderer shows consent text as plain paragraphs.
+The syntax is `specs/ui-ux/builder.md`, "Markdown inputs": `**bold**`, `_italic_`, lines starting with `- `, lines starting with `1. `, `[text](https://…)`. A blank line separates paragraphs; a single newline is a line break. Anything else renders literally. The parser never yields markup, and both renderers escape every text node. Consent text is not in the subset (`form-definition.md` names four places, and Task 1 corrects `builder.md` to match): the renderer and the emails show consent text as plain escaped paragraphs.
 
 - [ ] **Step 1: Failing tests.** `src/shared/domain/rich-text.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { parseRichText, richTextToPlain } from "./rich-text";
-
 const t = (text: string) => ({ kind: "text", text });
 
 describe("parseRichText", () => {
@@ -755,13 +758,6 @@ describe("richTextToPlain", () => {
 `src/shared/presentation/rich-text.test.ts`:
 
 ```ts
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { parseRichText } from "@/shared/domain/rich-text";
-import { RichText } from "./RichText";
-import { escapeHtml, richTextToHtml } from "./rich-text-html";
-
 describe("RichText", () => {
   it("renders paragraphs, lists and links that open safely, escaping text", () => {
     const html = renderToStaticMarkup(
@@ -806,285 +802,12 @@ describe("specTableRows", () => {
 
 - [ ] **Step 2: Run** `pnpm test src/shared` and see them fail.
 
-- [ ] **Step 3: Implement** `src/shared/domain/rich-text.ts`:
-
-```ts
-/**
- * The restricted rich-text subset of page descriptions, field help, section
- * descriptions and confirmation copy (specs/form-definition.md, "Text and
- * languages"; syntax in specs/ui-ux/builder.md, "Markdown inputs"). Parsing
- * never yields markup: renderers escape every text node.
- */
-export type Inline =
-  | { kind: "text"; text: string }
-  | { kind: "bold"; children: Inline[] }
-  | { kind: "italic"; children: Inline[] }
-  | { kind: "link"; href: string; children: Inline[] }
-  | { kind: "break" };
-
-export type Block =
-  | { kind: "paragraph"; children: Inline[] }
-  | { kind: "bullets"; items: Inline[][] }
-  | { kind: "numbers"; items: Inline[][] };
-
-const BULLET = /^- (.*)$/;
-const NUMBERED = /^\d{1,3}\. (.*)$/;
-const LINK = /^\[([^\][]+)\]\((https:\/\/[^\s()]+)\)/;
-const WORD = /[\p{L}\p{N}]/u;
-
-function isHttps(href: string): boolean {
-  try {
-    return new URL(href).protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function pushText(out: Inline[], text: string): void {
-  const last = out[out.length - 1];
-  if (last?.kind === "text") last.text += text;
-  else out.push({ kind: "text", text });
-}
-
-/** Inline markers. `links: false` inside a link, so links never nest. */
-function parseInline(text: string, links = true): Inline[] {
-  const out: Inline[] = [];
-  let i = 0;
-  while (i < text.length) {
-    if (text.startsWith("**", i)) {
-      const end = text.indexOf("**", i + 2);
-      if (end > i + 2) {
-        out.push({ kind: "bold", children: parseInline(text.slice(i + 2, end), links) });
-        i = end + 2;
-        continue;
-      }
-    }
-    // Underscores inside words (snake_case) stay literal.
-    if (text[i] === "_" && !WORD.test(text[i - 1] ?? "")) {
-      let end = text.indexOf("_", i + 1);
-      while (end !== -1 && WORD.test(text[end + 1] ?? "")) end = text.indexOf("_", end + 1);
-      if (end > i + 1) {
-        out.push({ kind: "italic", children: parseInline(text.slice(i + 1, end), links) });
-        i = end + 1;
-        continue;
-      }
-    }
-    if (links && text[i] === "[") {
-      const match = LINK.exec(text.slice(i));
-      if (match?.[1] !== undefined && match[2] !== undefined && isHttps(match[2])) {
-        out.push({ kind: "link", href: match[2], children: parseInline(match[1], false) });
-        i += match[0].length;
-        continue;
-      }
-    }
-    pushText(out, text.charAt(i));
-    i += 1;
-  }
-  return out;
-}
-
-function joinLines(lines: readonly string[]): Inline[] {
-  return lines.flatMap((line, index) =>
-    index === 0 ? parseInline(line) : [{ kind: "break" as const }, ...parseInline(line)],
-  );
-}
-
-export function parseRichText(source: string): Block[] {
-  const blocks: Block[] = [];
-  let paragraph: string[] = [];
-  let list: { kind: "bullets" | "numbers"; items: string[] } | null = null;
-  const flushParagraph = () => {
-    if (paragraph.length > 0) blocks.push({ kind: "paragraph", children: joinLines(paragraph) });
-    paragraph = [];
-  };
-  const flushList = () => {
-    if (list) blocks.push({ kind: list.kind, items: list.items.map((item) => parseInline(item)) });
-    list = null;
-  };
-  for (const line of source.replace(/\r\n?/g, "\n").split("\n")) {
-    if (line.trim() === "") {
-      flushParagraph();
-      flushList();
-      continue;
-    }
-    const bullet = BULLET.exec(line);
-    const numbered = bullet ? null : NUMBERED.exec(line);
-    const item = bullet?.[1] ?? numbered?.[1];
-    if (item !== undefined) {
-      flushParagraph();
-      const kind = bullet ? "bullets" : "numbers";
-      if (list !== null && list.kind !== kind) flushList();
-      list ??= { kind, items: [] };
-      list.items.push(item);
-      continue;
-    }
-    flushList();
-    paragraph.push(line);
-  }
-  flushParagraph();
-  flushList();
-  return blocks;
-}
-
-function inlineToPlain(nodes: readonly Inline[]): string {
-  return nodes
-    .map((n) => {
-      switch (n.kind) {
-        case "text":
-          return n.text;
-        case "break":
-          return "\n";
-        case "link":
-          return `${inlineToPlain(n.children)} (${n.href})`;
-        default:
-          return inlineToPlain(n.children);
-      }
-    })
-    .join("");
-}
-
-/** The plain-text email body: the same words, lists with markers, links with addresses. */
-export function richTextToPlain(blocks: readonly Block[]): string {
-  return blocks
-    .map((b) => {
-      if (b.kind === "paragraph") return inlineToPlain(b.children);
-      return b.items
-        .map((item, i) => `${b.kind === "bullets" ? "-" : `${String(i + 1)}.`} ${inlineToPlain(item)}`)
-        .join("\n");
-    })
-    .join("\n\n");
-}
-```
-
-`src/shared/presentation/RichText.tsx`:
-
-```tsx
-import type { ReactNode } from "react";
-import { parseRichText, type Block, type Inline } from "@/shared/domain/rich-text";
-
-function inline(nodes: readonly Inline[]): ReactNode[] {
-  return nodes.map((n, i) => {
-    switch (n.kind) {
-      case "text":
-        return n.text;
-      case "break":
-        return <br key={i} />;
-      case "bold":
-        return <strong key={i}>{inline(n.children)}</strong>;
-      case "italic":
-        return <em key={i}>{inline(n.children)}</em>;
-      case "link":
-        // Staff-authored links open in a new tab; design-system/components.md, "Link".
-        return (
-          <a key={i} href={n.href} target="_blank" rel="noopener">
-            {inline(n.children)}
-          </a>
-        );
-    }
-  });
-}
-
-function block(b: Block, key: number): ReactNode {
-  if (b.kind === "paragraph") return <p key={key}>{inline(b.children)}</p>;
-  const items = b.items.map((item, i) => <li key={i}>{inline(item)}</li>);
-  return b.kind === "bullets" ? <ul key={key}>{items}</ul> : <ol key={key}>{items}</ol>;
-}
-
-/** Already-parsed blocks, for callers that place the first block elsewhere (a heading). */
-export function RichBlocks({ blocks, className }: { blocks: readonly Block[]; className?: string | undefined }) {
-  return <div className={className}>{blocks.map(block)}</div>;
-}
-
-/** Staff-authored rich text from the restricted subset; React escapes every text node. */
-export function RichText({ source, className }: { source: string; className?: string | undefined }) {
-  return <RichBlocks blocks={parseRichText(source)} className={className} />;
-}
-```
-
-`src/shared/presentation/rich-text-html.ts`:
-
-```ts
-import type { Block, Inline } from "@/shared/domain/rich-text";
-
-export function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function inline(nodes: readonly Inline[], style: { link: string }): string {
-  return nodes
-    .map((n) => {
-      switch (n.kind) {
-        case "text":
-          return escapeHtml(n.text);
-        case "break":
-          return "<br>";
-        case "bold":
-          return `<strong>${inline(n.children, style)}</strong>`;
-        case "italic":
-          return `<em>${inline(n.children, style)}</em>`;
-        case "link":
-          return `<a href="${escapeHtml(n.href)}" style="${style.link}">${inline(n.children, style)}</a>`;
-      }
-    })
-    .join("");
-}
-
-/** Inline-styled HTML for email bodies. The styles are fixed strings, never staff input. */
-export function richTextToHtml(
-  blocks: readonly Block[],
-  style: { link: string; paragraph: string },
-): string {
-  return blocks
-    .map((b) => {
-      if (b.kind === "paragraph") {
-        return `<p style="${style.paragraph}">${inline(b.children, style)}</p>`;
-      }
-      const tag = b.kind === "bullets" ? "ul" : "ol";
-      const items = b.items.map((item) => `<li>${inline(item, style)}</li>`).join("");
-      return `<${tag} style="${style.paragraph}">${items}</${tag}>`;
-    })
-    .join("");
-}
-```
-
-Append to `spec-copy.ts`:
-
-```ts
-/**
- * The rows of the first table under `heading` (levels ## to ####), keyed by
- * the first cell, the other cells in order. Test-only, like `specCopyRows`,
- * for tables whose keys are not `group.key` names.
- */
-export function specTableRows(specPath: string, heading: string): Map<string, string[]> {
-  const lines = readFileSync(path.resolve(REPO_ROOT, specPath), "utf8").split("\n");
-  const start = lines.findIndex(
-    (l) => /^#{2,4} /.test(l) && l.replace(/^#+ /, "").trim() === heading,
-  );
-  if (start === -1) throw new Error(`No heading "${heading}" in ${specPath}`);
-  const rows = new Map<string, string[]>();
-  let seenHeader = false;
-  for (const line of lines.slice(start + 1)) {
-    if (/^#{1,4} /.test(line)) break;
-    if (!line.startsWith("|")) {
-      if (seenHeader) break;
-      continue;
-    }
-    if (!seenHeader) {
-      seenHeader = true;
-      continue;
-    }
-    if (/^\|[\s|:-]+\|$/.test(line)) continue;
-    const [key, ...rest] = line.split("|").slice(1, -1).map((c) => c.trim());
-    if (key !== undefined) rows.set(key, rest);
-  }
-  return rows;
-}
-```
+- [ ] **Step 3: Implement.**
+  - `rich-text.ts` (doc comment links `form-definition.md`, "Text and languages", and `builder.md`, "Markdown inputs"): normalize `\r\n?` to `\n`, split into lines; a blank line ends the open paragraph or list; `^- (.*)$` and `^\d{1,3}\. (.*)$` lines join a list of their kind (a change of kind starts a new list); other lines join the paragraph, separated by `break`. Inline parsing scans left to right: `**…**` only with a closing marker; `_…_` only when the opening `_` does not follow a letter or digit and the closing one is not followed by one (`/[\p{L}\p{N}]/u`), so `snake_case` stays literal; `[text](url)` only when `url` matches `https://[^\s()]+` **and** `new URL(url).protocol === "https:"`, and the link text is parsed with links off, so links never nest. Adjacent text characters merge into one text node.
+  - `richTextToPlain`: paragraphs joined by a blank line; list items as `- item` or `1. item`, one per line; links as `text (href)`; breaks as `\n`.
+  - `RichText.tsx`: `RichBlocks` maps blocks to `<p>`, `<ul>`, `<ol>`, `<li>`, `<strong>`, `<em>`, `<br>`, and links to `<a href target="_blank" rel="noopener">` (design-system/components.md, "Link"), inside one `<div className>`; React escapes the text. `RichText` is `RichBlocks` over `parseRichText(source)`.
+  - `rich-text-html.ts`: `escapeHtml` replaces `& < > " '` with `&amp; &lt; &gt; &quot; &#39;`; `richTextToHtml` writes the same elements as strings, escaping every text node and `href`, with `style.paragraph` on `<p>`, `<ul>`, `<ol>` and `style.link` on `<a>` (no `target`: mail clients open links themselves). The styles are fixed strings, never staff input.
+  - `specTableRows`: find the first `##` to `####` heading whose text equals `heading` (throw `No heading "<heading>" in <path>` otherwise); skip to the first `|` line (the header row), skip the separator row, read rows until a non-table line or the next heading; key by the first trimmed cell, value the other trimmed cells.
 
 - [ ] **Step 4: Run** `pnpm test src/shared && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 5: Commit** `feat(shared): restricted rich-text subset with React and email renderings, spec table reader`
@@ -1094,8 +817,8 @@ export function specTableRows(specPath: string, heading: string): Map<string, st
 ### Task 4: Page-scoped validation, visible pages and upload limits in the form model
 
 **Files:**
-- Modify: `src/shared/domain/form-model/submission.ts`, `src/shared/domain/form-model/visibility.ts`, `src/shared/domain/form-model/field-type.ts`, `src/shared/domain/form-model/field-types/file-upload.ts`, `src/shared/domain/form-model/index.ts`, `specs/decisions/0016-field-type-hooks.md`
-- Test: `src/shared/domain/form-model/page-validation.test.ts` (new)
+- Modify: `src/shared/domain/form-model/submission.ts`, `src/shared/domain/form-model/visibility.ts`, `src/shared/domain/form-model/field-type.ts`, `src/shared/domain/form-model/field-types/file-upload.ts`, `src/shared/domain/form-model/field-types/conformance-checks.ts`, `src/shared/domain/form-model/index.ts`, `specs/decisions/0016-field-type-hooks.md`
+- Test: `src/shared/domain/form-model/page-validation.test.ts` (new), `src/shared/domain/form-model/field-types/conformance-checks.test.ts` (two cases)
 
 **Interfaces:**
 - Produces (from `@/shared/domain/form-model`):
@@ -1121,12 +844,9 @@ export function validatePage(
 export function visiblePages(version: Version, answers: Readonly<Record<string, unknown>>, registry: FieldTypeRegistry): Page[];
 ```
 
-- [ ] **Step 1: Failing test** `src/shared/domain/form-model/page-validation.test.ts`:
+- [ ] **Step 1: Failing tests.** `src/shared/domain/form-model/page-validation.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { buildDefaultRegistry, parseDraft, validatePage, visiblePages, type Version } from "./index";
-
 const registry = buildDefaultRegistry();
 const ctx = { today: "2026-10-10" };
 const choice = (key: string, en: string) => ({ key, label: { en } });
@@ -1217,86 +937,36 @@ describe("uploadLimits", () => {
 });
 ```
 
-- [ ] **Step 2: Run** `pnpm test src/shared/domain/form-model/page-validation.test.ts`: fails on the missing exports.
-
-- [ ] **Step 3: Implement.** In `submission.ts`, below `validateSubmission` (it reuses the module's private `issuesFor`, `isAbsent` and `evaluateCondition`):
+Append to `describe("conformanceChecks")` in `field-types/conformance-checks.test.ts`:
 
 ```ts
-export interface PageValidation {
-  answers: Record<string, unknown>;
-  issues: ValidationIssue[];
-}
-
-/**
- * One page's validation for Next, Back and the language switch. Earlier
- * pages' stored answers only feed the conditions: they were validated when
- * their page was posted, and Submit validates the whole submission again
- * with `validateSubmission`. See specs/ui-ux/renderer.md, "Navigation and state".
- */
-export function validatePage(
-  version: Version,
-  registry: FieldTypeRegistry,
-  body: Readonly<Record<string, unknown>>,
-  pageKey: string,
-  ctx: SubmissionContext,
-  opts: { enforceRequired: boolean },
-): PageValidation {
-  const known: Record<string, unknown> = {};
-  for (const page of version.pages) {
-    const isTarget = page.key === pageKey;
-    const pageVisible = page.visibility ? evaluateCondition(page.visibility, known) : true;
-    const answers: Record<string, unknown> = {};
-    const issues: ValidationIssue[] = [];
-    for (const field of page.fields) {
-      const def = registry.get(field.type);
-      if (!def.isInput) continue;
-      const visible =
-        def.neverHidden === true ||
-        (pageVisible && (field.visibility ? evaluateCondition(field.visibility, known) : true));
-      if (!visible) continue;
-      const own = Object.hasOwn(body, field.key) ? body[field.key] : undefined;
-      if (!isTarget) {
-        if (own !== undefined) known[field.key] = own;
-        continue;
-      }
-      if (!opts.enforceRequired && isAbsent(own)) continue;
-      const result = issuesFor(field, registry, own, ctx);
-      issues.push(...result.issues);
-      if (result.issues.length === 0 && result.normalized !== undefined) {
-        answers[field.key] = result.normalized;
-        known[field.key] = result.normalized;
-      }
+  it("passes file_upload's upload limits", () => {
+    expect(failing(fileUpload)).toEqual([]);
+  });
+  it("fails the upload limits check for no kinds, an unknown kind or a non-positive limit", () => {
+    for (const limits of [
+      { kinds: [], maxFiles: 1, maxSizeMb: 1 },
+      { kinds: ["audio"], maxFiles: 1, maxSizeMb: 1 },
+      { kinds: ["image"], maxFiles: 0, maxSizeMb: 1 },
+      { kinds: ["image"], maxFiles: 1.5, maxSizeMb: 1 },
+      { kinds: ["image"], maxFiles: 1, maxSizeMb: 0 },
+    ]) {
+      const broken = defineFieldType({ ...checkbox, uploadLimits: () => limits as never });
+      expect(failing(broken)).toEqual(["reports well-formed upload limits"]);
     }
-    if (isTarget) return { answers, issues };
-  }
-  return { answers: {}, issues: [] };
-}
+  });
 ```
 
-In `visibility.ts`:
+- [ ] **Step 2: Run** `pnpm test src/shared/domain/form-model`: fails on the missing exports and the missing check.
 
-```ts
-/** The pages conditions show for these answers, in document order. */
-export function visiblePages(
-  version: Version,
-  answers: Readonly<Record<string, unknown>>,
-  registry: FieldTypeRegistry,
-): Version["pages"] {
-  const { pages } = evaluateVisibility(version, answers, registry);
-  return version.pages.filter((p) => pages.get(p.key) === true);
-}
-```
-
-In `field-type.ts`, export `UploadLimits` and add to `FieldTypeDefinition`, among the optional hooks:
-
-```ts
-  /** The field takes files: accepted kinds and limits, read by the renderer and the intake. */
-  uploadLimits?(settings: S): UploadLimits;
-```
-
-In `field-types/file-upload.ts`, add `uploadLimits: (s) => ({ kinds: s.kinds, maxFiles: s.maxFiles, maxSizeMb: s.maxSizeMb }),` to the definition. In `specs/decisions/0016-field-type-hooks.md`, add under the header: "Amended 2026-10-10: an optional `uploadLimits(settings)` hook names the fields that take files and their limits, so the renderer and the intake never test a type id".
-
-In `index.ts`: `export { validateSubmission, validatePage, isAbsent } from "./submission";`, `export type { SubmissionContext, SubmissionResult, PageValidation } from "./submission";`, `export { evaluateVisibility, visiblePages } from "./visibility";` and add `UploadLimits` to the `./field-type` type export.
+- [ ] **Step 3: Implement.**
+  - `submission.ts`, below `validateSubmission`, reusing its private `issuesFor`, `isAbsent` and `evaluateCondition`: `validatePage` walks the pages in order, keeping `known` answers for conditions. A page or field is visible as in `validateSubmission` (`neverHidden` fields always). On pages before the target, a visible input field's value from `body` only feeds `known`. On the target page, each visible input field is validated with `issuesFor` (skipped when `!enforceRequired` and the value is absent); issues are collected and passing normalized values go to both `answers` and `known`. It returns at the target page; an unknown page gives `{ answers: {}, issues: [] }`. The doc comment says earlier pages were validated when posted and Submit validates the whole submission again (`renderer.md`, "Navigation and state").
+  - `visibility.ts`: `visiblePages` filters `version.pages` to those `evaluateVisibility(version, answers, registry).pages` marks visible, in document order.
+  - `field-type.ts`: export `UploadLimits`; add the optional `uploadLimits?(settings: S): UploadLimits` hook with the comment "The field takes files: accepted kinds and limits, read by the renderer and the intake".
+  - `field-types/file-upload.ts`: `uploadLimits: (s) => ({ kinds: s.kinds, maxFiles: s.maxFiles, maxSizeMb: s.maxSizeMb })`.
+  - `conformance-checks.ts`: a check named `reports well-formed upload limits`: when `def.uploadLimits` is absent it passes; otherwise, for every `def.fixtures.settings` entry, the result has a non-empty `kinds` drawn from `image` and `video` without repeats, a positive integer `maxFiles` and a positive finite `maxSizeMb`, and the type is an input (`def.isInput`); the detail names the settings and the result.
+  - `index.ts`: `export { validateSubmission, validatePage, isAbsent } from "./submission"`, `export type { SubmissionContext, SubmissionResult, PageValidation } from "./submission"`, `export { evaluateVisibility, visiblePages } from "./visibility"`, and `UploadLimits` in the `./field-type` type export.
+  - `specs/decisions/0016-field-type-hooks.md`: under the header add "Amended 2026-10-11: an optional `uploadLimits(settings)` hook names the fields that take files; the conformance suite checks it"; add to the Decision list, after `consentRecord`: "- `uploadLimits`: the field takes files, with the accepted kinds (`image`, `video`), the most files and the largest size in MB. The renderer and the intake read it, so neither tests a type id."; and append to the conformance sentence: ", and that upload limits are well formed where a type declares them".
 
 - [ ] **Step 4: Run** `pnpm test src/shared/domain/form-model && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 5: Commit** `feat(form-model): validate one page, list the visible pages, and an upload limits hook`
@@ -1357,93 +1027,20 @@ export function htmlPretendingToBeJpeg(): Uint8Array;
 
 Decision (media keys): durable keys follow `media-storage.md`: `forms/<form slug>/<reference>/<nn>-<field slug>.<ext>`, the field slug being an ASCII slug of the label in the form's first language, at most 40 characters, `file` when the label has no letter or digit, and `-2`, `-3` appended in field order when two upload fields share a slug. Decision (staging directory): staged files are `in-progress/<record id>/<file id>.<ext>` under the existing `STAGING_DIR`, so one prefix delete removes an expired record's files, including any a crash left between the write and the record update.
 
-- [ ] **Step 1: Dependencies and fixture.** `pnpm add sharp@^0.34 libheif-js@^1.19 file-type@^21`. Generate the HEIC fixture once (it is a solid-color square, not media anyone uploaded): `magick -size 16x16 xc:#6C344E /tmp/s.png && heif-enc -q 50 /tmp/s.png -o tests/fixtures/media/synthetic-16x16.heic` (`brew install imagemagick libheif` provides both tools). Confirm `file tests/fixtures/media/synthetic-16x16.heic` reports HEIF.
+- [ ] **Step 1: Dependencies and fixture.** `pnpm add sharp@^0.34 libheif-js@^1.19 file-type@^21`. Generate the HEIC fixture once (a solid-color square, not media anyone uploaded): `magick -size 16x16 xc:#6C344E /tmp/s.png && heif-enc -q 50 /tmp/s.png -o tests/fixtures/media/synthetic-16x16.heic` (`brew install imagemagick libheif` provides both tools). Confirm `file tests/fixtures/media/synthetic-16x16.heic` reports HEIF.
 
-- [ ] **Step 2: Test support** `tests/fakes/media-files.ts`:
-
-```ts
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import sharp from "sharp";
-
-const ascii = (s: string) => new TextEncoder().encode(s);
-
-function concat(...parts: Uint8Array[]): Uint8Array {
-  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
-  let at = 0;
-  for (const p of parts) {
-    out.set(p, at);
-    at += p.length;
-  }
-  return out;
-}
-
-/** One ISO base media box: 32-bit size, four-character type, body. */
-export function box(type: string, body: Uint8Array = new Uint8Array()): Uint8Array {
-  const out = new Uint8Array(8 + body.length);
-  new DataView(out.buffer).setUint32(0, out.length);
-  out.set(ascii(type), 4);
-  out.set(body, 8);
-  return out;
-}
-
-/** A minimal MP4 (QuickTime with brand "qt  "): ftyp, moov holding an mvhd, and mdat. */
-export function syntheticMp4(brand = "isom"): Uint8Array {
-  const ftyp = box("ftyp", concat(ascii(brand), new Uint8Array(4), ascii(brand), ascii("mp41")));
-  return concat(ftyp, box("moov", box("mvhd", new Uint8Array(100))), box("mdat", new Uint8Array(900)));
-}
-
-/** The ftyp box claims 4 KB in a file of about one. */
-export function brokenMp4(): Uint8Array {
-  const file = syntheticMp4();
-  new DataView(file.buffer).setUint32(0, 4096);
-  return file;
-}
-
-/** A noisy JPEG carrying a copyright and a GPS position, so stripping is observable. */
-export async function syntheticJpegWithGps(width = 64, height = 48): Promise<Uint8Array> {
-  const buffer = await sharp({
-    create: { width, height, channels: 3, noise: { type: "gaussian", mean: 128, sigma: 30 } },
-  })
-    .jpeg()
-    .withExif({
-      IFD0: { Copyright: "synthetic test image" },
-      IFD3: { GPSLatitudeRef: "N", GPSLatitude: "8/1 58/1 0/1", GPSLongitudeRef: "W", GPSLongitude: "79/1 31/1 0/1" },
-    })
-    .toBuffer();
-  return new Uint8Array(buffer);
-}
-
-export async function syntheticPng(): Promise<Uint8Array> {
-  const image = sharp({ create: { width: 16, height: 16, channels: 4, background: "#6C344E" } });
-  return new Uint8Array(await image.png().toBuffer());
-}
-
-export async function syntheticWebp(): Promise<Uint8Array> {
-  const image = sharp({ create: { width: 16, height: 16, channels: 3, background: "#372549" } });
-  return new Uint8Array(await image.webp().toBuffer());
-}
-
-/**
- * A generated 16x16 solid-color HEIC, committed because nothing in the
- * toolchain encodes HEIC: `magick -size 16x16 xc:#6C344E s.png && heif-enc
- * -q 50 s.png -o tests/fixtures/media/synthetic-16x16.heic`.
- */
-export function syntheticHeic(): Uint8Array {
-  return new Uint8Array(readFileSync(path.join(__dirname, "../fixtures/media/synthetic-16x16.heic")));
-}
-
-export function htmlPretendingToBeJpeg(): Uint8Array {
-  return ascii("<!doctype html><title>not a photo</title>");
-}
-```
+- [ ] **Step 2: Test support** `tests/fakes/media-files.ts`. Every helper builds synthetic bytes:
+  - `box(type, body)`: a 32-bit big-endian size (8 plus the body), the four ASCII type characters, the body.
+  - `syntheticMp4(brand = "isom")`: `ftyp` (brand, four zero bytes of minor version, brand, `mp41`), then `moov` holding an `mvhd` of 100 zero bytes, then `mdat` of 900 zero bytes. `syntheticMp4("qt  ")` is a QuickTime file.
+  - `brokenMp4()`: `syntheticMp4()` with the `ftyp` size overwritten to 4096, larger than the file.
+  - `syntheticJpegWithGps(width = 64, height = 48)`: a sharp-created Gaussian-noise image (mean 128, sigma 30) as JPEG `withExif({ IFD0: { Copyright: "synthetic test image" }, IFD3: { GPSLatitudeRef: "N", GPSLatitude: "8/1 58/1 0/1", GPSLongitudeRef: "W", GPSLongitude: "79/1 31/1 0/1" } })`, so stripping is observable.
+  - `syntheticPng()`: 16 by 16, four channels, `#6C344E`. `syntheticWebp()`: 16 by 16, three channels, `#372549`.
+  - `syntheticHeic()`: reads `tests/fixtures/media/synthetic-16x16.heic` (its comment repeats the generation command).
+  - `htmlPretendingToBeJpeg()`: the ASCII bytes of `<!doctype html><title>not a photo</title>`.
 
 - [ ] **Step 3: Failing tests.** `src/modules/media/domain/keys.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { durableKey, fieldSlug, stagingKey, stagingPrefix, uniqueFieldSlugs } from "./keys";
-
 describe("fieldSlug", () => {
   it("is an ASCII slug of the label, accents removed, at most 40 characters", () => {
     expect(fieldSlug("Sube hasta 10 fotos sin editar del bebé")).toBe("sube-hasta-10-fotos-sin-editar-del-bebe");
@@ -1476,35 +1073,11 @@ describe("durableKey and stagingKey", () => {
 });
 ```
 
-`media.test.ts`:
+`media.test.ts`: "accept the documented types only" (`acceptedType("image/heif")` is `image/heif`, `"video/quicktime"` is itself, `"image/gif"` and null are null); "name each type's extension, HEIF as heic" (`extensionFor("image/heif")` is `heic`, `"video/quicktime"` is `mov`, `"text/html"` throws).
+
+`iso-bmff.test.ts` (importing `tests/fakes` from a test is allowed by ADR 0026):
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { acceptedType, extensionFor } from "./media";
-
-describe("acceptedType and extensionFor", () => {
-  it("accept the documented types only", () => {
-    expect(acceptedType("image/heif")).toBe("image/heif");
-    expect(acceptedType("video/quicktime")).toBe("video/quicktime");
-    expect(acceptedType("image/gif")).toBeNull();
-    expect(acceptedType(null)).toBeNull();
-  });
-
-  it("name each type's extension, HEIF as heic", () => {
-    expect(extensionFor("image/heif")).toBe("heic");
-    expect(extensionFor("video/quicktime")).toBe("mov");
-    expect(() => extensionFor("text/html")).toThrow();
-  });
-});
-```
-
-`iso-bmff.test.ts`:
-
-```ts
-import { describe, expect, it } from "vitest";
-import { box, brokenMp4, syntheticMp4 } from "../../../../tests/fakes/media-files";
-import { isWellFormedIsoBmff } from "./iso-bmff";
-
 describe("isWellFormedIsoBmff", () => {
   it("accepts ftyp first, consistent sizes and a moov box", () => {
     expect(isWellFormedIsoBmff(syntheticMp4())).toBe(true);
@@ -1520,161 +1093,12 @@ describe("isWellFormedIsoBmff", () => {
 });
 ```
 
-(Tests may import test helpers; the boundaries rules cover `src/` code, and tests are not production code.)
-
 - [ ] **Step 4: Run** `pnpm test src/modules/media`: fails, the modules do not exist.
 
-- [ ] **Step 5: Implement** `media.ts`:
-
-```ts
-export const MEDIA_KINDS = ["image", "video"] as const;
-export type MediaKind = (typeof MEDIA_KINDS)[number];
-
-/** Types accepted by content; specs/system/media-storage.md, "File handling rules". */
-export const ACCEPTED_TYPES = {
-  "image/jpeg": { kind: "image", ext: "jpg" },
-  "image/png": { kind: "image", ext: "png" },
-  "image/webp": { kind: "image", ext: "webp" },
-  "image/heic": { kind: "image", ext: "heic" },
-  "image/heif": { kind: "image", ext: "heic" },
-  "video/mp4": { kind: "video", ext: "mp4" },
-  "video/quicktime": { kind: "video", ext: "mov" },
-} as const satisfies Record<string, { kind: MediaKind; ext: string }>;
-export type AcceptedType = keyof typeof ACCEPTED_TYPES;
-
-export function acceptedType(mime: string | null): AcceptedType | null {
-  return mime !== null && Object.hasOwn(ACCEPTED_TYPES, mime) ? (mime as AcceptedType) : null;
-}
-
-export function extensionFor(contentType: string): string {
-  const type = acceptedType(contentType);
-  if (type === null) throw new Error(`no extension for ${contentType}`);
-  return ACCEPTED_TYPES[type].ext;
-}
-
-export const MEDIA_STATUSES = ["staged", "stored", "failed"] as const;
-export type MediaStatus = (typeof MEDIA_STATUSES)[number];
-
-/** A file accepted by content, re-encoded when it is an image, and written to staging. */
-export interface StagedFile {
-  /** Also the media row id and the entry in the `file_upload` answer. */
-  id: string;
-  stagingRef: string;
-  kind: MediaKind;
-  contentType: string;
-  size: number;
-}
-
-/** A row of the `media` table; specs/system/database.md. */
-export interface MediaRecord {
-  id: string;
-  submissionId: string;
-  formId: string;
-  fieldKey: string;
-  position: number;
-  kind: MediaKind;
-  status: MediaStatus;
-  contentType: string;
-  size: number;
-  stagingRef: string | null;
-  durableKey: string;
-  providerRef: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-```
-
-`keys.ts`:
-
-```ts
-/** Key schemes; specs/system/media-storage.md, "Keys". No key carries personal data. */
-export const MAX_FIELD_SLUG = 40;
-export const STAGING_ROOT = "in-progress";
-
-export function fieldSlug(label: string): string {
-  const slug = label
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, MAX_FIELD_SLUG)
-    .replace(/-+$/g, "");
-  return slug === "" ? "file" : slug;
-}
-
-export function uniqueFieldSlugs(
-  fields: readonly { fieldKey: string; label: string }[],
-): Map<string, string> {
-  const seen = new Map<string, number>();
-  const out = new Map<string, string>();
-  for (const { fieldKey, label } of fields) {
-    const base = fieldSlug(label);
-    const n = (seen.get(base) ?? 0) + 1;
-    seen.set(base, n);
-    out.set(fieldKey, n === 1 ? base : `${base}-${String(n)}`);
-  }
-  return out;
-}
-
-export function durableKey(parts: {
-  formSlug: string;
-  reference: string;
-  position: number;
-  fieldSlug: string;
-  ext: string;
-}): string {
-  const nn = String(parts.position).padStart(2, "0");
-  return `forms/${parts.formSlug}/${parts.reference}/${nn}-${parts.fieldSlug}.${parts.ext}`;
-}
-
-export function stagingPrefix(recordId: string): string {
-  return `${STAGING_ROOT}/${recordId}/`;
-}
-
-export function stagingKey(recordId: string, fileId: string, ext: string): string {
-  return `${stagingPrefix(recordId)}${fileId}.${ext}`;
-}
-```
-
-`iso-bmff.ts`:
-
-```ts
-/**
- * The container check for videos, stored as received: boxes from start to end
- * whose sizes fit, `ftyp` first, and a `moov` box present.
- * See specs/system/media-storage.md, "File handling rules".
- */
-export function isWellFormedIsoBmff(bytes: Uint8Array): boolean {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let offset = 0;
-  let boxes = 0;
-  let sawMoov = false;
-  while (offset < bytes.length) {
-    const remaining = bytes.length - offset;
-    if (remaining < 8) return false;
-    let size = view.getUint32(offset);
-    let header = 8;
-    if (size === 1) {
-      if (remaining < 16) return false;
-      const large = view.getBigUint64(offset + 8);
-      if (large > BigInt(remaining)) return false;
-      size = Number(large);
-      header = 16;
-    } else if (size === 0) {
-      size = remaining;
-    }
-    if (size < header || size > remaining) return false;
-    const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
-    if (!/^[\x20-\x7e]{4}$/.test(type)) return false;
-    if (boxes === 0 && type !== "ftyp") return false;
-    if (type === "moov") sawMoov = true;
-    boxes += 1;
-    offset += size;
-  }
-  return boxes > 0 && sawMoov;
-}
-```
+- [ ] **Step 5: Implement.**
+  - `media.ts`: the constants as `as const` objects (`ACCEPTED_TYPES` with `satisfies Record<string, { kind: MediaKind; ext: string }>`, commented with `media-storage.md`, "File handling rules"); `acceptedType` uses `Object.hasOwn`; `extensionFor` throws `no extension for <type>`; `StagedFile.id` is documented as also the media row id and the `file_upload` answer entry.
+  - `keys.ts` (comment: no key carries personal data): `fieldSlug` is NFD-normalize, drop `\p{M}`, lowercase, runs of non-`[a-z0-9]` to `-`, trim dashes, cut at 40, trim trailing dashes again, `file` when empty. `uniqueFieldSlugs` counts each base slug in field order and appends `-<n>` from the second. `durableKey` pads the position to two digits.
+  - `iso-bmff.ts`: walk boxes from offset 0: fewer than 8 bytes left fails; size 1 reads a 64-bit large size (needs 16 bytes, must fit); size 0 means "to the end"; a size below its header or beyond the remaining bytes fails; the type must be four printable ASCII characters; the first box must be `ftyp`; the file passes when at least one box was read and a `moov` box was seen.
 
 - [ ] **Step 6: Run** `pnpm test src/modules/media && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 7: Commit** `feat(media): accepted kinds, key schemes and the video container check`
@@ -1753,16 +1177,9 @@ export function makeMediaDeps(overrides?: Partial<FakeMediaDeps>): FakeMediaDeps
 
 Decision (`file_upload` answers): a staged file's id is a UUID from `IdGenerator`. It is the entry in the answer (`mediaIdSchema` accepts UUIDs), the media row id and the `media.upload` payload, so all three always name the same file.
 
-- [ ] **Step 1: Failing tests.** `stage-file.test.ts`:
+- [ ] **Step 1: Failing tests.** `stage-file.test.ts` (`MB = 1024 * 1024`; each case on fresh `makeMediaDeps()` and `recordId: "rec-1"`):
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { brokenMp4, syntheticMp4 } from "../../../../tests/fakes/media-files";
-import { stageFile } from "./stage-file";
-import { fakeImage, makeMediaDeps } from "./testing/fakes";
-
-const MB = 1024 * 1024;
-
 describe("stageFile", () => {
   it("re-encodes an accepted image and stages it under the record prefix", async () => {
     const deps = makeMediaDeps();
@@ -1773,15 +1190,6 @@ describe("stageFile", () => {
     const stored = deps.staging.files.get(r.file.stagingRef);
     expect(new TextDecoder().decode(stored?.bytes)).toMatch(/^reencoded:/);
     expect(r.file.size).toBe(stored?.bytes.length);
-  });
-
-  it("stores a well-formed video as received", async () => {
-    const deps = makeMediaDeps();
-    const bytes = syntheticMp4();
-    const r = await stageFile(deps, { recordId: "rec-1", bytes, accept: ["image", "video"], maxBytes: 10 * MB });
-    if (!r.ok) throw new Error(r.code);
-    expect(r.file.kind).toBe("video");
-    expect(deps.staging.files.get(r.file.stagingRef)?.bytes).toEqual(bytes);
   });
 
   it("refuses by size, content type, kind and decoding, staging nothing", async () => {
@@ -1802,363 +1210,27 @@ describe("stageFile", () => {
 });
 ```
 
-`attach.test.ts`:
+and the case "stores a well-formed video as received": `syntheticMp4()` with `accept: ["image", "video"]`, `maxBytes: 10 MB` → `ok`, `kind: "video"`, and the staged bytes equal the input.
 
-```ts
-import { describe, expect, it } from "vitest";
-import { attachToSubmission } from "./attach";
-import { makeMediaDeps } from "./testing/fakes";
+`attach.test.ts`, "writes one staged row and one media.upload job per file, sharing the id": attach `{ fieldKey: "photos", position: 1, durableKey: "forms/s/HP-0001/01-photos.jpg", file }` with `file = { id: "00000001-0000-4000-8000-000000000001", stagingRef: "in-progress/r/x.jpg", kind: "image", contentType: "image/jpeg", size: 10 }` to `submissionId: "sub-1"`, `formId: "form-1"`; the row for `file.id` matches `{ submissionId: "sub-1", formId: "form-1", fieldKey: "photos", position: 1, status: "staged", stagingRef: "in-progress/r/x.jpg", durableKey: "forms/s/HP-0001/01-photos.jpg", providerRef: null }` and `queue.ofType("media.upload")` equals `[{ type: "media.upload", payload: { mediaId: file.id }, opts: {} }]`.
 
-describe("attachToSubmission", () => {
-  it("writes one staged row and one media.upload job per file, sharing the id", async () => {
-    const deps = makeMediaDeps();
-    const uow = await deps.uow.begin();
-    const file = {
-      id: "00000001-0000-4000-8000-000000000001",
-      stagingRef: "in-progress/r/x.jpg",
-      kind: "image" as const,
-      contentType: "image/jpeg",
-      size: 10,
-    };
-    await attachToSubmission(deps, uow, {
-      submissionId: "sub-1",
-      formId: "form-1",
-      files: [{ fieldKey: "photos", position: 1, durableKey: "forms/s/HP-0001/01-photos.jpg", file }],
-    });
-    expect(deps.media.rows.get(file.id)).toMatchObject({
-      submissionId: "sub-1", formId: "form-1", fieldKey: "photos", position: 1, status: "staged",
-      stagingRef: "in-progress/r/x.jpg", durableKey: "forms/s/HP-0001/01-photos.jpg", providerRef: null,
-    });
-    expect(deps.queue.ofType("media.upload")).toEqual([
-      { type: "media.upload", payload: { mediaId: file.id }, opts: {} },
-    ]);
-  });
-});
-```
+`discard.test.ts`, "deletes given refs, tolerating missing ones, and whole record prefixes": with `in-progress/a/1.jpg`, `in-progress/a/2.jpg` and `in-progress/b/3.jpg` staged, `discardStaged(["in-progress/a/1.jpg", "in-progress/a/missing.jpg"])` leaves `["in-progress/a/2.jpg", "in-progress/b/3.jpg"]`, then `discardRecordFiles("a")` leaves `["in-progress/b/3.jpg"]`.
 
-`discard.test.ts`:
+Boundary probes inside `describe("layer boundaries")`, per the probe pattern in Task 2:
 
-```ts
-import { describe, expect, it } from "vitest";
-import { discardRecordFiles, discardStaged } from "./discard";
-import { makeMediaDeps } from "./testing/fakes";
-
-describe("discard", () => {
-  it("deletes given refs, tolerating missing ones, and whole record prefixes", async () => {
-    const deps = makeMediaDeps();
-    for (const key of ["in-progress/a/1.jpg", "in-progress/a/2.jpg", "in-progress/b/3.jpg"])
-      await deps.staging.put(new Uint8Array([1]), key, "image/jpeg");
-    await discardStaged(deps, ["in-progress/a/1.jpg", "in-progress/a/missing.jpg"]);
-    expect([...deps.staging.files.keys()]).toEqual(["in-progress/a/2.jpg", "in-progress/b/3.jpg"]);
-    await discardRecordFiles(deps, "a");
-    expect([...deps.staging.files.keys()]).toEqual(["in-progress/b/3.jpg"]);
-  });
-});
-```
-
-Append inside `describe("layer boundaries")` of `tests/boundaries/boundaries.test.ts`:
-
-```ts
-  it("forbids media importing definitions, since MODULE_DEPS gives media no edges", async () => {
-    const rules = await lintVirtual(
-      "src/modules/media/application/boundary-probe-defs.ts",
-      `import { publicUrl } from "@/modules/definitions/application";\nexport const f = publicUrl;\n`,
-    );
-    expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
-  });
-
-  it("allows submissions to import media's public entry point", async () => {
-    const rules = await lintVirtual(
-      "src/modules/submissions/application/boundary-probe-media.ts",
-      `import { stageFile } from "@/modules/media/application";\nexport const s = stageFile;\n`,
-    );
-    expect(rules.filter((m) => m.ruleId?.startsWith("boundaries/"))).toEqual([]);
-  });
-```
+| Test | Probe file | Imports | Expected |
+|---|---|---|---|
+| "forbids media importing definitions, since MODULE_DEPS gives media no edges" | `src/modules/media/application/boundary-probe-defs.ts` | `publicUrl` from `@/modules/definitions/application` | refused by `boundaries/dependencies` |
+| "allows submissions to import media's public entry point" | `src/modules/submissions/application/boundary-probe-media.ts` | `stageFile` from `@/modules/media/application` | clean |
 
 - [ ] **Step 2: Run** `pnpm test src/modules/media tests/boundaries`: they fail.
 
-- [ ] **Step 3: Implement** the four port files and `deps.ts` exactly as in Interfaces (each port file imports only shared ports and the media domain), `job-types.ts` with `MEDIA_JOB_TYPES`, then `stage-file.ts`:
-
-```ts
-import { isWellFormedIsoBmff } from "../domain/iso-bmff";
-import { stagingKey } from "../domain/keys";
-import { ACCEPTED_TYPES, acceptedType, extensionFor, type MediaKind, type StagedFile } from "../domain/media";
-import type { MediaDeps } from "./deps";
-
-export type StageRefusal = "file_too_large" | "file_wrong_type" | "file_unreadable";
-
-export interface StageFileInput {
-  recordId: string;
-  bytes: Uint8Array;
-  accept: readonly MediaKind[];
-  maxBytes: number;
-}
-
-export type StageFileResult = { ok: true; file: StagedFile } | { ok: false; code: StageRefusal };
-
-/**
- * Accepts a file by its content, re-encodes images (which strips every
- * metadata block), checks a video's container, and writes the result to
- * staging. Refusals are validation errors shown to the submitter, never job
- * failures. See specs/system/media-storage.md, "File handling rules".
- */
-export async function stageFile(deps: MediaDeps, input: StageFileInput): Promise<StageFileResult> {
-  if (input.bytes.byteLength > input.maxBytes) return { ok: false, code: "file_too_large" };
-  const type = acceptedType(await deps.sniffer.sniff(input.bytes));
-  if (type === null) return { ok: false, code: "file_wrong_type" };
-  const { kind } = ACCEPTED_TYPES[type];
-  if (!input.accept.includes(kind)) return { ok: false, code: "file_wrong_type" };
-
-  let bytes = input.bytes;
-  let contentType: string = type;
-  if (kind === "image") {
-    const encoded = await deps.encoder.reencode(input.bytes, type);
-    if (encoded === null) return { ok: false, code: "file_unreadable" };
-    bytes = encoded.bytes;
-    contentType = encoded.contentType;
-  } else if (!isWellFormedIsoBmff(input.bytes)) {
-    return { ok: false, code: "file_unreadable" };
-  }
-
-  const id = deps.ids.newId();
-  const key = stagingKey(input.recordId, id, extensionFor(contentType));
-  const stagingRef = await deps.staging.put(bytes, key, contentType);
-  return { ok: true, file: { id, stagingRef, kind, contentType, size: bytes.byteLength } };
-}
-```
-
-`attach.ts`:
-
-```ts
-import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
-import type { StagedFile } from "../domain/media";
-import type { MediaDeps } from "./deps";
-import { MEDIA_JOB_TYPES } from "./job-types";
-
-export interface AttachedFile {
-  fieldKey: string;
-  position: number;
-  durableKey: string;
-  file: StagedFile;
-}
-
-/**
- * Inside the intake transaction: one `staged` media row and one `media.upload`
- * job per file. See specs/architecture.md, "Submission data flow" step 3.
- */
-export async function attachToSubmission(
-  deps: Pick<MediaDeps, "media" | "queue" | "clock">,
-  uow: UnitOfWork,
-  input: { submissionId: string; formId: string; files: readonly AttachedFile[] },
-): Promise<void> {
-  const now = deps.clock.now();
-  for (const { fieldKey, position, durableKey, file } of input.files) {
-    await deps.media.insert(uow, {
-      id: file.id,
-      submissionId: input.submissionId,
-      formId: input.formId,
-      fieldKey,
-      position,
-      kind: file.kind,
-      status: "staged",
-      contentType: file.contentType,
-      size: file.size,
-      stagingRef: file.stagingRef,
-      durableKey,
-      providerRef: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-    await deps.queue.enqueue(uow, MEDIA_JOB_TYPES.upload, { mediaId: file.id });
-  }
-}
-```
-
-`discard.ts`:
-
-```ts
-import { stagingPrefix } from "../domain/keys";
-import type { MediaDeps } from "./deps";
-
-/** Removes staged files that will never be attached: removed, hidden at submit, silent accept. */
-export async function discardStaged(
-  deps: Pick<MediaDeps, "staging">,
-  refs: readonly string[],
-): Promise<void> {
-  for (const ref of refs) await deps.staging.delete(ref);
-}
-
-/** Removes every staged file of an in-progress record, including any a crash left behind. */
-export async function discardRecordFiles(
-  deps: Pick<MediaDeps, "staging">,
-  recordId: string,
-): Promise<void> {
-  await deps.staging.deletePrefix(stagingPrefix(recordId));
-}
-```
-
-`testing/fakes.ts`:
-
-```ts
-/**
- * In-memory fakes for the media ports. Synthetic bytes only: `fakeImage(type)`
- * is the text "mime:<type>;" padded with zeros, which `FakeSniffer` reads back;
- * `FakeEncoder` prefixes "reencoded:" and refuses anything containing "broken".
- */
-import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
-import {
-  FakeUnitOfWorkFactory,
-  FixedClock,
-  InMemoryJobQueue,
-  SequentialIdGenerator,
-} from "@/shared/application/testing/fakes";
-import type { MediaRecord } from "../../domain/media";
-import type { MediaDeps } from "../deps";
-import type { ContentSniffer } from "../ports/content-sniffer";
-import type { EncodedImage, ImageEncoder } from "../ports/image-encoder";
-import type { MediaRepository } from "../ports/media-repository";
-import type { StagingStorage } from "../ports/media-storage";
-
-const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
-
-export function fakeImage(type = "image/jpeg", size = 64): Uint8Array {
-  const head = new TextEncoder().encode(`mime:${type};`);
-  const out = new Uint8Array(Math.max(size, head.length));
-  out.set(head);
-  return out;
-}
-
-export class InMemoryStorage implements StagingStorage {
-  readonly files = new Map<string, { bytes: Uint8Array; contentType: string }>();
-  failPut = false;
-
-  put(bytes: Uint8Array, key: string, contentType: string): Promise<string> {
-    if (this.failPut) return Promise.reject(new Error("storage unavailable"));
-    this.files.set(key, { bytes: bytes.slice(), contentType });
-    return Promise.resolve(key);
-  }
-  viewUrl(ref: string): Promise<string> {
-    return Promise.resolve(`memory://${ref}`);
-  }
-  delete(ref: string): Promise<void> {
-    this.files.delete(ref);
-    return Promise.resolve();
-  }
-  exists(ref: string): Promise<boolean> {
-    return Promise.resolve(this.files.has(ref));
-  }
-  read(ref: string): Promise<Uint8Array> {
-    const file = this.files.get(ref);
-    return file ? Promise.resolve(file.bytes.slice()) : Promise.reject(new Error("no such file"));
-  }
-  deletePrefix(prefix: string): Promise<void> {
-    for (const key of [...this.files.keys()]) if (key.startsWith(prefix)) this.files.delete(key);
-    return Promise.resolve();
-  }
-}
-
-export class FakeSniffer implements ContentSniffer {
-  sniff(bytes: Uint8Array): Promise<string | null> {
-    if (decode(bytes.subarray(4, 8)) === "ftyp") return Promise.resolve("video/mp4");
-    const match = /^mime:([a-z]+\/[a-z0-9.+-]+);/.exec(decode(bytes.subarray(0, 64)));
-    return Promise.resolve(match?.[1] ?? null);
-  }
-}
-
-export class FakeEncoder implements ImageEncoder {
-  reencode(bytes: Uint8Array, contentType: string): Promise<EncodedImage | null> {
-    if (decode(bytes).includes("broken")) return Promise.resolve(null);
-    const type =
-      contentType === "image/png" || contentType === "image/webp" ? contentType : "image/jpeg";
-    const out = new Uint8Array([...new TextEncoder().encode("reencoded:"), ...bytes]);
-    return Promise.resolve({ bytes: out, contentType: type });
-  }
-}
-
-export class InMemoryMediaRepository implements MediaRepository {
-  readonly rows = new Map<string, MediaRecord>();
-
-  insert(_uow: UnitOfWork, record: MediaRecord): Promise<void> {
-    if (this.rows.has(record.id)) return Promise.reject(new Error(`media ${record.id} exists`));
-    this.rows.set(record.id, { ...record });
-    return Promise.resolve();
-  }
-  findById(id: string): Promise<MediaRecord | null> {
-    const row = this.rows.get(id);
-    return Promise.resolve(row ? { ...row } : null);
-  }
-  listBySubmission(submissionId: string): Promise<MediaRecord[]> {
-    return Promise.resolve(
-      [...this.rows.values()]
-        .filter((r) => r.submissionId === submissionId)
-        .sort((a, b) => a.fieldKey.localeCompare(b.fieldKey) || a.position - b.position)
-        .map((r) => ({ ...r })),
-    );
-  }
-  private patch(id: string, change: Partial<MediaRecord>): Promise<void> {
-    const row = this.rows.get(id);
-    if (row) this.rows.set(id, { ...row, ...change });
-    return Promise.resolve();
-  }
-  markStored(_uow: UnitOfWork, id: string, providerRef: string, at: Date): Promise<void> {
-    return this.patch(id, { status: "stored", providerRef, updatedAt: at });
-  }
-  clearStaging(_uow: UnitOfWork, id: string, at: Date): Promise<void> {
-    return this.patch(id, { stagingRef: null, updatedAt: at });
-  }
-  markFailed(_uow: UnitOfWork, id: string, at: Date): Promise<void> {
-    return this.patch(id, { status: "failed", updatedAt: at });
-  }
-  delete(_uow: UnitOfWork, id: string): Promise<void> {
-    this.rows.delete(id);
-    return Promise.resolve();
-  }
-}
-
-export interface FakeMediaDeps extends MediaDeps {
-  staging: InMemoryStorage;
-  durable: InMemoryStorage;
-  media: InMemoryMediaRepository;
-  queue: InMemoryJobQueue;
-  ids: SequentialIdGenerator;
-  clock: FixedClock;
-}
-
-export function makeMediaDeps(overrides: Partial<FakeMediaDeps> = {}): FakeMediaDeps {
-  return {
-    staging: overrides.staging ?? new InMemoryStorage(),
-    durable: overrides.durable ?? new InMemoryStorage(),
-    sniffer: overrides.sniffer ?? new FakeSniffer(),
-    encoder: overrides.encoder ?? new FakeEncoder(),
-    media: overrides.media ?? new InMemoryMediaRepository(),
-    queue: overrides.queue ?? new InMemoryJobQueue(),
-    uow: overrides.uow ?? new FakeUnitOfWorkFactory(),
-    ids: overrides.ids ?? new SequentialIdGenerator(),
-    clock: overrides.clock ?? new FixedClock(),
-  };
-}
-```
-
-`index.ts`:
-
-```ts
-/** Public API of the media module. Other modules and the app import only this. */
-export type { MediaKind, MediaRecord, MediaStatus, StagedFile } from "../domain/media";
-export { MEDIA_KINDS, extensionFor } from "../domain/media";
-export { fieldSlug, uniqueFieldSlugs, durableKey } from "../domain/keys";
-export type { MediaDeps } from "./deps";
-export type { MediaStorage, StagingStorage } from "./ports/media-storage";
-export type { ContentSniffer } from "./ports/content-sniffer";
-export type { ImageEncoder, EncodedImage } from "./ports/image-encoder";
-export type { MediaRepository } from "./ports/media-repository";
-export type { StageFileInput, StageFileResult, StageRefusal } from "./stage-file";
-export type { AttachedFile } from "./attach";
-export { stageFile } from "./stage-file";
-export { attachToSubmission } from "./attach";
-export { discardStaged, discardRecordFiles } from "./discard";
-export { MEDIA_JOB_TYPES } from "./job-types";
-```
+- [ ] **Step 3: Implement** the four port files and `deps.ts` exactly as in Interfaces (each port file imports only shared ports and the media domain), `job-types.ts`, then:
+  - `stageFile` (comment: refusals are validation errors shown to the submitter, never job failures; `media-storage.md`, "File handling rules"): in this order, a body over `maxBytes` is `file_too_large`; a sniffed type outside `ACCEPTED_TYPES`, or of a kind not in `accept`, is `file_wrong_type`; an image goes through `encoder.reencode` (null is `file_unreadable`) and takes the encoder's bytes and content type; a video must pass `isWellFormedIsoBmff` (else `file_unreadable`) and keeps its bytes. Only then a new id from `deps.ids`, the key `stagingKey(recordId, id, extensionFor(contentType))` and one `staging.put`. Nothing is written before every check passes.
+  - `attachToSubmission` (inside the intake transaction, `architecture.md`, "Submission data flow" step 3): per file, one `staged` row with the staged file's id, content type, size and staging ref, `providerRef: null`, both timestamps `clock.now()`, and one `media.upload` job with `{ mediaId }`.
+  - `discardStaged` deletes each ref; `discardRecordFiles` deletes `stagingPrefix(recordId)`.
+  - `testing/fakes.ts` (header: synthetic bytes only): `fakeImage(type = "image/jpeg", size = 64)` is `mime:<type>;` zero-padded to `size`. `InMemoryStorage.put` copies the bytes and returns the key (rejects with `storage unavailable` when `failPut`); `viewUrl` returns `memory://<ref>`; `read` rejects for a missing ref; `deletePrefix` removes matching keys. `FakeSniffer` and `FakeEncoder` behave as in Interfaces (the encoder keeps PNG and WebP, everything else becomes JPEG). `InMemoryMediaRepository` stores copies, `insert` rejects a duplicate id, `listBySubmission` sorts by field key then position, the `mark*` and `clearStaging` methods patch the row and its `updatedAt`. `makeMediaDeps` fills every port with these fakes and the shared ones, honouring overrides.
+  - `index.ts` (public API): the domain types and `MEDIA_KINDS`, `extensionFor`, `fieldSlug`, `uniqueFieldSlugs`, `durableKey`; the deps and port types; the stage, attach types; `stageFile`, `attachToSubmission`, `discardStaged`, `discardRecordFiles`, `MEDIA_JOB_TYPES`.
 
 - [ ] **Step 4: Run** `pnpm test src/modules/media tests/boundaries && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 5: Commit** `feat(media): staging, attaching and discarding files behind storage, sniffer and encoder ports`
@@ -2173,24 +1245,13 @@ export { MEDIA_JOB_TYPES } from "./job-types";
 
 **Interfaces:**
 - Consumes: `ContentSniffer`, `ImageEncoder`, `EncodedImage` (Task 6); `tests/fakes/media-files.ts` (Task 5).
-- Produces: `class FileTypeSniffer implements ContentSniffer`, `class SharpImageEncoder implements ImageEncoder` with `MAX_INPUT_PIXELS = 50_000_000`.
+- Produces: `class FileTypeSniffer implements ContentSniffer`, `class SharpImageEncoder implements ImageEncoder` with `export const MAX_INPUT_PIXELS = 50_000_000`.
 
 These adapters do no I/O beyond CPU work on bytes, so their tests run in the unit suite against the real libraries.
 
 - [ ] **Step 1: Failing tests.** `file-type-sniffer.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import {
-  htmlPretendingToBeJpeg,
-  syntheticHeic,
-  syntheticJpegWithGps,
-  syntheticMp4,
-  syntheticPng,
-  syntheticWebp,
-} from "../../../../tests/fakes/media-files";
-import { FileTypeSniffer } from "./file-type-sniffer";
-
 describe("FileTypeSniffer", () => {
   const sniffer = new FileTypeSniffer();
 
@@ -2213,16 +1274,6 @@ describe("FileTypeSniffer", () => {
 `sharp-image-encoder.test.ts`:
 
 ```ts
-import sharp from "sharp";
-import { describe, expect, it } from "vitest";
-import {
-  syntheticHeic,
-  syntheticJpegWithGps,
-  syntheticPng,
-  syntheticWebp,
-} from "../../../../tests/fakes/media-files";
-import { SharpImageEncoder } from "./sharp-image-encoder";
-
 describe("SharpImageEncoder", () => {
   const encoder = new SharpImageEncoder();
 
@@ -2250,7 +1301,7 @@ describe("SharpImageEncoder", () => {
     expect([meta.format, meta.width, meta.height]).toEqual(["jpeg", 16, 16]);
   });
 
-  it("returns null for a truncated image, a PNG claimed as HEIC, and an unknown type", async () => {
+  it("returns null for a truncated JPEG, bytes that do not decode as the type, and an unknown type", async () => {
     const jpeg = await syntheticJpegWithGps();
     expect(await encoder.reencode(jpeg.subarray(0, Math.floor(jpeg.length / 2)), "image/jpeg")).toBeNull();
     expect(await encoder.reencode(await syntheticPng(), "image/heic")).toBeNull();
@@ -2266,97 +1317,11 @@ describe("SharpImageEncoder", () => {
 
 - [ ] **Step 2: Run** `pnpm test src/modules/media/infrastructure`: fails, the adapters do not exist.
 
-- [ ] **Step 3: Implement.** `file-type-sniffer.ts`:
-
-```ts
-import { fileTypeFromBuffer } from "file-type";
-import type { ContentSniffer } from "../application/ports/content-sniffer";
-
-/** Content sniffing with `file-type` (ADR 0023): magic numbers only, never names. */
-export class FileTypeSniffer implements ContentSniffer {
-  async sniff(bytes: Uint8Array): Promise<string | null> {
-    if (bytes.byteLength === 0) return null;
-    return (await fileTypeFromBuffer(bytes))?.mime ?? null;
-  }
-}
-```
-
-`libheif-js.d.ts` (the package ships no types):
-
-```ts
-declare module "libheif-js/wasm-bundle" {
-  interface HeifImage {
-    get_width(): number;
-    get_height(): number;
-    display(
-      target: { data: Uint8ClampedArray; width: number; height: number },
-      done: (result: { data: Uint8ClampedArray } | null) => void,
-    ): void;
-  }
-  const libheif: { HeifDecoder: new () => { decode(bytes: Uint8Array): HeifImage[] } };
-  export default libheif;
-}
-```
-
-`sharp-image-encoder.ts`:
-
-```ts
-import libheif from "libheif-js/wasm-bundle";
-import sharp from "sharp";
-import type { EncodedImage, ImageEncoder } from "../application/ports/image-encoder";
-
-export const MAX_INPUT_PIXELS = 50_000_000;
-const QUALITY = 85;
-
-/**
- * Re-encodes images so no metadata survives (sharp writes none unless asked),
- * applying the EXIF orientation first. HEIC is decoded by libheif-js and
- * written as JPEG. Any decoding failure is null: the submitter sees
- * "could not be read". See ADR 0023.
- */
-export class SharpImageEncoder implements ImageEncoder {
-  async reencode(bytes: Uint8Array, contentType: string): Promise<EncodedImage | null> {
-    try {
-      if (contentType === "image/heic" || contentType === "image/heif") return await this.fromHeic(bytes);
-      const image = sharp(bytes, { failOn: "error", limitInputPixels: MAX_INPUT_PIXELS }).rotate();
-      if (contentType === "image/jpeg") {
-        return { bytes: new Uint8Array(await image.jpeg({ quality: QUALITY }).toBuffer()), contentType };
-      }
-      if (contentType === "image/png") {
-        return { bytes: new Uint8Array(await image.png().toBuffer()), contentType };
-      }
-      if (contentType === "image/webp") {
-        return { bytes: new Uint8Array(await image.webp({ quality: QUALITY }).toBuffer()), contentType };
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  private async fromHeic(bytes: Uint8Array): Promise<EncodedImage | null> {
-    const [first] = new libheif.HeifDecoder().decode(bytes);
-    if (!first) return null;
-    const width = first.get_width();
-    const height = first.get_height();
-    if (width * height > MAX_INPUT_PIXELS) return null;
-    const pixels = await new Promise<Uint8ClampedArray | null>((resolve) => {
-      first.display({ data: new Uint8ClampedArray(width * height * 4), width, height }, (result) => {
-        resolve(result ? result.data : null);
-      });
-    });
-    if (pixels === null) return null;
-    const jpeg = await sharp(Buffer.from(pixels.buffer, pixels.byteOffset, pixels.byteLength), {
-      raw: { width, height, channels: 4 },
-    })
-      .jpeg({ quality: QUALITY })
-      .toBuffer();
-    return { bytes: new Uint8Array(jpeg), contentType: "image/jpeg" };
-  }
-}
-```
-
-`next.config.ts`: add `serverExternalPackages: ["sharp", "libheif-js"]` to `nextConfig`.
+- [ ] **Step 3: Implement.**
+  - `FileTypeSniffer.sniff`: null for empty input, else `(await fileTypeFromBuffer(bytes))?.mime ?? null` (magic numbers only, ADR 0023).
+  - `libheif-js.d.ts` declares `libheif-js/wasm-bundle` (the package ships no types): a default export `{ HeifDecoder: new () => { decode(bytes: Uint8Array): HeifImage[] } }` where `HeifImage` has `get_width()`, `get_height()` and `display(target: { data: Uint8ClampedArray; width: number; height: number }, done: (result: { data: Uint8ClampedArray } | null) => void)`.
+  - `SharpImageEncoder.reencode` (doc comment: sharp writes no metadata unless asked; ADR 0023): wraps everything in `try`/`catch` returning null. JPEG, PNG and WebP go through `sharp(bytes, { failOn: "error", limitInputPixels: MAX_INPUT_PIXELS }).rotate()` and are written in their own format (JPEG and WebP at quality 85); `image/heic` and `image/heif` decode the first image with `libheif.HeifDecoder`, refuse above `MAX_INPUT_PIXELS`, render RGBA through `display` (a null result is null), and encode the raw pixels (`raw: { width, height, channels: 4 }`) with sharp as JPEG quality 85; any other type is null. The non-obvious point: `failOn: "error"` is what turns a truncated JPEG into a refusal instead of a grey half image.
+  - `next.config.ts`: `serverExternalPackages: ["sharp", "libheif-js"]`.
 
 - [ ] **Step 4: Run** `pnpm test src/modules/media && pnpm lint && pnpm typecheck && pnpm format:check && pnpm build`.
 - [ ] **Step 5: Commit** `feat(media): content sniffing with file-type and metadata-free re-encoding with sharp and libheif-js`
@@ -2407,15 +1372,11 @@ create table media (
 
 The unique constraint's index also serves lookups by `submission_id`, so no second index is created.
 
+**The repository pattern** (every Postgres repository in this plan follows it; later tasks say "per the repository pattern in Task 8"): a `COLUMNS` constant lists the table's columns once; a `<Name>Row` interface types them in snake case and a `to<Name>` mapper converts to the domain record (camel case; `bigint` columns arrive as strings and go through `Number`; `jsonb` arrives parsed). Reads use the pool; writes and `for update` reads use `txOf(uow).client`. Any id argument that fails `isUuid` returns null or an empty list without querying, since a malformed id can never match and must not reach Postgres as a cast error. Constraint names surface in the thrown error unchanged.
+
 - [ ] **Step 1: Failing integration tests.** `tests/integration/media/local-disk-storage.test.ts`:
 
 ```ts
-import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { LocalDiskStorage } from "@/modules/media/infrastructure/local-disk-storage";
-
 describe("LocalDiskStorage", () => {
   let root: string;
   let storage: LocalDiskStorage;
@@ -2435,45 +1396,18 @@ describe("LocalDiskStorage", () => {
     await storage.delete(ref);
     expect(await storage.exists(ref)).toBe(false);
   });
-
-  it("overwrites the same key and leaves no temporary files", async () => {
-    await storage.put(new Uint8Array([1]), "in-progress/rec/a.jpg", "image/jpeg");
-    await storage.put(new Uint8Array([2]), "in-progress/rec/a.jpg", "image/jpeg");
-    expect(await storage.read("in-progress/rec/a.jpg")).toEqual(new Uint8Array([2]));
-    expect(await readdir(path.join(root, "in-progress/rec"))).toEqual(["a.jpg"]);
-  });
-
-  it("deletes a whole prefix and removes emptied directories", async () => {
-    await storage.put(new Uint8Array([1]), "in-progress/one/a.jpg", "image/jpeg");
-    await storage.put(new Uint8Array([1]), "in-progress/one/b.jpg", "image/jpeg");
-    await storage.put(new Uint8Array([1]), "in-progress/two/c.jpg", "image/jpeg");
-    await storage.deletePrefix("in-progress/one/");
-    expect(await readdir(path.join(root, "in-progress"))).toEqual(["two"]);
-    await storage.delete("in-progress/two/c.jpg");
-    expect(await readdir(root)).toEqual([]);
-  });
-
-  it("refuses refs that escape the root", async () => {
-    await expect(storage.put(new Uint8Array([1]), "../outside.jpg", "image/jpeg")).rejects.toThrow(/escapes/);
-    await expect(storage.read("/etc/passwd")).rejects.toThrow(/escapes/);
-  });
-
-  it("gives the admin view path for a ref", async () => {
-    expect(await storage.viewUrl("in-progress/rec/a.jpg", 60)).toBe("/admin/media/local/in-progress%2Frec%2Fa.jpg");
-  });
 });
 ```
+
+and, on the same fresh temporary root:
+- "overwrites the same key and leaves no temporary files": two puts of `[1]` then `[2]` at `in-progress/rec/a.jpg` read back `[2]`, and `in-progress/rec` lists only `a.jpg`.
+- "deletes a whole prefix and removes emptied directories": with `in-progress/one/a.jpg`, `in-progress/one/b.jpg` and `in-progress/two/c.jpg` stored, `deletePrefix("in-progress/one/")` leaves `in-progress` listing `["two"]`; deleting `in-progress/two/c.jpg` leaves the root empty.
+- "refuses refs that escape the root": `put` at `../outside.jpg` and `read("/etc/passwd")` reject with `/escapes/`.
+- "gives the admin view path for a ref": `viewUrl("in-progress/rec/a.jpg", 60)` is `/admin/media/local/in-progress%2Frec%2Fa.jpg`.
 
 `tests/integration/media/pg-media-repository.test.ts`:
 
 ```ts
-import { randomUUID } from "node:crypto";
-import { beforeEach, describe, expect, it } from "vitest";
-import type { MediaRecord } from "@/modules/media/application";
-import { PgMediaRepository } from "@/modules/media/infrastructure/pg-media-repository";
-import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
-import { testPool, truncateAll } from "../db";
-
 const at = new Date("2026-10-10T12:00:00.000Z");
 
 function record(over: Partial<MediaRecord> = {}): MediaRecord {
@@ -2525,183 +1459,9 @@ describe("PgMediaRepository", () => {
 
 - [ ] **Step 2: Run** `pnpm db:up && pnpm test:integration tests/integration/media`: fails.
 
-- [ ] **Step 3: Implement.** Write the migration above. `local-disk-storage.ts`:
-
-```ts
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
-import path from "node:path";
-import type { StagingStorage } from "../application/ports/media-storage";
-
-/**
- * The staging tier, and the durable tier when MEDIA_PROVIDER=local. Files are
- * written owner-only, atomically (temporary file, then rename), under a root
- * outside the web root. Refs are the keys. See specs/system/media-storage.md.
- */
-export class LocalDiskStorage implements StagingStorage {
-  private readonly root: string;
-
-  constructor(
-    root: string,
-    private readonly viewPath: (ref: string) => string = (ref) =>
-      `/admin/media/local/${encodeURIComponent(ref)}`,
-  ) {
-    this.root = path.resolve(root);
-  }
-
-  private pathOf(ref: string): string {
-    const full = path.resolve(this.root, ref);
-    if (!full.startsWith(this.root + path.sep)) throw new Error("media ref escapes the storage root");
-    return full;
-  }
-
-  async put(bytes: Uint8Array, key: string, _contentType: string): Promise<string> {
-    const file = this.pathOf(key);
-    await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-    const temporary = `${file}.${randomUUID()}.tmp`;
-    await writeFile(temporary, bytes, { mode: 0o600 });
-    await rename(temporary, file);
-    return key;
-  }
-
-  viewUrl(ref: string, _ttlSeconds: number): Promise<string> {
-    return Promise.resolve(this.viewPath(ref));
-  }
-
-  async delete(ref: string): Promise<void> {
-    const file = this.pathOf(ref);
-    await rm(file, { force: true });
-    await this.removeEmptyParents(path.dirname(file));
-  }
-
-  async exists(ref: string): Promise<boolean> {
-    try {
-      return (await stat(this.pathOf(ref))).isFile();
-    } catch (e) {
-      if (e instanceof Error && e.message.includes("escapes")) throw e;
-      return false;
-    }
-  }
-
-  async read(ref: string): Promise<Uint8Array> {
-    return new Uint8Array(await readFile(this.pathOf(ref)));
-  }
-
-  async deletePrefix(prefix: string): Promise<void> {
-    const dir = this.pathOf(prefix.replace(/\/+$/, ""));
-    await rm(dir, { recursive: true, force: true });
-    await this.removeEmptyParents(path.dirname(dir));
-  }
-
-  /** Removes emptied directories up to, not including, the root. */
-  private async removeEmptyParents(dir: string): Promise<void> {
-    for (let d = dir; d.startsWith(this.root + path.sep); d = path.dirname(d)) {
-      try {
-        await rmdir(d);
-      } catch {
-        return;
-      }
-    }
-  }
-}
-```
-
-`pg-media-repository.ts`:
-
-```ts
-import type { Pool } from "pg";
-import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
-import { txOf } from "@/shared/infrastructure/postgres/tx";
-import { isUuid } from "@/shared/infrastructure/uuid";
-import type { MediaRepository } from "../application/ports/media-repository";
-import type { MediaKind, MediaRecord, MediaStatus } from "../domain/media";
-
-const COLUMNS = `id, submission_id, form_id, field_key, position, kind, status, content_type, size,
-  staging_ref, durable_key, provider_ref, created_at, updated_at`;
-
-interface MediaRow {
-  id: string;
-  submission_id: string;
-  form_id: string;
-  field_key: string;
-  position: number;
-  kind: MediaKind;
-  status: MediaStatus;
-  content_type: string;
-  size: string;
-  staging_ref: string | null;
-  durable_key: string;
-  provider_ref: string | null;
-  created_at: Date;
-  updated_at: Date;
-}
-
-function toRecord(r: MediaRow): MediaRecord {
-  return {
-    id: r.id,
-    submissionId: r.submission_id,
-    formId: r.form_id,
-    fieldKey: r.field_key,
-    position: r.position,
-    kind: r.kind,
-    status: r.status,
-    contentType: r.content_type,
-    size: Number(r.size),
-    stagingRef: r.staging_ref,
-    durableKey: r.durable_key,
-    providerRef: r.provider_ref,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-  };
-}
-
-/** The `media` table; specs/system/database.md. Reads use the pool, writes the unit of work. */
-export class PgMediaRepository implements MediaRepository {
-  constructor(private readonly pool: Pool) {}
-
-  async insert(uow: UnitOfWork, m: MediaRecord): Promise<void> {
-    await txOf(uow).client.query(
-      `insert into media (${COLUMNS}) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-      [m.id, m.submissionId, m.formId, m.fieldKey, m.position, m.kind, m.status, m.contentType,
-        m.size, m.stagingRef, m.durableKey, m.providerRef, m.createdAt, m.updatedAt],
-    );
-  }
-
-  async findById(id: string): Promise<MediaRecord | null> {
-    if (!isUuid(id)) return null;
-    const { rows } = await this.pool.query<MediaRow>(`select ${COLUMNS} from media where id = $1`, [id]);
-    return rows[0] ? toRecord(rows[0]) : null;
-  }
-
-  async listBySubmission(submissionId: string): Promise<MediaRecord[]> {
-    if (!isUuid(submissionId)) return [];
-    const { rows } = await this.pool.query<MediaRow>(
-      `select ${COLUMNS} from media where submission_id = $1 order by field_key, position`,
-      [submissionId],
-    );
-    return rows.map(toRecord);
-  }
-
-  async markStored(uow: UnitOfWork, id: string, providerRef: string, at: Date): Promise<void> {
-    await txOf(uow).client.query(
-      "update media set status = 'stored', provider_ref = $2, updated_at = $3 where id = $1",
-      [id, providerRef, at],
-    );
-  }
-
-  async clearStaging(uow: UnitOfWork, id: string, at: Date): Promise<void> {
-    await txOf(uow).client.query("update media set staging_ref = null, updated_at = $2 where id = $1", [id, at]);
-  }
-
-  async markFailed(uow: UnitOfWork, id: string, at: Date): Promise<void> {
-    await txOf(uow).client.query("update media set status = 'failed', updated_at = $2 where id = $1", [id, at]);
-  }
-
-  async delete(uow: UnitOfWork, id: string): Promise<void> {
-    await txOf(uow).client.query("delete from media where id = $1", [id]);
-  }
-}
-```
+- [ ] **Step 3: Implement.** Write the migration above.
+  - `LocalDiskStorage` (doc comment: the staging tier, and the durable tier when `MEDIA_PROVIDER=local`; `media-storage.md`): the root is `path.resolve`d; every ref resolves under it or throws `media ref escapes the storage root`. `put` creates parent directories with mode `0o700`, writes `<file>.<uuid>.tmp` with mode `0o600` and renames it over the target (atomic, idempotent per key), returning the key. `delete` is `rm --force` and then removes emptied parent directories up to, not including, the root. `exists` is false for a missing file but rethrows the escape error. `deletePrefix` removes the prefix directory recursively, then emptied parents. `viewUrl` returns `viewPath(ref)`, by default `/admin/media/local/<encodeURIComponent(ref)>`.
+  - `PgMediaRepository` per the repository pattern above; `listBySubmission` orders by `field_key, position`; the three updates set their columns and `updated_at`.
 
 - [ ] **Step 4: Run** `pnpm test:integration tests/integration/media && pnpm test && pnpm lint && pnpm typecheck && pnpm format:check`; confirm the migration runner picked up `src/modules/media/infrastructure/migrations/`.
 - [ ] **Step 5: Commit** `feat(media): local disk storage, the media table and its repository`
@@ -2742,104 +1502,18 @@ export async function startFakeDropbox(): Promise<FakeDropbox>;
 
 Refs are the key with a leading `/` (the path inside the App folder). Error messages carry the endpoint and status, never a path.
 
-- [ ] **Step 1: The fake server** `tests/fakes/dropbox-api.ts`:
-
-```ts
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
-
-export interface FakeDropbox {
-  url: string;
-  files: Map<string, Uint8Array>;
-  calls: string[];
-  tokenRefreshes: number;
-  failNext(status: number, body?: unknown): void;
-  revokeTokens(): void;
-  close(): Promise<void>;
-}
-
-async function body(req: IncomingMessage): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks);
-}
-
-function send(res: ServerResponse, status: number, json: unknown): void {
-  res.writeHead(status, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(json));
-}
-
-/** A local stand-in for the five Dropbox endpoints the adapter uses. Synthetic data only. */
-export async function startFakeDropbox(): Promise<FakeDropbox> {
-  let token = "token-1";
-  let pending: { status: number; body: unknown } | null = null;
-  const state = { files: new Map<string, Uint8Array>(), calls: [] as string[], tokenRefreshes: 0 };
-  const notFound = { error_summary: "path/not_found/", error: { ".tag": "path", path: { ".tag": "not_found" } } };
-
-  const server = createServer((req, res) => {
-    void (async () => {
-      const url = req.url ?? "";
-      state.calls.push(url);
-      const raw = await body(req);
-      if (url === "/oauth2/token") {
-        state.tokenRefreshes += 1;
-        token = `token-${String(state.tokenRefreshes + 1)}`;
-        return send(res, 200, { access_token: token, expires_in: 14400, token_type: "bearer" });
-      }
-      if (req.headers.authorization !== `Bearer ${token}`) {
-        return send(res, 401, { error_summary: "expired_access_token/", error: { ".tag": "expired_access_token" } });
-      }
-      if (pending) {
-        const p = pending;
-        pending = null;
-        return send(res, p.status, p.body);
-      }
-      if (url === "/2/files/upload") {
-        const arg = JSON.parse(String(req.headers["dropbox-api-arg"])) as { path: string };
-        state.files.set(arg.path, new Uint8Array(raw));
-        return send(res, 200, { id: "id:fake", path_lower: arg.path.toLowerCase(), size: raw.length });
-      }
-      const { path } = JSON.parse(raw.toString() || "{}") as { path: string };
-      if (url === "/2/files/get_metadata") {
-        return state.files.has(path) ? send(res, 200, { ".tag": "file", path_lower: path }) : send(res, 409, notFound);
-      }
-      if (url === "/2/files/delete_v2") {
-        if (!state.files.delete(path)) return send(res, 409, { error_summary: "path_lookup/not_found/", error: { ".tag": "path_lookup", path_lookup: { ".tag": "not_found" } } });
-        return send(res, 200, { metadata: { path_lower: path } });
-      }
-      if (url === "/2/files/get_temporary_link") {
-        return state.files.has(path) ? send(res, 200, { link: `https://dl.example.com${path}` }) : send(res, 409, notFound);
-      }
-      return send(res, 404, { error_summary: "unknown endpoint" });
-    })();
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address() as AddressInfo;
-  return {
-    url: `http://127.0.0.1:${String(port)}`,
-    files: state.files,
-    calls: state.calls,
-    get tokenRefreshes() {
-      return state.tokenRefreshes;
-    },
-    failNext(status, json = { error_summary: "too_many_requests/" }) {
-      pending = { status, body: json };
-    },
-    revokeTokens() {
-      token = "revoked";
-    },
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
-  };
-}
-```
+- [ ] **Step 1: The fake server** `tests/fakes/dropbox-api.ts`: a `node:http` server on `127.0.0.1:0` (synthetic data only) that records every request path in `calls` and answers:
+  - `/oauth2/token`: counts a refresh, issues `token-<n+1>` with `expires_in: 14400`, 200.
+  - Any other path without `Authorization: Bearer <current token>`: 401 `{ error_summary: "expired_access_token/", error: { ".tag": "expired_access_token" } }`.
+  - A status queued by `failNext(status, body = { error_summary: "too_many_requests/" })`: answered once, before the endpoint logic.
+  - `/2/files/upload`: stores the body under the `Dropbox-API-Arg` header's `path`; 200 `{ id: "id:fake", path_lower, size }`.
+  - `/2/files/get_metadata` and `/2/files/get_temporary_link` (JSON body `{ path }`): 200 `{ ".tag": "file", path_lower }` or `{ link: "https://dl.example.com<path>" }` when the file exists, else 409 `{ error_summary: "path/not_found/", error: { ".tag": "path", path: { ".tag": "not_found" } } }`.
+  - `/2/files/delete_v2`: deletes and answers 200 `{ metadata: { path_lower } }`, or 409 `{ error_summary: "path_lookup/not_found/", … }` for a missing file.
+  - Anything else: 404. `revokeTokens()` sets the current token to `revoked`; `tokenRefreshes` is a getter over the counter.
 
 - [ ] **Step 2: Failing integration test** `tests/integration/media/dropbox-storage.test.ts`:
 
 ```ts
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DropboxStorage } from "@/modules/media/infrastructure/dropbox-storage";
-import { startFakeDropbox, type FakeDropbox } from "../../fakes/dropbox-api";
-
 describe("DropboxStorage against a fake Dropbox", () => {
   let fake: FakeDropbox;
   let clock: number;
@@ -2901,126 +1575,12 @@ describe("DropboxStorage against a fake Dropbox", () => {
 
 - [ ] **Step 3: Run** `pnpm test:integration tests/integration/media/dropbox-storage.test.ts`: fails.
 
-- [ ] **Step 4: Implement** `dropbox-storage.ts`:
-
-```ts
-import type { MediaStorage } from "../application/ports/media-storage";
-
-export interface DropboxConfig {
-  appKey: string;
-  appSecret: string;
-  refreshToken: string;
-  apiUrl: string;
-  contentUrl: string;
-  fetch?: typeof fetch;
-  now?: () => number;
-}
-
-/** Dropbox temporary links live four hours; cache them a little less. */
-const LINK_LIFETIME_MS = 4 * 60 * 60 * 1000 - 5 * 60 * 1000;
-const TOKEN_MARGIN_MS = 60 * 1000;
-
-/** JSON for the Dropbox-API-Arg header, which must be ASCII. */
-function asciiJson(value: unknown): string {
-  return JSON.stringify(value).replace(/[\u007f-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
-}
-
-async function isNotFound(res: Response): Promise<boolean> {
-  const text = await res.text();
-  return res.status === 409 && text.includes("not_found");
-}
-
-/**
- * The durable tier: an App folder reached with a refresh token through plain
- * `fetch` (ADR 0002). Access tokens are renewed in memory. Rate limits and
- * server errors throw, so the job system retries; nothing retries inline.
- * Errors name the endpoint and status only. See specs/system/media-storage.md.
- */
-export class DropboxStorage implements MediaStorage {
-  private token: { value: string; expiresAt: number } | null = null;
-  private readonly links = new Map<string, { url: string; until: number }>();
-  private readonly fetch: typeof fetch;
-  private readonly now: () => number;
-
-  constructor(private readonly config: DropboxConfig) {
-    this.fetch = config.fetch ?? globalThis.fetch;
-    this.now = config.now ?? Date.now;
-  }
-
-  async put(bytes: Uint8Array, key: string, _contentType: string): Promise<string> {
-    const path = `/${key}`;
-    const res = await this.call(`${this.config.contentUrl}/2/files/upload`, {
-      "Content-Type": "application/octet-stream",
-      "Dropbox-API-Arg": asciiJson({ path, mode: "overwrite", mute: true }),
-    }, bytes);
-    await this.ensureOk(res, "files/upload");
-    return path;
-  }
-
-  async exists(ref: string): Promise<boolean> {
-    const res = await this.rpc("files/get_metadata", { path: ref });
-    if (res.status === 409 && (await isNotFound(res))) return false;
-    await this.ensureOk(res, "files/get_metadata");
-    return true;
-  }
-
-  async delete(ref: string): Promise<void> {
-    const res = await this.rpc("files/delete_v2", { path: ref });
-    if (res.status === 409 && (await isNotFound(res))) return;
-    await this.ensureOk(res, "files/delete_v2");
-    this.links.delete(ref);
-  }
-
-  async viewUrl(ref: string, ttlSeconds: number): Promise<string> {
-    const cached = this.links.get(ref);
-    if (cached && cached.until > this.now()) return cached.url;
-    const res = await this.rpc("files/get_temporary_link", { path: ref });
-    await this.ensureOk(res, "files/get_temporary_link");
-    const { link } = (await res.json()) as { link: string };
-    this.links.set(ref, { url: link, until: this.now() + Math.min(ttlSeconds * 1000, LINK_LIFETIME_MS) });
-    return link;
-  }
-
-  private rpc(endpoint: string, arg: unknown): Promise<Response> {
-    return this.call(`${this.config.apiUrl}/2/${endpoint}`, { "Content-Type": "application/json" }, JSON.stringify(arg));
-  }
-
-  private async call(url: string, headers: Record<string, string>, body: BodyInit, retried = false): Promise<Response> {
-    const token = await this.accessToken();
-    const res = await this.fetch(url, { method: "POST", headers: { ...headers, Authorization: `Bearer ${token}` }, body });
-    if (res.status === 401 && !retried) {
-      await res.body?.cancel();
-      this.token = null;
-      return this.call(url, headers, body, true);
-    }
-    return res;
-  }
-
-  private async accessToken(): Promise<string> {
-    if (this.token && this.token.expiresAt - TOKEN_MARGIN_MS > this.now()) return this.token.value;
-    const res = await this.fetch(`${this.config.apiUrl}/oauth2/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: this.config.refreshToken,
-        client_id: this.config.appKey,
-        client_secret: this.config.appSecret,
-      }),
-    });
-    await this.ensureOk(res, "oauth2/token");
-    const { access_token, expires_in } = (await res.json()) as { access_token: string; expires_in: number };
-    this.token = { value: access_token, expiresAt: this.now() + expires_in * 1000 };
-    return access_token;
-  }
-
-  private async ensureOk(res: Response, endpoint: string): Promise<void> {
-    if (res.ok) return;
-    if (!res.bodyUsed) await res.body?.cancel();
-    throw new Error(`dropbox ${endpoint} failed with ${String(res.status)}`);
-  }
-}
-```
+- [ ] **Step 4: Implement** `DropboxStorage` (doc comment: an App folder reached with a refresh token through plain `fetch`, ADR 0002; rate limits and server errors throw so the job system retries, nothing retries inline):
+  - `put` posts the bytes to `<contentUrl>/2/files/upload` with `Content-Type: application/octet-stream` and `Dropbox-API-Arg` = `{ path: "/" + key, mode: "overwrite", mute: true }` as JSON with every character above U+007E escaped as `\uXXXX` (the header must be ASCII); returns the path.
+  - `exists` (`files/get_metadata`) and `delete` (`files/delete_v2`) post JSON `{ path }` to `<apiUrl>/2/<endpoint>`; a 409 whose body contains `not_found` means false and success respectively. `delete` also drops the cached link.
+  - `viewUrl` returns a cached link while it is valid; otherwise `files/get_temporary_link`, cached for `min(ttlSeconds, 4 hours minus 5 minutes)`.
+  - Every call carries `Authorization: Bearer <access token>`. The token comes from `<apiUrl>/oauth2/token` (form body `grant_type=refresh_token`, `refresh_token`, `client_id`, `client_secret`) and is kept in memory until 60 seconds before `expires_in` runs out. A 401 discards the token and retries the call once.
+  - Any other non-2xx throws `dropbox <endpoint> failed with <status>` after cancelling the body.
 
 - [ ] **Step 5: Run** `pnpm test:integration tests/integration/media && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 6: Commit** `feat(media): Dropbox storage over fetch with token renewal and cached temporary links`
@@ -3048,11 +1608,6 @@ Behavior. Upload: a missing row ends the job (the submission was deleted); witho
 - [ ] **Step 1: Failing unit tests** `jobs.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { handlerContext } from "@/shared/application/testing/fakes";
-import { createMediaDeleteHandler, createMediaUploadHandler } from "./jobs";
-import { makeMediaDeps, type FakeMediaDeps } from "./testing/fakes";
-
 const ID = "00000009-0000-4000-8000-000000000009";
 
 async function seed(deps: FakeMediaDeps): Promise<void> {
@@ -3117,129 +1672,11 @@ describe("media.delete", () => {
 });
 ```
 
-`tests/integration/media/upload-job.test.ts`:
-
-```ts
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createMediaUploadHandler } from "@/modules/media/application/jobs";
-import { FileTypeSniffer } from "@/modules/media/infrastructure/file-type-sniffer";
-import { LocalDiskStorage } from "@/modules/media/infrastructure/local-disk-storage";
-import { PgMediaRepository } from "@/modules/media/infrastructure/pg-media-repository";
-import { SharpImageEncoder } from "@/modules/media/infrastructure/sharp-image-encoder";
-import { handlerContext } from "@/shared/application/testing/fakes";
-import { systemClock } from "@/shared/infrastructure/clock";
-import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
-import { PgJobQueue } from "@/shared/infrastructure/jobs/pg-job-queue";
-import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
-import { testPool, truncateAll } from "../db";
-
-describe("media.upload with local disk and Postgres", () => {
-  const pool = testPool();
-  let dir: string;
-  beforeEach(async () => {
-    await truncateAll(pool);
-    dir = await mkdtemp(path.join(os.tmpdir(), "effluz-media-"));
-  });
-  afterEach(() => rm(dir, { recursive: true, force: true }));
-
-  it("moves a staged file to the durable directory and marks the row stored", async () => {
-    const uow = new PgUnitOfWorkFactory(pool);
-    const deps = {
-      staging: new LocalDiskStorage(path.join(dir, "staging")),
-      durable: new LocalDiskStorage(path.join(dir, "durable")),
-      sniffer: new FileTypeSniffer(),
-      encoder: new SharpImageEncoder(),
-      media: new PgMediaRepository(pool),
-      queue: new PgJobQueue(systemIdGenerator, systemClock),
-      uow,
-      ids: systemIdGenerator,
-      clock: systemClock,
-    };
-    const id = "33333333-3333-4333-8333-333333333333";
-    await deps.staging.put(new Uint8Array([9]), "in-progress/r/a.jpg", "image/jpeg");
-    await uow.run((u) =>
-      deps.media.insert(u, {
-        id, submissionId: "11111111-1111-4111-8111-111111111111", formId: "22222222-2222-4222-8222-222222222222",
-        fieldKey: "photos", position: 1, kind: "image", status: "staged", contentType: "image/jpeg", size: 1,
-        stagingRef: "in-progress/r/a.jpg", durableKey: "forms/s/HP-0001/01-photos.jpg", providerRef: null,
-        createdAt: new Date(), updatedAt: new Date(),
-      }),
-    );
-    await createMediaUploadHandler(deps)({ mediaId: id }, handlerContext({ uow }));
-    expect(await deps.durable.read("forms/s/HP-0001/01-photos.jpg")).toEqual(new Uint8Array([9]));
-    expect(await deps.staging.exists("in-progress/r/a.jpg")).toBe(false);
-    expect(await deps.media.findById(id)).toMatchObject({ status: "stored", stagingRef: null });
-  });
-});
-```
+`tests/integration/media/upload-job.test.ts`, one case, "moves a staged file to the durable directory and marks the row stored": real adapters (`LocalDiskStorage` for staging and durable under a `mkdtemp` directory removed after the test, `FileTypeSniffer`, `SharpImageEncoder`, `PgMediaRepository`, `PgJobQueue(systemIdGenerator, systemClock)`, `PgUnitOfWorkFactory`, `systemIdGenerator`, `systemClock`); stage the bytes `[9]` at `in-progress/r/a.jpg`, insert a `staged` row with id `33333333-3333-4333-8333-333333333333`, `durableKey: "forms/s/HP-0001/01-photos.jpg"`; run the handler with `handlerContext({ uow })`; expect `durable.read("forms/s/HP-0001/01-photos.jpg")` to equal `[9]`, `staging.exists("in-progress/r/a.jpg")` false, and the row `{ status: "stored", stagingRef: null }`.
 
 - [ ] **Step 2: Run** `pnpm test src/modules/media/application/jobs.test.ts`: fails.
 
-- [ ] **Step 3: Implement** `jobs.ts`:
-
-```ts
-import { PermanentJobError, type JobHandler, type JobPayload } from "@/shared/application/ports/job-queue";
-import type { MediaDeps } from "./deps";
-
-function mediaIdOf(payload: JobPayload): string {
-  const id = payload["mediaId"];
-  if (typeof id !== "string") throw new PermanentJobError("payload has no mediaId");
-  return id;
-}
-
-/**
- * `media.upload`: staging to durable storage, the row to `stored` with its
- * reference, then the staging copy deleted. Every step is safe to repeat.
- * See specs/system/jobs.md and specs/system/media-storage.md, "Lifecycle".
- */
-export function createMediaUploadHandler(deps: MediaDeps): JobHandler {
-  return async (payload, ctx) => {
-    const id = mediaIdOf(payload);
-    const row = await deps.media.findById(id);
-    if (row === null) {
-      ctx.logger.info("media no longer exists", { mediaId: id });
-      return;
-    }
-    try {
-      if (row.providerRef === null) {
-        if (row.stagingRef === null) throw new PermanentJobError("staging copy is missing");
-        const bytes = await deps.staging.read(row.stagingRef);
-        const providerRef = await deps.durable.put(bytes, row.durableKey, row.contentType);
-        await deps.uow.run((uow) => deps.media.markStored(uow, id, providerRef, ctx.clock.now()));
-      }
-      if (row.stagingRef !== null) {
-        const stagingRef = row.stagingRef;
-        await deps.staging.delete(stagingRef);
-        await deps.uow.run((uow) => deps.media.clearStaging(uow, id, ctx.clock.now()));
-      }
-      ctx.logger.info("media stored", { mediaId: id });
-    } catch (e) {
-      if (e instanceof PermanentJobError || ctx.attempt >= ctx.maxAttempts) {
-        await deps.uow.run((uow) => deps.media.markFailed(uow, id, ctx.clock.now()));
-      }
-      throw e;
-    }
-  };
-}
-
-/** `media.delete`: the durable copy, the staging copy, then the row. */
-export function createMediaDeleteHandler(deps: MediaDeps): JobHandler {
-  return async (payload, ctx) => {
-    const id = mediaIdOf(payload);
-    const row = await deps.media.findById(id);
-    if (row === null) return;
-    if (row.providerRef !== null) await deps.durable.delete(row.providerRef);
-    if (row.stagingRef !== null) await deps.staging.delete(row.stagingRef);
-    await deps.uow.run((uow) => deps.media.delete(uow, id));
-    ctx.logger.info("media deleted", { mediaId: id });
-  };
-}
-```
-
-Add `export { createMediaUploadHandler, createMediaDeleteHandler } from "./jobs";` to `index.ts`.
+- [ ] **Step 3: Implement** `jobs.ts` (doc comment links `jobs.md` and `media-storage.md`, "Lifecycle"). A `mediaIdOf(payload)` helper throws `PermanentJobError("payload has no mediaId")` when `payload.mediaId` is not a string. The upload handler follows Behavior above, each repository write in its own `deps.uow.run`; the `catch` marks the row `failed` only when the error is a `PermanentJobError` or `ctx.attempt >= ctx.maxAttempts`, then rethrows. It logs `media no longer exists` or `media stored` with `{ mediaId }`. The delete handler returns quietly for a missing row and logs `media deleted`. Export both from `index.ts`.
 
 - [ ] **Step 4: Run** `pnpm test src/modules/media && pnpm test:integration tests/integration/media && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 5: Commit** `feat(media): idempotent media.upload and media.delete job handlers`
@@ -3260,7 +1697,7 @@ Add `export { createMediaUploadHandler, createMediaDeleteHandler } from "./jobs"
 // ports/email-sender.ts
 export interface OutgoingEmail { to: readonly string[]; subject: string; text: string; html: string }
 export interface EmailSender { send(email: OutgoingEmail): Promise<{ providerMessageId: string }> }
-export class EmailSendError extends Error { constructor(message: string, readonly permanent: boolean) }
+export class EmailSendError extends Error { constructor(message: string, readonly permanent: boolean) }   // name "EmailSendError"
 // ports/email-renderer.ts
 export interface RenderedEmail { subject: string; text: string; html: string }
 export interface SubmitterConfirmationData {
@@ -3297,23 +1734,21 @@ export async function enqueueSubmissionEmails(
 ): Promise<void>;
 // testing/fakes.ts
 export class RecordingEmailSender implements EmailSender { readonly sent: OutgoingEmail[]; failWith: EmailSendError | null }
-export class StubMessageSource implements MessageSource { confirmation: {...} | null; staff: {...} | null }
+export class StubMessageSource implements MessageSource {
+  confirmation: { to: string; data: SubmitterConfirmationData } | null;
+  staff: { to: string[]; data: StaffNotificationData } | null;
+}
 export class InMemoryDeliveryLog implements DeliveryLog { readonly entries: Map<string, string> }
 export const stubRenderer: EmailRenderer;   // subject/text/html built from the data fields, for assertions
+export interface FakeNotificationsDeps extends NotificationsDeps { sender: RecordingEmailSender; source: StubMessageSource; deliveries: InMemoryDeliveryLog }
 export function makeNotificationsDeps(over?: Partial<FakeNotificationsDeps>): FakeNotificationsDeps;
 ```
 
-Decision (email idempotency): the delivery key is `<job type>:<submission id>`; the provider id is recorded under it before the job succeeds, and a run that finds the key sends nothing. Decision (staff notification): one job per submission, one message to the form's recipient list as it stands when the job runs.
+Decision (email idempotency): the delivery key is `<job type>:<submission id>`; the provider id is recorded in the `notifications`-owned `email_delivery` table under it before the job succeeds, and a run that finds the key sends nothing (ADR 0025). Decision (staff notification): one job per submission, one message to the form's recipient list as it stands when the job runs.
 
 - [ ] **Step 1: Failing tests.** `jobs.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { handlerContext } from "@/shared/application/testing/fakes";
-import { EmailSendError } from "./ports/email-sender";
-import { createStaffNotificationHandler, createSubmitterConfirmationHandler } from "./jobs";
-import { makeNotificationsDeps } from "./testing/fakes";
-
 const SUB = "00000005-0000-4000-8000-000000000005";
 const confirmation = {
   to: "family@example.com",
@@ -3335,22 +1770,6 @@ describe("email.submitter_confirmation", () => {
     expect(deps.deliveries.entries.get(`email.submitter_confirmation:${SUB}`)).toBe("msg-1");
   });
 
-  it("ends without sending when the submission is gone or has no address", async () => {
-    const deps = makeNotificationsDeps();
-    await createSubmitterConfirmationHandler(deps)({ submissionId: SUB }, handlerContext());
-    expect(deps.sender.sent).toEqual([]);
-  });
-
-  it("fails permanently on a permanent provider error and retries otherwise", async () => {
-    const deps = makeNotificationsDeps();
-    deps.source.confirmation = confirmation;
-    deps.sender.failWith = new EmailSendError("smtp2go rejected the recipient", true);
-    await expect(createSubmitterConfirmationHandler(deps)({ submissionId: SUB }, handlerContext())).rejects.toMatchObject({ name: "PermanentJobError" });
-    deps.sender.failWith = new EmailSendError("smtp2go failed with 503", false);
-    await expect(createSubmitterConfirmationHandler(deps)({ submissionId: SUB }, handlerContext())).rejects.toMatchObject({ name: "EmailSendError" });
-    expect(deps.deliveries.entries.size).toBe(0);
-  });
-
   it("logs the submission id and never the address", async () => {
     const deps = makeNotificationsDeps();
     deps.source.confirmation = confirmation;
@@ -3361,230 +1780,23 @@ describe("email.submitter_confirmation", () => {
     expect(lines).not.toContain("@");
   });
 });
-
-describe("email.staff_notification", () => {
-  it("sends one message to every recipient", async () => {
-    const deps = makeNotificationsDeps();
-    deps.source.staff = {
-      to: ["stories@example.com", "team@example.com"],
-      data: { formTitle: "Stories", reference: "HP-0001", receivedAt: "2026-10-10 09:00 America/Panama, 14:00 UTC", link: "https://forms.example.com/admin/forms/f1" },
-    };
-    await createStaffNotificationHandler(deps)({ submissionId: SUB }, handlerContext());
-    expect(deps.sender.sent.map((m) => m.to)).toEqual([["stories@example.com", "team@example.com"]]);
-  });
-});
 ```
 
-`enqueue.test.ts`:
+More cases, on fresh `makeNotificationsDeps()`:
+- "ends without sending when the submission is gone or has no address": no `source.confirmation` → the handler resolves and `sender.sent` is `[]`.
+- "fails permanently on a permanent provider error and retries otherwise": with `source.confirmation = confirmation`, `failWith = new EmailSendError("smtp2go rejected the recipient", true)` rejects with `{ name: "PermanentJobError" }`; `failWith = new EmailSendError("smtp2go failed with 503", false)` rejects with `{ name: "EmailSendError" }`; `deliveries.entries` stays empty.
+- `describe("email.staff_notification")`, "sends one message to every recipient": `source.staff = { to: ["stories@example.com", "team@example.com"], data: { formTitle: "Stories", reference: "HP-0001", receivedAt: "2026-10-10 09:00 America/Panama, 14:00 UTC", link: "https://forms.example.com/admin/forms/f1" } }` → `sent.map((m) => m.to)` equals `[["stories@example.com", "team@example.com"]]`.
+- `enqueue.test.ts`, "enqueues only the messages asked for, with the submission id as the only payload": `enqueueSubmissionEmails(queue, uow, { submissionId: "s1", submitterConfirmation: false, staffNotification: true })` → `queue.enqueued` equals `[{ type: "email.staff_notification", payload: { submissionId: "s1" }, opts: {} }]`.
 
-```ts
-import { describe, expect, it } from "vitest";
-import { FakeUnitOfWorkFactory, InMemoryJobQueue } from "@/shared/application/testing/fakes";
-import { enqueueSubmissionEmails } from "./enqueue";
-
-describe("enqueueSubmissionEmails", () => {
-  it("enqueues only the messages asked for, with the submission id as the only payload", async () => {
-    const queue = new InMemoryJobQueue();
-    const uow = await new FakeUnitOfWorkFactory().begin();
-    await enqueueSubmissionEmails(queue, uow, { submissionId: "s1", submitterConfirmation: false, staffNotification: true });
-    expect(queue.enqueued).toEqual([{ type: "email.staff_notification", payload: { submissionId: "s1" }, opts: {} }]);
-  });
-});
-```
-
-Boundary probe, inside `describe("layer boundaries")`:
-
-```ts
-  it("forbids notifications importing any other module", async () => {
-    const rules = await lintVirtual(
-      "src/modules/notifications/application/boundary-probe-subs.ts",
-      `import { stageFile } from "@/modules/media/application";\nexport const s = stageFile;\n`,
-    );
-    expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
-  });
-```
-
-(`notifications` has no edges at all; media's entry point stands for any other module.)
+Boundary probe inside `describe("layer boundaries")`, per the probe pattern in Task 2 (`notifications` has no edges at all; media's entry point stands for any other module): "forbids notifications importing any other module", probe file `src/modules/notifications/application/boundary-probe-subs.ts`, importing `stageFile` from `@/modules/media/application`, refused by `boundaries/dependencies`.
 
 - [ ] **Step 2: Run** `pnpm test src/modules/notifications tests/boundaries`: fails.
 
-- [ ] **Step 3: Implement** the ports and `deps.ts` as listed (`EmailSendError` sets `this.name = "EmailSendError"`), then `jobs.ts`:
-
-```ts
-import {
-  PermanentJobError,
-  type JobHandler,
-  type JobHandlerContext,
-  type JobPayload,
-} from "@/shared/application/ports/job-queue";
-import type { NotificationsDeps } from "./deps";
-import { EmailSendError } from "./ports/email-sender";
-import type { RenderedEmail } from "./ports/email-renderer";
-
-export const EMAIL_JOB_TYPES = {
-  submitterConfirmation: "email.submitter_confirmation",
-  staffNotification: "email.staff_notification",
-} as const;
-
-function submissionIdOf(payload: JobPayload): string {
-  const id = payload["submissionId"];
-  if (typeof id !== "string") throw new PermanentJobError("payload has no submissionId");
-  return id;
-}
-
-/**
- * Looks the message up at run time, sends it, and records the provider id
- * under `<type>:<submission id>` before the job succeeds; a key already
- * recorded means the message went out. See specs/system/email.md, "Ports".
- */
-async function deliver(
-  deps: NotificationsDeps,
-  ctx: JobHandlerContext,
-  type: string,
-  submissionId: string,
-  build: () => Promise<{ to: readonly string[]; email: RenderedEmail } | null>,
-): Promise<void> {
-  const key = `${type}:${submissionId}`;
-  if ((await deps.deliveries.find(key)) !== null) {
-    ctx.logger.info("email already sent", { submissionId });
-    return;
-  }
-  const message = await build();
-  if (message === null || message.to.length === 0) {
-    ctx.logger.info("email not applicable", { submissionId });
-    return;
-  }
-  try {
-    const { providerMessageId } = await deps.sender.send({ to: message.to, ...message.email });
-    await deps.deliveries.record(key, providerMessageId, ctx.clock.now());
-    ctx.logger.info("email sent", { submissionId });
-  } catch (e) {
-    if (e instanceof EmailSendError && e.permanent) throw new PermanentJobError(e.message);
-    throw e;
-  }
-}
-
-export function createSubmitterConfirmationHandler(deps: NotificationsDeps): JobHandler {
-  return (payload, ctx) => {
-    const submissionId = submissionIdOf(payload);
-    return deliver(deps, ctx, EMAIL_JOB_TYPES.submitterConfirmation, submissionId, async () => {
-      const found = await deps.source.submitterConfirmation(submissionId);
-      return found && { to: [found.to], email: deps.renderer.submitterConfirmation(found.data) };
-    });
-  };
-}
-
-export function createStaffNotificationHandler(deps: NotificationsDeps): JobHandler {
-  return (payload, ctx) => {
-    const submissionId = submissionIdOf(payload);
-    return deliver(deps, ctx, EMAIL_JOB_TYPES.staffNotification, submissionId, async () => {
-      const found = await deps.source.staffNotification(submissionId);
-      return found && { to: found.to, email: deps.renderer.staffNotification(found.data) };
-    });
-  };
-}
-```
-
-`enqueue.ts`:
-
-```ts
-import type { JobQueue } from "@/shared/application/ports/job-queue";
-import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
-import { EMAIL_JOB_TYPES } from "./jobs";
-
-/** Inside the intake transaction: the email jobs a submission causes. Payload: ids only. */
-export async function enqueueSubmissionEmails(
-  queue: JobQueue,
-  uow: UnitOfWork,
-  input: { submissionId: string; submitterConfirmation: boolean; staffNotification: boolean },
-): Promise<void> {
-  const payload = { submissionId: input.submissionId };
-  if (input.submitterConfirmation) await queue.enqueue(uow, EMAIL_JOB_TYPES.submitterConfirmation, payload);
-  if (input.staffNotification) await queue.enqueue(uow, EMAIL_JOB_TYPES.staffNotification, payload);
-}
-```
-
-`testing/fakes.ts`:
-
-```ts
-/** Fakes for the notifications ports. Synthetic addresses only (example.com). */
-import type { NotificationsDeps } from "../deps";
-import type { DeliveryLog } from "../ports/delivery-log";
-import type { EmailRenderer, StaffNotificationData, SubmitterConfirmationData } from "../ports/email-renderer";
-import type { EmailSendError, EmailSender, OutgoingEmail } from "../ports/email-sender";
-import type { MessageSource } from "../ports/message-source";
-
-export class RecordingEmailSender implements EmailSender {
-  readonly sent: OutgoingEmail[] = [];
-  failWith: EmailSendError | null = null;
-  send(email: OutgoingEmail): Promise<{ providerMessageId: string }> {
-    if (this.failWith) return Promise.reject(this.failWith);
-    this.sent.push({ ...email, to: [...email.to] });
-    return Promise.resolve({ providerMessageId: `msg-${String(this.sent.length)}` });
-  }
-}
-
-export class StubMessageSource implements MessageSource {
-  confirmation: { to: string; data: SubmitterConfirmationData } | null = null;
-  staff: { to: string[]; data: StaffNotificationData } | null = null;
-  submitterConfirmation(): Promise<{ to: string; data: SubmitterConfirmationData } | null> {
-    return Promise.resolve(this.confirmation);
-  }
-  staffNotification(): Promise<{ to: string[]; data: StaffNotificationData } | null> {
-    return Promise.resolve(this.staff);
-  }
-}
-
-export class InMemoryDeliveryLog implements DeliveryLog {
-  readonly entries = new Map<string, string>();
-  find(key: string): Promise<string | null> {
-    return Promise.resolve(this.entries.get(key) ?? null);
-  }
-  record(key: string, providerMessageId: string): Promise<void> {
-    if (!this.entries.has(key)) this.entries.set(key, providerMessageId);
-    return Promise.resolve();
-  }
-}
-
-export const stubRenderer: EmailRenderer = {
-  submitterConfirmation: (d) => ({ subject: d.subject, text: `${d.body} ${d.reference}`, html: `<p>${d.reference}</p>` }),
-  staffNotification: (d) => ({ subject: `New ${d.reference}`, text: d.link, html: `<p>${d.reference}</p>` }),
-};
-
-export interface FakeNotificationsDeps extends NotificationsDeps {
-  sender: RecordingEmailSender;
-  source: StubMessageSource;
-  deliveries: InMemoryDeliveryLog;
-}
-
-export function makeNotificationsDeps(over: Partial<FakeNotificationsDeps> = {}): FakeNotificationsDeps {
-  return {
-    sender: over.sender ?? new RecordingEmailSender(),
-    renderer: over.renderer ?? stubRenderer,
-    source: over.source ?? new StubMessageSource(),
-    deliveries: over.deliveries ?? new InMemoryDeliveryLog(),
-  };
-}
-```
-
-`index.ts`:
-
-```ts
-/** Public API of the notifications module. Other modules and the app import only this. */
-export type { NotificationsDeps } from "./deps";
-export type { EmailSender, OutgoingEmail } from "./ports/email-sender";
-export { EmailSendError } from "./ports/email-sender";
-export type {
-  EmailRenderer,
-  RenderedEmail,
-  StaffNotificationData,
-  SubmitterConfirmationData,
-} from "./ports/email-renderer";
-export type { MessageSource } from "./ports/message-source";
-export type { DeliveryLog } from "./ports/delivery-log";
-export { EMAIL_JOB_TYPES, createStaffNotificationHandler, createSubmitterConfirmationHandler } from "./jobs";
-export { enqueueSubmissionEmails } from "./enqueue";
-```
+- [ ] **Step 3: Implement** the ports and `deps.ts` as listed, then:
+  - `jobs.ts`: `submissionIdOf(payload)` throws `PermanentJobError("payload has no submissionId")` for a non-string. A private `deliver(deps, ctx, type, submissionId, build)` (doc comment links `email.md`, "Ports") checks `deliveries.find("<type>:<id>")` first (found: log `email already sent`, return); calls `build()`, which asks the `MessageSource` and renders through the `EmailRenderer` (null or no recipients: log `email not applicable`, return); sends `{ to, ...rendered }`; records the provider id with `ctx.clock.now()`; logs `email sent`. Every log line carries `{ submissionId }` only. An `EmailSendError` with `permanent` becomes `PermanentJobError(message)`; anything else is rethrown. The confirmation handler sends to `[found.to]`, the staff handler to `found.to`.
+  - `enqueue.ts` (inside the intake transaction; payload ids only): one `queue.enqueue` per message asked for, confirmation first, with `{ submissionId }`.
+  - `testing/fakes.ts` (header: synthetic addresses only, example.com): `RecordingEmailSender.send` rejects with `failWith` when set, else records a copy and returns `msg-<n>`. `StubMessageSource` returns its two fields. `InMemoryDeliveryLog.record` keeps the first id for a key. `stubRenderer` builds `subject: d.subject`, `text: "<body> <reference>"` for the confirmation and `subject: "New <reference>"`, `text: d.link` for staff, `html: "<p><reference></p>"` for both. `makeNotificationsDeps` uses these unless overridden.
+  - `index.ts` (public API): `NotificationsDeps`; `EmailSender`, `OutgoingEmail`, `EmailSendError`; `EmailRenderer`, `RenderedEmail`, `StaffNotificationData`, `SubmitterConfirmationData`; `MessageSource`; `DeliveryLog`; `EMAIL_JOB_TYPES` and both handler factories; `enqueueSubmissionEmails`.
 
 - [ ] **Step 4: Run** `pnpm test src/modules/notifications tests/boundaries && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 5: Commit** `feat(notifications): email ports, idempotent delivery and the confirmation and staff notification handlers`
@@ -3597,7 +1809,7 @@ export { enqueueSubmissionEmails } from "./enqueue";
 - Create: `src/shared/presentation/email/copy.ts`, `layout.ts`, `confirmation.ts`, `staff-notification.ts`, `index.ts`, `email.test.ts`, `copy.test.ts`
 
 **Interfaces:**
-- Consumes: `parseRichText`, `richTextToPlain` (Task 3), `escapeHtml`, `richTextToHtml` (Task 3), `specTableRows` (Task 3).
+- Consumes: `parseRichText`, `richTextToPlain`, `escapeHtml`, `richTextToHtml`, `specTableRows` (Task 3).
 - Produces:
 
 ```ts
@@ -3605,6 +1817,9 @@ export { enqueueSubmissionEmails } from "./enqueue";
 export const confirmationParts: Record<"Preheader" | "Footer line 1" | "Footer line 2", { en: string; es: string }>;
 export const staffParts: Record<"Subject" | "Preheader" | "Intro" | "Reference" | "Received" | "Link" | "Footer", string>;
 export function fillTemplate(text: string, vars: Readonly<Record<string, string>>): string;  // {form title}, {ref}, ...
+// layout.ts
+export const BODY_STYLE: { paragraph: string; link: string };
+export function emailDocument(input: { lang: "en" | "es"; title: string; preheader: string; bodyHtml: string; footer: readonly string[] }): string;
 // confirmation.ts, structural twins of notifications' types (shared may not import modules)
 export interface ConfirmationEmailData { locale: "en" | "es"; formTitle: string; subject: string; body: string; receivedOn: string; reference: string; retentionMonths: number; contact: string }
 export interface EmailParts { subject: string; text: string; html: string }
@@ -3616,15 +1831,11 @@ export function renderStaffNotification(data: StaffEmailData): EmailParts;
 export const emailTemplates: { submitterConfirmation: typeof renderSubmitterConfirmation; staffNotification: typeof renderStaffNotification };
 ```
 
-The templates are plain TypeScript (no React), so the worker can render them without loading Next.js. HTML is table-based, inline-styled with design-system colors, readable with images blocked (there are none). Plain text is written, not derived from the HTML, and carries the same words. Staff-authored subject and body are escaped; newlines in the subject become spaces so no header can be injected.
+The layout is flat, as Task 1 writes into `email.md`, "Templates": `copy.ts`, `layout.ts`, one module per template, each rendering EN and ES (the staff notification is English only), each with a text and an HTML body. The templates are plain TypeScript (no React), so the worker can render them without loading Next.js. HTML is table-based, inline-styled with design-system colors, readable with images blocked (there are none). Plain text is written, not derived from the HTML, and carries the same words. Staff-authored subject and body are escaped; newlines in the subject become spaces so no header can be injected.
 
 - [ ] **Step 1: Failing tests.** `copy.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { specTableRows } from "../testing/spec-copy";
-import { confirmationParts, fillTemplate, staffParts } from "./copy";
-
 describe("email copy", () => {
   it("matches the confirmation email's fixed parts in renderer.md, both languages", () => {
     const rows = specTableRows("specs/ui-ux/renderer.md", "Confirmation email, fixed parts");
@@ -3645,9 +1856,6 @@ describe("email copy", () => {
 `email.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { renderStaffNotification, renderSubmitterConfirmation } from "./index";
-
 const base = {
   formTitle: "Historias <de prueba>",
   subject: "Gracias\r\nBcc: someone@example.com",
@@ -3694,187 +1902,12 @@ describe("renderStaffNotification", () => {
 
 - [ ] **Step 2: Run** `pnpm test src/shared/presentation/email`: fails.
 
-- [ ] **Step 3: Implement.** `copy.ts`:
-
-```ts
-/**
- * Fixed parts of the two emails. The text is owned by specs/ui-ux/renderer.md
- * ("Confirmation email, fixed parts") and specs/system/email.md ("Staff
- * notification, fixed parts"); copy.test.ts keeps these equal to those rows.
- */
-export const confirmationParts = {
-  Preheader: {
-    en: "Your response to {form title} was received",
-    es: "Recibimos tu respuesta a {form title}",
-  },
-  "Footer line 1": {
-    en: 'You received this email because you submitted "{form title}" on {date}. Reference {ref}.',
-    es: 'Recibes este correo porque enviaste "{form title}" el {date}. Referencia {ref}.',
-  },
-  "Footer line 2": {
-    en: "Effluz stores your answers in the United States for {retention} months. To ask for earlier deletion, reply to this email or write to {contact}.",
-    es: "Effluz guarda tus respuestas en Estados Unidos durante {retention} meses. Para pedir que se eliminen antes, responde a este correo o escribe a {contact}.",
-  },
-} as const;
-
-export const staffParts = {
-  Subject: "New submission to {form title}: {ref}",
-  Preheader: "{form title} received submission {ref}",
-  Intro: "{form title} received a new submission.",
-  Reference: "Reference: {ref}",
-  Received: "Received: {date}",
-  Link: "Open it in the manager: {link}",
-  Footer: "This email carries no answers or files. Sign in to the manager to see them.",
-} as const;
-
-/** Replaces `{name}` placeholders, names may hold spaces; the result is text, never markup. */
-export function fillTemplate(text: string, vars: Readonly<Record<string, string>>): string {
-  return text.replace(/\{([a-z][a-z ]*)\}/g, (whole, key: string) => vars[key] ?? whole);
-}
-```
-
-`layout.ts`:
-
-```ts
-import { escapeHtml } from "../rich-text-html";
-
-// Values from design-system/tokens.json.
-const TEXT = "#372549"; // color.text.default
-const MUTED = "#774C60"; // color.text.muted
-const PAGE = "#FFF3EF"; // color.surface.page.public
-const CARD = "#FFFFFF"; // color.surface.card
-const BORDER = "#EFF0F5"; // color.border.default
-const FONT = "Poppins, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"; // font.family.sans
-
-export const BODY_STYLE = { paragraph: `margin:0 0 16px;font:17px/1.6 ${FONT};color:${TEXT}`, link: `color:${TEXT};text-decoration:underline` };
-
-/** A table-based, inline-styled document; every argument but `bodyHtml` is plain text. */
-export function emailDocument(input: {
-  lang: "en" | "es";
-  title: string;
-  preheader: string;
-  bodyHtml: string;
-  footer: readonly string[];
-}): string {
-  const footer = input.footer
-    .map((line) => `<p style="margin:0 0 8px;font:15px/1.5 ${FONT};color:${MUTED}">${escapeHtml(line)}</p>`)
-    .join("");
-  return [
-    `<!doctype html><html lang="${input.lang}"><head><meta charset="utf-8">`,
-    '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    `<title>${escapeHtml(input.title)}</title></head>`,
-    `<body style="margin:0;padding:0;background:${PAGE}">`,
-    `<span style="display:none;max-height:0;overflow:hidden">${escapeHtml(input.preheader)}</span>`,
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${PAGE}"><tr><td align="center" style="padding:24px 16px">`,
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:${CARD};border:1px solid ${BORDER};border-radius:12px">`,
-    `<tr><td style="padding:24px">${input.bodyHtml}</td></tr>`,
-    `<tr><td style="padding:0 24px 24px">${footer}</td></tr>`,
-    "</table></td></tr></table></body></html>",
-  ].join("");
-}
-```
-
-`confirmation.ts`:
-
-```ts
-import { parseRichText, richTextToPlain } from "@/shared/domain/rich-text";
-import { richTextToHtml } from "../rich-text-html";
-import { confirmationParts, fillTemplate } from "./copy";
-import { BODY_STYLE, emailDocument } from "./layout";
-
-/** Structural twin of notifications' SubmitterConfirmationData; shared may not import modules. */
-export interface ConfirmationEmailData {
-  locale: "en" | "es";
-  formTitle: string;
-  subject: string;
-  body: string;
-  receivedOn: string;
-  reference: string;
-  retentionMonths: number;
-  contact: string;
-}
-
-export interface EmailParts {
-  subject: string;
-  text: string;
-  html: string;
-}
-
-/** The submitter confirmation: staff subject and body inside the fixed parts. */
-export function renderSubmitterConfirmation(d: ConfirmationEmailData): EmailParts {
-  const vars = {
-    "form title": d.formTitle,
-    date: d.receivedOn,
-    ref: d.reference,
-    retention: String(d.retentionMonths),
-    contact: d.contact,
-  };
-  const preheader = fillTemplate(confirmationParts.Preheader[d.locale], vars);
-  const footer = [
-    fillTemplate(confirmationParts["Footer line 1"][d.locale], vars),
-    fillTemplate(confirmationParts["Footer line 2"][d.locale], vars),
-  ];
-  const blocks = parseRichText(d.body);
-  const subject = d.subject.replace(/[\r\n]+/g, " ").trim();
-  return {
-    subject,
-    text: [preheader, "", richTextToPlain(blocks), "", "--", ...footer].join("\n"),
-    html: emailDocument({ lang: d.locale, title: subject, preheader, bodyHtml: richTextToHtml(blocks, BODY_STYLE), footer }),
-  };
-}
-```
-
-`staff-notification.ts`:
-
-```ts
-import { escapeHtml } from "../rich-text-html";
-import { fillTemplate, staffParts } from "./copy";
-import { BODY_STYLE, emailDocument } from "./layout";
-import type { EmailParts } from "./confirmation";
-
-/** Structural twin of notifications' StaffNotificationData. */
-export interface StaffEmailData {
-  formTitle: string;
-  reference: string;
-  receivedAt: string;
-  link: string;
-}
-
-/** The staff notification: English, no answers, no files. See specs/system/email.md. */
-export function renderStaffNotification(d: StaffEmailData): EmailParts {
-  const vars = { "form title": d.formTitle, ref: d.reference, date: d.receivedAt, link: d.link };
-  const lines = [staffParts.Intro, staffParts.Reference, staffParts.Received].map((t) => fillTemplate(t, vars));
-  const linkLabel = fillTemplate(staffParts.Link, { ...vars, link: "" }).trim();
-  const p = (text: string) => `<p style="${BODY_STYLE.paragraph}">${escapeHtml(text)}</p>`;
-  const bodyHtml =
-    lines.map(p).join("") +
-    `<p style="${BODY_STYLE.paragraph}">${escapeHtml(linkLabel)} <a href="${escapeHtml(d.link)}" style="${BODY_STYLE.link}">${escapeHtml(d.link)}</a></p>`;
-  const subject = fillTemplate(staffParts.Subject, vars).replace(/[\r\n]+/g, " ");
-  const preheader = fillTemplate(staffParts.Preheader, vars);
-  return {
-    subject,
-    text: [preheader, "", ...lines, fillTemplate(staffParts.Link, vars), "", "--", staffParts.Footer].join("\n"),
-    html: emailDocument({ lang: "en", title: subject, preheader, bodyHtml, footer: [staffParts.Footer] }),
-  };
-}
-```
-
-`index.ts`:
-
-```ts
-export type { ConfirmationEmailData, EmailParts } from "./confirmation";
-export type { StaffEmailData } from "./staff-notification";
-export { renderSubmitterConfirmation } from "./confirmation";
-export { renderStaffNotification } from "./staff-notification";
-import { renderSubmitterConfirmation } from "./confirmation";
-import { renderStaffNotification } from "./staff-notification";
-
-/** Satisfies notifications' EmailRenderer structurally; wired at the composition root. */
-export const emailTemplates = {
-  submitterConfirmation: renderSubmitterConfirmation,
-  staffNotification: renderStaffNotification,
-};
-```
+- [ ] **Step 3: Implement.**
+  - `copy.ts` (header names the owning spec tables; `copy.test.ts` keeps them equal): transcribe every row of `renderer.md`, "Confirmation email, fixed parts" into `confirmationParts` (`{ en, es }` per part) and every row of `email.md`, "Staff notification, fixed parts" into `staffParts`, `as const`. `fillTemplate` replaces `/\{([a-z][a-z ]*)\}/g` with the variable or leaves the placeholder; the result is text, never markup.
+  - `layout.ts`: colors from `design-system/tokens.json`, each named in a comment: text `color.text.default` (#372549), muted `color.text.muted` (#774C60), page `color.surface.page.public` (#FFF3EF), card `color.surface.card` (#FFFFFF), border `color.border.default` (#EFF0F5); font stack `font.family.sans`. `BODY_STYLE.paragraph` is `margin:0 0 16px;font:17px/1.6 <font>;color:<text>`, `BODY_STYLE.link` is `color:<text>;text-decoration:underline`. `emailDocument` writes `<!doctype html><html lang>`, a charset and viewport meta, the escaped `<title>`, a hidden preheader span, an outer presentation table on the page color and an inner one (`max-width:640px`, card color, 1 px border, 12 px radius) holding `bodyHtml` and the escaped footer lines in the muted color at 15 px. Every argument but `bodyHtml` is escaped.
+  - `renderSubmitterConfirmation`: variables `form title`, `date` (= `receivedOn`), `ref`, `retention`, `contact`; the subject is the staff subject with `[\r\n]+` collapsed to a space and trimmed; text is preheader, blank line, `richTextToPlain(body)`, blank line, `--`, the two footer lines; HTML is `emailDocument` with `richTextToHtml(body, BODY_STYLE)`.
+  - `renderStaffNotification`: variables `form title`, `ref`, `date` (= `receivedAt`), `link`; body paragraphs Intro, Reference, Received, then the Link label followed by `<a href>` of the escaped link; text lists the same lines and the filled Link line, then `--` and the Footer; `lang="en"`.
+  - `index.ts` exports both renderers, their types, and `emailTemplates` (comment: satisfies notifications' `EmailRenderer` structurally; wired at the composition root).
 
 - [ ] **Step 4: Run** `pnpm test src/shared/presentation/email`; read the two written snapshots in `__snapshots__/email.test.ts.snap` once and confirm both locales read correctly with no placeholders left; then `pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 5: Commit** `feat(shared): confirmation and staff notification email templates, snapshot-tested per locale`
@@ -3922,64 +1955,11 @@ create table email_delivery (
 
 Decision (local email): `MailpitEmailSender` posts to Mailpit's `POST /api/v1/send`, which returns an `ID`, so the local path exercises the same message-id bookkeeping as SMTP2GO.
 
-- [ ] **Step 1: The stub server** `tests/fakes/http-stub.ts`:
-
-```ts
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
-
-export interface StubRequest {
-  method: string;
-  path: string;
-  headers: Record<string, string>;
-  body: string;
-}
-
-export interface HttpStub {
-  url: string;
-  requests: StubRequest[];
-  reply(status: number, body: unknown): void;
-  close(): Promise<void>;
-}
-
-/** A JSON HTTP stub: records requests and answers with queued replies, then 200 {}. */
-export async function startHttpStub(): Promise<HttpStub> {
-  const requests: StubRequest[] = [];
-  const replies: { status: number; body: unknown }[] = [];
-  const server = createServer((req, res) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c: Buffer) => chunks.push(c));
-    req.on("end", () => {
-      requests.push({
-        method: req.method ?? "",
-        path: req.url ?? "",
-        headers: Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, String(v)])),
-        body: Buffer.concat(chunks).toString("utf8"),
-      });
-      const next = replies.shift() ?? { status: 200, body: {} };
-      res.writeHead(next.status, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(next.body));
-    });
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address() as AddressInfo;
-  return {
-    url: `http://127.0.0.1:${String(port)}`,
-    requests,
-    reply: (status, body) => {
-      replies.push({ status, body });
-    },
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
-  };
-}
-```
+- [ ] **Step 1: The stub server** `tests/fakes/http-stub.ts`: a `node:http` server on `127.0.0.1:0` that records every request (method, path, headers stringified, UTF-8 body) and answers JSON with the next queued `reply(status, body)`, or 200 `{}` when none is queued.
 
 - [ ] **Step 2: Failing tests.** `mailbox.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { parseMailbox } from "./mailbox";
-
 describe("parseMailbox", () => {
   it("reads a display name and address, or a bare address", () => {
     expect(parseMailbox("Effluz Forms <forms@forms.example.com>")).toEqual({ name: "Effluz Forms", email: "forms@forms.example.com" });
@@ -3991,10 +1971,6 @@ describe("parseMailbox", () => {
 `tests/integration/notifications/smtp2go-email-sender.test.ts`:
 
 ```ts
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Smtp2goEmailSender } from "@/modules/notifications/infrastructure/smtp2go-email-sender";
-import { startHttpStub, type HttpStub } from "../../fakes/http-stub";
-
 const message = { to: ["family@example.com"], subject: "Gracias", text: "Hola", html: "<p>Hola</p>" };
 
 describe("Smtp2goEmailSender", () => {
@@ -4042,194 +2018,17 @@ describe("Smtp2goEmailSender", () => {
 });
 ```
 
-`tests/integration/notifications/mailpit-email-sender.test.ts`:
+`tests/integration/notifications/mailpit-email-sender.test.ts`, "sends through Mailpit's API and returns its message id": with the stub replying 200 `{ ID: "mailpit-1" }`, a sender `{ url: stub.url, from: "Effluz Forms <forms@forms.example.com>", replyTo: "team@example.com" }` sending `{ to: ["a@example.com", "b@example.com"], subject: "S", text: "T", html: "<p>H</p>" }` returns `{ providerMessageId: "mailpit-1" }`, posts to `/api/v1/send`, and its JSON body equals `{ From: { Email: "forms@forms.example.com", Name: "Effluz Forms" }, To: [{ Email: "a@example.com" }, { Email: "b@example.com" }], ReplyTo: [{ Email: "team@example.com" }], Subject: "S", Text: "T", HTML: "<p>H</p>" }`.
 
-```ts
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MailpitEmailSender } from "@/modules/notifications/infrastructure/mailpit-email-sender";
-import { startHttpStub, type HttpStub } from "../../fakes/http-stub";
-
-describe("MailpitEmailSender", () => {
-  let stub: HttpStub;
-  beforeEach(async () => {
-    stub = await startHttpStub();
-  });
-  afterEach(() => stub.close());
-
-  it("sends through Mailpit's API and returns its message id", async () => {
-    stub.reply(200, { ID: "mailpit-1" });
-    const sender = new MailpitEmailSender({ url: stub.url, from: "Effluz Forms <forms@forms.example.com>", replyTo: "team@example.com" });
-    expect(await sender.send({ to: ["a@example.com", "b@example.com"], subject: "S", text: "T", html: "<p>H</p>" })).toEqual({ providerMessageId: "mailpit-1" });
-    expect(stub.requests[0]?.path).toBe("/api/v1/send");
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
-      From: { Email: "forms@forms.example.com", Name: "Effluz Forms" },
-      To: [{ Email: "a@example.com" }, { Email: "b@example.com" }],
-      ReplyTo: [{ Email: "team@example.com" }],
-      Subject: "S",
-      Text: "T",
-      HTML: "<p>H</p>",
-    });
-  });
-});
-```
-
-`tests/integration/notifications/pg-delivery-log.test.ts`:
-
-```ts
-import { beforeEach, describe, expect, it } from "vitest";
-import { PgDeliveryLog } from "@/modules/notifications/infrastructure/pg-delivery-log";
-import { testPool, truncateAll } from "../db";
-
-describe("PgDeliveryLog", () => {
-  const pool = testPool();
-  const log = new PgDeliveryLog(pool);
-  beforeEach(() => truncateAll(pool));
-
-  it("records a key once and finds it", async () => {
-    expect(await log.find("email.staff_notification:s1")).toBeNull();
-    await log.record("email.staff_notification:s1", "msg-1", new Date());
-    await log.record("email.staff_notification:s1", "msg-2", new Date());
-    expect(await log.find("email.staff_notification:s1")).toBe("msg-1");
-  });
-});
-```
+`tests/integration/notifications/pg-delivery-log.test.ts`, "records a key once and finds it": `find("email.staff_notification:s1")` is null; after `record(…, "msg-1")` and `record(…, "msg-2")` it is `msg-1`.
 
 - [ ] **Step 3: Run** `pnpm test src/modules/notifications && pnpm test:integration tests/integration/notifications`: fails.
 
-- [ ] **Step 4: Implement.** `mailbox.ts`:
-
-```ts
-/** "Name <address>" or a bare address, as configured in EMAIL_FROM. */
-export function parseMailbox(value: string): { name: string | null; email: string } {
-  const match = /^\s*(.*?)\s*<([^<>\s]+)>\s*$/.exec(value);
-  if (match?.[2] !== undefined) return { name: match[1] ? match[1] : null, email: match[2] };
-  return { name: null, email: value.trim() };
-}
-```
-
-`smtp2go-email-sender.ts`:
-
-```ts
-import { EmailSendError, type EmailSender, type OutgoingEmail } from "../application/ports/email-sender";
-
-interface Smtp2goResponse {
-  data?: { succeeded?: number; failed?: number; email_id?: string; error_code?: string };
-}
-
-/**
- * SMTP2GO's HTTP API (ADR 0006). Retryable: network errors, 401, 403, 429, 5xx.
- * Permanent: a 400, or a 200 reporting a failed recipient. Messages carry
- * provider codes and statuses only, never addresses. See specs/system/email.md.
- */
-export class Smtp2goEmailSender implements EmailSender {
-  private readonly fetch: typeof fetch;
-
-  constructor(
-    private readonly config: { apiKey: string; apiUrl: string; from: string; replyTo: string; fetch?: typeof fetch },
-  ) {
-    this.fetch = config.fetch ?? globalThis.fetch;
-  }
-
-  async send(email: OutgoingEmail): Promise<{ providerMessageId: string }> {
-    let res: Response;
-    try {
-      res = await this.fetch(`${this.config.apiUrl}/email/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json", "X-Smtp2go-Api-Key": this.config.apiKey },
-        body: JSON.stringify({
-          sender: this.config.from,
-          to: email.to,
-          subject: email.subject,
-          text_body: email.text,
-          html_body: email.html,
-          custom_headers: [{ header: "Reply-To", value: this.config.replyTo }],
-        }),
-      });
-    } catch {
-      throw new EmailSendError("smtp2go is unreachable", false);
-    }
-    const body = (await res.json().catch(() => null)) as Smtp2goResponse | null;
-    if (res.status === 400) {
-      throw new EmailSendError(`smtp2go refused the message (${body?.data?.error_code ?? "no code"})`, true);
-    }
-    if (!res.ok) throw new EmailSendError(`smtp2go failed with ${String(res.status)}`, false);
-    const id = body?.data?.email_id;
-    if ((body?.data?.succeeded ?? 0) < 1 || id === undefined) {
-      throw new EmailSendError("smtp2go rejected the recipient", true);
-    }
-    return { providerMessageId: id };
-  }
-}
-```
-
-`mailpit-email-sender.ts`:
-
-```ts
-import { EmailSendError, type EmailSender, type OutgoingEmail } from "../application/ports/email-sender";
-import { parseMailbox } from "./mailbox";
-
-/** Local development only: Mailpit's send API (specs/system/email.md, "Local development"). */
-export class MailpitEmailSender implements EmailSender {
-  private readonly fetch: typeof fetch;
-
-  constructor(private readonly config: { url: string; from: string; replyTo: string; fetch?: typeof fetch }) {
-    this.fetch = config.fetch ?? globalThis.fetch;
-  }
-
-  async send(email: OutgoingEmail): Promise<{ providerMessageId: string }> {
-    const from = parseMailbox(this.config.from);
-    let res: Response;
-    try {
-      res = await this.fetch(`${this.config.url}/api/v1/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          From: from.name === null ? { Email: from.email } : { Email: from.email, Name: from.name },
-          To: email.to.map((address) => ({ Email: address })),
-          ReplyTo: [{ Email: this.config.replyTo }],
-          Subject: email.subject,
-          Text: email.text,
-          HTML: email.html,
-        }),
-      });
-    } catch {
-      throw new EmailSendError("mailpit is unreachable", false);
-    }
-    if (!res.ok) throw new EmailSendError(`mailpit failed with ${String(res.status)}`, res.status === 400);
-    const { ID } = (await res.json()) as { ID: string };
-    return { providerMessageId: ID };
-  }
-}
-```
-
-`pg-delivery-log.ts`:
-
-```ts
-import { randomUUID } from "node:crypto";
-import type { Pool } from "pg";
-import type { DeliveryLog } from "../application/ports/delivery-log";
-
-/** The `email_delivery` table: one row per sent message, first write wins. */
-export class PgDeliveryLog implements DeliveryLog {
-  constructor(private readonly pool: Pool) {}
-
-  async find(key: string): Promise<string | null> {
-    const { rows } = await this.pool.query<{ provider_message_id: string }>(
-      "select provider_message_id from email_delivery where delivery_key = $1",
-      [key],
-    );
-    return rows[0]?.provider_message_id ?? null;
-  }
-
-  async record(key: string, providerMessageId: string, at: Date): Promise<void> {
-    await this.pool.query(
-      `insert into email_delivery (id, delivery_key, provider_message_id, created_at, updated_at)
-       values ($1, $2, $3, $4, $4) on conflict (delivery_key) do nothing`,
-      [randomUUID(), key, providerMessageId, at],
-    );
-  }
-}
-```
+- [ ] **Step 4: Implement.**
+  - `parseMailbox`: `/^\s*(.*?)\s*<([^<>\s]+)>\s*$/` gives name (null when empty) and address; anything else is a bare trimmed address.
+  - `Smtp2goEmailSender.send` (doc comment: ADR 0006; messages carry provider codes and statuses only, never addresses): POST `<apiUrl>/email/send` with `X-Smtp2go-Api-Key` and the JSON body the test shows (`sender` is `EMAIL_FROM` as configured). A thrown `fetch` is `EmailSendError("smtp2go is unreachable", false)`; 400 is permanent `smtp2go refused the message (<error_code or "no code">)`; other non-2xx is retryable `smtp2go failed with <status>` (this covers 401, 403, 429 and 5xx); a 200 with `succeeded < 1` or no `email_id` is permanent `smtp2go rejected the recipient`.
+  - `MailpitEmailSender.send`: POST `<url>/api/v1/send` with the JSON body the test shows (`From.Name` only when the mailbox has one); unreachable is retryable; a non-2xx is `mailpit failed with <status>`, permanent only for 400; returns `ID`.
+  - `PgDeliveryLog`: `find` selects `provider_message_id` by `delivery_key`; `record` inserts with a random id and `created_at = updated_at = at`, `on conflict (delivery_key) do nothing`, so the first write wins.
 
 - [ ] **Step 5: Run** `pnpm test src/modules/notifications && pnpm test:integration tests/integration/notifications && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 6: Commit** `feat(notifications): SMTP2GO and Mailpit senders and the email delivery log`
@@ -4240,11 +2039,11 @@ export class PgDeliveryLog implements DeliveryLog {
 
 **Files:**
 - Create: `src/modules/definitions/domain/reference.ts`, `reference.test.ts`, `src/modules/definitions/application/public-form.ts`, `public-form.test.ts`, `src/modules/definitions/infrastructure/migrations/0008_form_reference_counter.sql`
-- Modify: `src/modules/definitions/domain/form.ts` (+ `publicState`), `form.test.ts`, `application/ports/form-repository.ts` (+ `takeReferenceNumber`), `infrastructure/pg-form-repository.ts`, `application/testing/fakes.ts` (counter, `seedPublished`), `application/index.ts`
+- Modify: `src/modules/definitions/domain/form.ts` (+ `publicState`), `form.test.ts`, `application/ports/form-repository.ts` (+ `takeReferenceNumber`), `infrastructure/pg-form-repository.ts`, `application/testing/fakes.ts` (counter, `seedPublished`, `publishAgain`), `application/index.ts`
 - Test: `tests/integration/definitions/allocate-reference.test.ts`
 
 **Interfaces:**
-- Consumes: `Form`, `reachability`, `FormRepository`, `VersionRepository`, `DefinitionsDeps` (existing).
+- Consumes: `Form`, `reachability`, `FormRepository` (with `findForUpdate`), `VersionRepository`, `DefinitionsDeps` (existing).
 - Produces:
 
 ```ts
@@ -4254,7 +2053,8 @@ export function formatReference(prefix: string, n: number): string;     // "HP-0
 export type PublicState = "open" | "closed" | "not_open_yet" | "not_found";
 export function publicState(form: Form, now: Date): PublicState;
 // ports/form-repository.ts
-takeReferenceNumber(uow: UnitOfWork, formId: string): Promise<number>;   // returns the number taken and advances the counter
+/** Takes the form's next reference number and advances the counter; the caller holds the form row lock. Never touches updated_at. */
+takeReferenceNumber(uow: UnitOfWork, formId: string): Promise<number>;
 // application/public-form.ts
 export type PublicFormResult =
   | { state: "open"; form: Form; version: FormVersion }
@@ -4275,7 +2075,7 @@ export function publishAgain(deps: FakeDefinitionsDeps, formId: string, document
 
 Public states from the form: never published, or archived without a version, is `not_found`; `closed`, archived after publishing, and past the close date are `closed`; before the open date is `not_open_yet`; otherwise `open`.
 
-Decision (reference sequence): `form.next_reference` (starts at 1) is advanced only by `allocateReference`, which locks the form row with `findForUpdate`, decides `publicState` again on the locked row (so a close that commits first wins), and takes the number in the same unit of work as the submission, so a rolled-back intake gives its number back. `submissions` never writes a `definitions` table. Decision (resolving `/f/<slug>`): `resolvePublicForm`, `loadVersion` and `loadForm` are read use cases for the renderer; `shareInfo` stays admin-only.
+Decision (reference sequence, ADR 0025): `form.next_reference` (starts at 1) is advanced only by `allocateReference`, which locks the form row with `findForUpdate`, decides `publicState` again on the locked row (so a close that commits first wins), and takes the number in the same unit of work as the submission, so a rolled-back intake gives its number back. Taking a number leaves `form.updated_at` alone: a submission is not a form edit, and the manager's "last edited" must not move. `submissions` never writes a `definitions` table. Decision (resolving `/f/<slug>`): `resolvePublicForm`, `loadVersion` and `loadForm` are read use cases for the renderer; `shareInfo` stays admin-only.
 
 Migration `0008_form_reference_counter.sql` (exact):
 
@@ -4287,9 +2087,6 @@ alter table form add column next_reference integer not null default 1 check (nex
 - [ ] **Step 1: Failing tests.** `reference.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { formatReference } from "./reference";
-
 describe("formatReference", () => {
   it("pads to four digits and grows past them", () => {
     expect(formatReference("HP", 1)).toBe("HP-0001");
@@ -4298,7 +2095,7 @@ describe("formatReference", () => {
 });
 ```
 
-Append to `form.test.ts`:
+Append to `form.test.ts`, with the helper `sampleFormForState(patch)` at the top (a draft `Form` with id `00000000-0000-4000-8000-000000000001`, slug `sample-form`, title `{ en: "Sample" }`, `languages: "en"`, `defaultSettings("sample-form")`, no current version, not archived, both timestamps `2026-10-01T00:00:00Z`, then `...patch`):
 
 ```ts
 describe("publicState", () => {
@@ -4316,118 +2113,15 @@ describe("publicState", () => {
 });
 ```
 
-with this helper at the top of `form.test.ts` (import `defaultSettings` from `./settings` and the `Form` type from `./form`):
+`public-form.test.ts`, with `document(title = "Stories")` parsing an English draft (confirmation `Thanks`, one page `page_one` with a `short_text` `f_name` labelled `Name`) and each case on fresh `makeDefinitionsDeps()`:
+- `resolvePublicForm`, "returns the current version of an open form, and the state otherwise": after `seedPublished({ slug: "spring-stories", document: document() })` the slug resolves to `open` with that version id; `missing-form` is `{ state: "not_found" }`; with the stored form's status set to `closed`, the slug's state is `closed`.
+- `resolvePublicForm`, "gives the open date when not yet open": `later-form` seeded with `opensAt: "2026-12-01T12:00:00.000Z"` matches `{ state: "not_open_yet", opensAt: "2026-12-01T12:00:00.000Z" }`.
+- `loadVersion`, "still returns an older version after a republish": after `publishAgain(deps, formId, document("Stories v2"))`, the first version id still loads with title `{ en: "Stories" }`.
+- `allocateReference`, "hands out the prefix and a sequence per form, and refuses a closed form": seeded with `referencePrefix: "SS"`, two calls in one unit of work give `SS-0001` and `SS-0002`; with the form closed the third is `{ ok: false, state: "closed" }`.
+
+`tests/integration/definitions/allocate-reference.test.ts` builds real `DefinitionsDeps` (`PgFormRepository`, `PgDraftRepository`, `PgVersionRepository`, `NullSubmissionStats`, `PgAuditLog`, `PgAuditLogReader`, `PgUnitOfWorkFactory`, `systemClock`, `systemIdGenerator`, `buildDefaultRegistry()`, `allowedRecipientDomains: ["effluz.com"]`, `publicBaseUrl: "http://localhost:3000"`) and a helper `publishedForm()` that inserts `sampleForm({ status: "published" })` and `sampleVersion(form.id, 1)` from `./factories` and makes the version current. Cases:
 
 ```ts
-function sampleFormForState(patch: Partial<Form>): Form {
-  const at = new Date("2026-10-01T00:00:00Z");
-  return {
-    id: "00000000-0000-4000-8000-000000000001", slug: "sample-form", title: { en: "Sample" }, languages: "en",
-    status: "draft", settings: defaultSettings("sample-form"), currentVersionId: null, currentVersionNumber: null,
-    archivedAt: null, createdAt: at, updatedAt: at, ...patch,
-  };
-}
-```
-
-`public-form.test.ts`:
-
-```ts
-import { describe, expect, it } from "vitest";
-import { parseDraft } from "@/shared/domain/form-model";
-import { allocateReference, loadVersion, resolvePublicForm } from "./public-form";
-import { makeDefinitionsDeps, publishAgain, seedPublished } from "./testing/fakes";
-
-function document(title = "Stories") {
-  const parsed = parseDraft(
-    { languages: "en", title: { en: title }, confirmation: { screen: { en: "Thanks" } }, pages: [{ key: "page_one", fields: [{ key: "f_name", type: "short_text", label: { en: "Name" } }] }] },
-    makeDefinitionsDeps().registry,
-  );
-  if (!parsed.ok) throw new Error("fixture");
-  return parsed.version;
-}
-
-describe("resolvePublicForm", () => {
-  it("returns the current version of an open form, and the state otherwise", async () => {
-    const deps = makeDefinitionsDeps();
-    const { formId, versionId } = await seedPublished(deps, { slug: "spring-stories", document: document() });
-    const open = await resolvePublicForm(deps, "spring-stories");
-    expect(open.state === "open" && open.version.id).toBe(versionId);
-    expect(await resolvePublicForm(deps, "missing-form")).toEqual({ state: "not_found" });
-    const stored = deps.store.forms.get(formId);
-    if (stored) deps.store.forms.set(formId, { ...stored, status: "closed" });
-    expect((await resolvePublicForm(deps, "spring-stories")).state).toBe("closed");
-  });
-
-  it("gives the open date when not yet open", async () => {
-    const deps = makeDefinitionsDeps();
-    await seedPublished(deps, { slug: "later-form", document: document(), settings: { opensAt: "2026-12-01T12:00:00.000Z" } });
-    expect(await resolvePublicForm(deps, "later-form")).toMatchObject({ state: "not_open_yet", opensAt: "2026-12-01T12:00:00.000Z" });
-  });
-});
-
-describe("loadVersion", () => {
-  it("still returns an older version after a republish", async () => {
-    const deps = makeDefinitionsDeps();
-    const { formId, versionId } = await seedPublished(deps, { slug: "spring-stories", document: document() });
-    publishAgain(deps, formId, document("Stories v2"));
-    expect((await loadVersion(deps, versionId))?.document.title).toEqual({ en: "Stories" });
-  });
-});
-
-describe("allocateReference", () => {
-  it("hands out the prefix and a sequence per form, and refuses a closed form", async () => {
-    const deps = makeDefinitionsDeps();
-    const { formId } = await seedPublished(deps, { slug: "spring-stories", document: document(), settings: { referencePrefix: "SS" } });
-    const uow = await deps.uow.begin();
-    expect(await allocateReference(deps, uow, formId)).toMatchObject({ ok: true, reference: "SS-0001" });
-    expect(await allocateReference(deps, uow, formId)).toMatchObject({ ok: true, reference: "SS-0002" });
-    const stored = deps.store.forms.get(formId);
-    if (stored) deps.store.forms.set(formId, { ...stored, status: "closed" });
-    expect(await allocateReference(deps, uow, formId)).toEqual({ ok: false, state: "closed" });
-  });
-});
-```
-
-`tests/integration/definitions/allocate-reference.test.ts`:
-
-```ts
-import { beforeEach, describe, expect, it } from "vitest";
-import { allocateReference } from "@/modules/definitions/application";
-import type { DefinitionsDeps } from "@/modules/definitions/application/deps";
-import { NullSubmissionStats } from "@/modules/definitions/infrastructure/null-submission-stats";
-import { PgDraftRepository } from "@/modules/definitions/infrastructure/pg-draft-repository";
-import { PgFormRepository } from "@/modules/definitions/infrastructure/pg-form-repository";
-import { PgVersionRepository } from "@/modules/definitions/infrastructure/pg-version-repository";
-import { PgAuditLog } from "@/modules/identity/infrastructure/pg-audit-log";
-import { PgAuditLogReader } from "@/modules/identity/infrastructure/pg-audit-log-reader";
-import { buildDefaultRegistry } from "@/shared/domain/form-model";
-import { systemClock } from "@/shared/infrastructure/clock";
-import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
-import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
-import { testPool, truncateAll } from "../db";
-import { sampleForm, sampleVersion } from "./factories";
-
-describe("allocateReference against Postgres", () => {
-  const pool = testPool();
-  const deps: DefinitionsDeps = {
-    forms: new PgFormRepository(pool), drafts: new PgDraftRepository(pool), versions: new PgVersionRepository(pool),
-    stats: new NullSubmissionStats(), audit: new PgAuditLog(), auditReader: new PgAuditLogReader(pool),
-    uow: new PgUnitOfWorkFactory(pool), clock: systemClock, ids: systemIdGenerator, registry: buildDefaultRegistry(),
-    allowedRecipientDomains: ["effluz.com"], publicBaseUrl: "http://localhost:3000",
-  };
-  beforeEach(() => truncateAll(pool));
-
-  async function publishedForm(): Promise<string> {
-    const form = sampleForm({ status: "published" });
-    const version = sampleVersion(form.id, 1);
-    await deps.uow.run(async (uow) => {
-      await deps.forms.insert(uow, form);
-      await deps.versions.insert(uow, version);
-      await deps.forms.update(uow, { ...form, currentVersionId: version.id, currentVersionNumber: 1 });
-    });
-    return form.id;
-  }
-
   it("gives five concurrent intakes five distinct consecutive references", async () => {
     const formId = await publishedForm();
     const results = await Promise.all(
@@ -4448,178 +2142,29 @@ describe("allocateReference against Postgres", () => {
     const next = await deps.uow.run((uow) => allocateReference(deps, uow, formId));
     expect(next.ok && next.reference.endsWith("-0001")).toBe(true);
   });
-});
+
+  it("advances next_reference without touching the form's updated_at", async () => {
+    const formId = await publishedForm();
+    const row = async () =>
+      (await pool.query<{ next_reference: number; updated_at: Date }>("select next_reference, updated_at from form where id = $1", [formId])).rows[0];
+    const before = await row();
+    await deps.uow.run((uow) => allocateReference(deps, uow, formId));
+    const after = await row();
+    expect(after?.next_reference).toBe((before?.next_reference ?? 0) + 1);
+    expect(after?.updated_at).toEqual(before?.updated_at);
+  });
 ```
 
 - [ ] **Step 2: Run** `pnpm test src/modules/definitions && pnpm test:integration tests/integration/definitions`: fails.
 
-- [ ] **Step 3: Implement.** `reference.ts`:
-
-```ts
-/** `<prefix>-<sequence>`, the sequence zero-padded to four digits; specs/form-definition.md, "Submissions". */
-export function formatReference(prefix: string, n: number): string {
-  return `${prefix}-${String(n).padStart(4, "0")}`;
-}
-```
-
-`form.ts`:
-
-```ts
-export type PublicState = "open" | "closed" | "not_open_yet" | "not_found";
-
-/**
- * What the public sees at `/f/<slug>`. A form that never had a version does
- * not exist for the public; one that had one and is archived or closed shows
- * the closed message. See specs/use-cases/fill-and-submit-form.md.
- */
-export function publicState(form: Form, now: Date): PublicState {
-  const r = reachability(form, now);
-  if (r.reachable) return "open";
-  switch (r.reason) {
-    case "draft":
-      return "not_found";
-    case "archived":
-      return form.currentVersionId === null ? "not_found" : "closed";
-    case "closed":
-    case "past_close":
-      return "closed";
-    case "not_open_yet":
-      return "not_open_yet";
-  }
-}
-```
-
-`form-repository.ts`: add
-
-```ts
-  /**
-   * Takes the form's next reference number and advances the counter, inside
-   * the unit of work; the caller holds the form row lock from findForUpdate.
-   */
-  takeReferenceNumber(uow: UnitOfWork, formId: string): Promise<number>;
-```
-
-`pg-form-repository.ts`:
-
-```ts
-  async takeReferenceNumber(uow: UnitOfWork, formId: string): Promise<number> {
-    const { rows } = await txOf(uow).client.query<{ n: number }>(
-      `update form set next_reference = next_reference + 1, updated_at = now()
-        where id = $1 returning next_reference - 1 as n`,
-      [formId],
-    );
-    const n = rows[0]?.n;
-    if (n === undefined) throw new Error(`form ${formId} does not exist`);
-    return n;
-  }
-```
-
-`public-form.ts`:
-
-```ts
-import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
-import { publicState, type Form } from "../domain/form";
-import { formatReference } from "../domain/reference";
-import type { DefinitionsDeps } from "./deps";
-import type { FormVersion } from "./ports/version-repository";
-
-export type PublicFormResult =
-  | { state: "open"; form: Form; version: FormVersion }
-  | { state: "closed"; form: Form }
-  | { state: "not_open_yet"; form: Form; opensAt: string }
-  | { state: "not_found" };
-
-/** The renderer's view of `/f/<slug>`. Read-only; see specs/architecture.md, "Submission data flow". */
-export async function resolvePublicForm(deps: DefinitionsDeps, slug: string): Promise<PublicFormResult> {
-  const form = await deps.forms.findBySlug(slug);
-  if (form === null) return { state: "not_found" };
-  const state = publicState(form, deps.clock.now());
-  if (state === "not_found") return { state };
-  if (state === "closed") return { state, form };
-  if (state === "not_open_yet") return { state, form, opensAt: form.settings.opensAt ?? "" };
-  const version = await deps.versions.findCurrent(form.id);
-  return version === null ? { state: "not_found" } : { state: "open", form, version };
-}
-
-/** A version by id; versions are immutable, so any reader may cache the result. */
-export function loadVersion(deps: DefinitionsDeps, versionId: string): Promise<FormVersion | null> {
-  return deps.versions.findById(versionId);
-}
-
-export function loadForm(deps: DefinitionsDeps, formId: string): Promise<Form | null> {
-  return deps.forms.findById(formId);
-}
-
-export type AllocateReferenceResult =
-  | { ok: true; reference: string; form: Form }
-  | { ok: false; state: "closed" | "not_open_yet" | "not_found" };
-
-/**
- * Inside the intake's unit of work: locks the form row, decides again that
- * the form accepts submissions, and takes the next reference. A form closed
- * by a transaction that committed first refuses. See specs/system/database.md.
- */
-export async function allocateReference(
-  deps: DefinitionsDeps,
-  uow: UnitOfWork,
-  formId: string,
-): Promise<AllocateReferenceResult> {
-  const form = await deps.forms.findForUpdate(uow, formId);
-  if (form === null) return { ok: false, state: "not_found" };
-  const state = publicState(form, deps.clock.now());
-  if (state !== "open") return { ok: false, state };
-  const n = await deps.forms.takeReferenceNumber(uow, formId);
-  return { ok: true, reference: formatReference(form.settings.referencePrefix, n), form };
-}
-```
-
-`testing/fakes.ts`: `InMemoryFormRepository` gains `private readonly counters = new Map<string, number>()` and
-
-```ts
-  takeReferenceNumber(_uow: UnitOfWork, formId: string): Promise<number> {
-    this.store.requireForm(formId);
-    const n = this.counters.get(formId) ?? 1;
-    this.counters.set(formId, n + 1);
-    return Promise.resolve(n);
-  }
-```
-
-and add the two seeding helpers:
-
-```ts
-/** Writes a published form and its version straight into the store; returns both ids. */
-export async function seedPublished(
-  deps: FakeDefinitionsDeps,
-  input: { slug: string; document: Version; settings?: Partial<FormSettings>; status?: FormStatus },
-): Promise<{ formId: string; versionId: string }> {
-  const formId = await seedForm(deps, { slug: input.slug, languages: input.document.languages, title: input.document.title });
-  const versionId = deps.ids.newId();
-  deps.store.versions.set(versionId, {
-    id: versionId, formId, number: 1, document: structuredClone(input.document),
-    publishedAt: deps.clock.now(), publishedBy: EDITOR.email,
-  });
-  const stored = deps.store.forms.get(formId);
-  if (!stored) throw new Error("seedPublished: form missing");
-  deps.store.forms.set(formId, {
-    ...stored, status: input.status ?? "published", currentVersionId: versionId, currentVersionNumber: 1,
-    settings: { ...stored.settings, ...input.settings },
-  });
-  return { formId, versionId };
-}
-
-/** Publishes `document` as the form's next version and makes it current. */
-export function publishAgain(deps: FakeDefinitionsDeps, formId: string, document: Version): string {
-  const stored = deps.store.forms.get(formId);
-  if (!stored) throw new Error("publishAgain: form missing");
-  const number = (stored.currentVersionNumber ?? 0) + 1;
-  const versionId = deps.ids.newId();
-  deps.store.versions.set(versionId, { id: versionId, formId, number, document: structuredClone(document), publishedAt: deps.clock.now(), publishedBy: EDITOR.email });
-  deps.store.forms.set(formId, { ...stored, currentVersionId: versionId, currentVersionNumber: number });
-  return versionId;
-}
-```
-
-(`seedForm` takes `title`, which must be complete for `languages`; the fixtures above pass complete titles.) `index.ts`: export `resolvePublicForm`, `loadVersion`, `loadForm`, `allocateReference`, `formatReference`, `publicState` and the types `PublicFormResult`, `AllocateReferenceResult`, `PublicState`.
+- [ ] **Step 3: Implement.**
+  - `formatReference`: `<prefix>-<n padded to 4>` (`form-definition.md`, "Submissions").
+  - `publicState` maps `reachability(form, now)`: reachable is `open`; reason `draft` is `not_found`; `archived` is `not_found` without a current version and `closed` with one; `closed` and `past_close` are `closed`; `not_open_yet` stays. Doc comment links `fill-and-submit-form.md`.
+  - `PgFormRepository.takeReferenceNumber`: `update form set next_reference = next_reference + 1 where id = $1 returning next_reference - 1 as n` through `txOf(uow)`; no row throws `form <id> does not exist`. The statement does not set `updated_at`.
+  - `resolvePublicForm`: `findBySlug`; null is `not_found`; otherwise the `publicState` result, with `opensAt` from the settings for `not_open_yet`, and for `open` the current version (`findCurrent`; none is `not_found`). `loadVersion` is `versions.findById` (versions are immutable, so callers may cache); `loadForm` is `forms.findById`.
+  - `allocateReference` (doc comment links `database.md`): `findForUpdate(uow, formId)` (null is `not_found`), `publicState` on the locked row, then `takeReferenceNumber` and `formatReference(form.settings.referencePrefix, n)`.
+  - Fakes: `InMemoryFormRepository` keeps a `counters` map; `takeReferenceNumber` requires the form, returns the current counter (default 1) and advances it, leaving the stored form untouched. `seedPublished` calls `seedForm` with the slug, languages and title of the document, stores version 1 (`publishedBy: EDITOR.email`), and sets status (default `published`), the current version and merged settings. `publishAgain` stores the next version number and makes it current.
+  - `index.ts`: export `resolvePublicForm`, `loadVersion`, `loadForm`, `allocateReference`, `formatReference`, `publicState` and the types `PublicFormResult`, `AllocateReferenceResult`, `PublicState`.
 
 - [ ] **Step 4: Run** `pnpm test && pnpm test:integration tests/integration/definitions && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 5: Commit** `feat(definitions): public form lookup, version loading and reference allocation under the form lock`
@@ -4655,16 +2200,7 @@ This ships the manager spec change with the code that binds it, so `src/shared/p
 
 - [ ] **Step 3: Run** `pnpm test src/shared/presentation src/modules/definitions/presentation`: the copy test fails (spec row without binding) and the new test fails.
 
-- [ ] **Step 4: Implement.** `src/shared/presentation/copy.ts`, after `set.challenge_hint`:
-
-```ts
-  "set.challenge_unavailable": {
-    en: "Not available yet: forms show no bot check even when this is on.",
-    es: "Aún no está disponible: los formularios no muestran la verificación aunque esté activada.",
-  },
-```
-
-`SettingsForm.tsx`, Protection section: the checkbox's `aria` call becomes `aria("challenge", [id("challenge", "hint"), id("challenge", "unavailable")])`, and after `{hint("challenge", "set.challenge_hint")}` add `{hint("challenge", "set.challenge_unavailable", "unavailable")}`.
+- [ ] **Step 4: Implement.** `src/shared/presentation/copy.ts`, after `set.challenge_hint`, binds the row (both languages as in Step 1). `SettingsForm.tsx`, Protection section: the checkbox's `aria` call becomes `aria("challenge", [id("challenge", "hint"), id("challenge", "unavailable")])`, and after `{hint("challenge", "set.challenge_hint")}` add `{hint("challenge", "set.challenge_unavailable", "unavailable")}`.
 
 - [ ] **Step 5: Run** `pnpm test && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 6: Commit** `feat(definitions): note in Settings that the bot challenge is not available yet`
@@ -4678,16 +2214,18 @@ This ships the manager spec change with the code that binds it, so `src/shared/p
 - Test: `in-progress.test.ts`, `navigation.test.ts`, `locale.test.ts`, `protection.test.ts`, `intake.test.ts` beside them
 
 **Interfaces:**
-- Consumes: `validatePage`, `visiblePages`, `UploadLimits` (Task 4); form model exports.
+- Consumes: `validatePage`, `visiblePages`, `UploadLimits`, `asKey` (Task 4 and the form model).
 - Produces:
 
 ```ts
 // in-progress.ts
 export const IN_PROGRESS_TTL_MS = 86_400_000;
 export type RawValues = Record<string, string | string[]>;
-export type FileIssueCode = "file_too_large" | "file_wrong_type" | "file_unreadable" | "upload_failed";
-export interface FileIssue { fieldKey: string; code: FileIssueCode; file: string }
-export interface PendingPage { pageKey: string; raw: RawValues; issues: ValidationIssue[]; fileIssues: FileIssue[] }
+export type FileIssueCode = "file_too_large" | "file_wrong_type" | "file_unreadable" | "upload_failed" | "submission_too_large";
+/** A refused file of a post without script: the browser's name, carried in that post's own answer only, never stored. */
+export interface RefusedFile { fieldKey: string; code: FileIssueCode; name: string }
+/** The last refused post of a page: what was typed and why it was refused. No file is named. */
+export interface PendingPage { pageKey: string; raw: RawValues; issues: ValidationIssue[] }
 /** Structural twin of media's StagedFile; a domain may not import another module. */
 export interface StagedUpload { id: string; stagingRef: string; kind: "image" | "video"; contentType: string; size: number }
 export interface InProgress {
@@ -4701,6 +2239,7 @@ export function isExpired(record: Pick<InProgress, "expiresAt">, now: Date): boo
 export function clampStartedAt(renderedAt: Date | null, now: Date): Date;
 export function withFileAnswers(answers: Readonly<Record<string, unknown>>, files: Readonly<Record<string, readonly StagedUpload[]>>): Record<string, unknown>;
 export function removeUpload(files: Readonly<Record<string, readonly StagedUpload[]>>, fileId: string): { files: Record<string, StagedUpload[]>; removed: StagedUpload | null };
+export function stagedBytes(files: Readonly<Record<string, readonly StagedUpload[]>>): number;   // sum of sizes across fields
 // navigation.ts
 export function visiblePageKeys(version: Version, answers: Readonly<Record<string, unknown>>, registry: FieldTypeRegistry): string[];
 export function firstPageKey(version: Version, registry: FieldTypeRegistry): string;
@@ -4713,6 +2252,7 @@ export function localeFor(languages: Languages, wanted: Locale): Locale;        
 // protection.ts
 export const MIN_FILL_MS = 3_000;
 export const HONEYPOT_FIELD = "website-url";
+export function isHoneypotFilled(honeypot: string): boolean;
 export function isSilentAccept(input: { honeypot: string; startedAt: Date; now: Date }): boolean;
 export function decoyReference(prefix: string, random: () => number): string;
 // dates.ts
@@ -4736,87 +2276,18 @@ export const CONSENT_TEXT: LocalizedText;
 export function storyVersion(): Version;   // three pages: contact (name, submitter email, has_baby), baby (photos, shown when has_baby = yes_opt), consent
 ```
 
-Decision (minimum fill time): 3 seconds from the page 1 render; `clampStartedAt` turns the first post's `_rendered` value into `started_at`, never in the future and never older than 24 hours, and an absent or unreadable value into the time of that post. Decision (honeypot): the input `website-url`; any non-blank value is a silent accept.
+Decision (minimum fill time): 3 seconds from the page 1 render; `clampStartedAt` turns the first post's `_rendered` value into `started_at`, never in the future and never older than 24 hours, and an absent or unreadable value into the time of that post. Decision (honeypot): the input `website-url`; any non-blank value is a silent accept, checked on every post (Task 19 and Task 21). Decision (original filename never persisted): a refused file's name lives only in `RefusedFile`, which the post's own answer renders (Tasks 19, 28). `PendingPage` stores the typed values and the validation issues and nothing about refused files: such a file was never staged, so there is nothing to show about it later.
 
-- [ ] **Step 1: The test fixture** `src/modules/submissions/domain/testing/versions.ts`:
-
-```ts
-import { buildDefaultRegistry, consentItems, parseDraft, type Version } from "@/shared/domain/form-model";
-import type { LocalizedText } from "@/shared/domain/localized-text";
-
-/** Synthetic three-page form shared by the submissions tests. */
-export const registry = buildDefaultRegistry();
-
-export const CONSENT_TEXT: LocalizedText = {
-  en: "I am an adult and agree that Effluz keeps these synthetic answers for 12 months.",
-  es: "Soy mayor de edad y acepto que Effluz guarde estas respuestas sintéticas durante 12 meses.",
-};
-
-export function storyVersion(): Version {
-  const parsed = parseDraft(
-    {
-      languages: "bilingual",
-      title: { en: "Stories", es: "Historias" },
-      confirmation: {
-        screen: { en: "Thank you.", es: "Gracias." },
-        email: { subject: { en: "Thanks", es: "Gracias" }, body: { en: "We got it.", es: "Lo recibimos." } },
-      },
-      pages: [
-        {
-          key: "page_contact",
-          title: { en: "Contact", es: "Contacto" },
-          fields: [
-            { key: "f_name", type: "short_text", label: { en: "Name", es: "Nombre" }, required: true },
-            { key: "f_email", type: "email", label: { en: "Email", es: "Correo" }, settings: { isSubmitterAddress: true } },
-            {
-              key: "f_baby",
-              type: "single_choice",
-              label: { en: "Baby?", es: "¿Bebé?" },
-              required: true,
-              settings: { options: [{ key: "yes_opt", label: { en: "Yes", es: "Sí" } }, { key: "no_opt", label: { en: "No", es: "No" } }] },
-            },
-          ],
-        },
-        {
-          key: "page_baby",
-          title: { en: "Photos", es: "Fotos" },
-          visibility: { field: "f_baby", op: "equals", value: "yes_opt" },
-          fields: [
-            {
-              key: "f_photos",
-              type: "file_upload",
-              label: { en: "Photos", es: "Fotos" },
-              required: true,
-              validation: [{ rule: "min_files", value: 1 }],
-              settings: { kinds: ["image", "video"], maxFiles: 3, maxSizeMb: 10 },
-            },
-          ],
-        },
-        {
-          key: "page_consent",
-          title: { en: "Consent", es: "Consentimiento" },
-          fields: [
-            { key: "f_consent", type: "consent", label: { en: "Consent", es: "Consentimiento" }, required: true,
-              settings: { text: CONSENT_TEXT, coveredItems: [...consentItems] } },
-          ],
-        },
-      ],
-    },
-    registry,
-  );
-  if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues));
-  return parsed.version;
-}
-```
+- [ ] **Step 1: The test fixture** `src/modules/submissions/domain/testing/versions.ts` (synthetic, shared by the module's tests): `registry = buildDefaultRegistry()`; `CONSENT_TEXT` is `{ en: "I am an adult and agree that Effluz keeps these synthetic answers for 12 months.", es: "Soy mayor de edad y acepto que Effluz guarde estas respuestas sintéticas durante 12 meses." }`; `storyVersion()` parses (and throws on issues) a bilingual draft titled `Stories` / `Historias` with confirmation screen `Thank you.` / `Gracias.` and email subject `Thanks` / `Gracias`, body `We got it.` / `Lo recibimos.`, and three pages:
+  - `page_contact` (`Contact` / `Contacto`): `f_name` `short_text` `Name` / `Nombre`, required; `f_email` `email` `Email` / `Correo` with `isSubmitterAddress: true`; `f_baby` `single_choice` `Baby?` / `¿Bebé?`, required, options `yes_opt` (`Yes` / `Sí`) and `no_opt` (`No` / `No`).
+  - `page_baby` (`Photos` / `Fotos`), visible when `f_baby` equals `yes_opt`: `f_photos` `file_upload` `Photos` / `Fotos`, required, rule `min_files` 1, settings `{ kinds: ["image", "video"], maxFiles: 3, maxSizeMb: 10 }`.
+  - `page_consent` (`Consent` / `Consentimiento`): `f_consent` `consent` `Consent` / `Consentimiento`, required, settings `{ text: CONSENT_TEXT, coveredItems: [...consentItems] }`.
 
 - [ ] **Step 2: Failing tests.** `in-progress.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { clampStartedAt, isExpired, newInProgress, removeUpload, withFileAnswers } from "./in-progress";
-
 const now = new Date("2026-10-10T12:00:00Z");
-const upload = (id: string) => ({ id, stagingRef: `in-progress/r/${id}.jpg`, kind: "image" as const, contentType: "image/jpeg", size: 1 });
+const upload = (id: string, size = 1) => ({ id, stagingRef: `in-progress/r/${id}.jpg`, kind: "image" as const, contentType: "image/jpeg", size });
 
 describe("in-progress record", () => {
   it("lives 24 hours from creation, expiring exactly at the limit", () => {
@@ -4842,79 +2313,22 @@ describe("in-progress record", () => {
     expect(removed?.id).toBe("a");
     expect(removeUpload(files, "zzz").removed).toBeNull();
   });
-});
-```
 
-`navigation.test.ts`:
-
-```ts
-import { describe, expect, it } from "vitest";
-import { firstPageKey, nextPageKey, pagePosition, previousPageKey } from "./navigation";
-import { registry, storyVersion } from "./testing/versions";
-
-describe("navigation", () => {
-  const v = storyVersion();
-  it("skips a hidden page in both directions and in the count", () => {
-    expect(firstPageKey(v, registry)).toBe("page_contact");
-    expect(nextPageKey(v, { f_baby: "no_opt" }, registry, "page_contact")).toBe("page_consent");
-    expect(nextPageKey(v, { f_baby: "yes_opt" }, registry, "page_contact")).toBe("page_baby");
-    expect(previousPageKey(v, { f_baby: "no_opt" }, registry, "page_consent")).toBe("page_contact");
-    expect(nextPageKey(v, {}, registry, "page_consent")).toBeNull();
-    expect(pagePosition(v, { f_baby: "no_opt" }, registry, "page_consent")).toEqual({ n: 2, total: 2 });
-    expect(pagePosition(v, { f_baby: "yes_opt" }, registry, "page_consent")).toEqual({ n: 3, total: 3 });
+  it("sums the staged sizes across fields", () => {
+    expect(stagedBytes({ f_photos: [upload("a", 10), upload("b", 5)], f_video: [upload("c", 100)] })).toBe(115);
+    expect(stagedBytes({})).toBe(0);
   });
 });
 ```
 
-`locale.test.ts`:
-
-```ts
-import { describe, expect, it } from "vitest";
-import { localeFor, pickLocale } from "./locale";
-
-describe("pickLocale", () => {
-  it("uses the form's only language, else the browser's preference, else Spanish", () => {
-    expect(pickLocale("en", "es-PA,es;q=0.9")).toBe("en");
-    expect(pickLocale("bilingual", "fr-FR,en-US;q=0.8,es;q=0.5")).toBe("en");
-    expect(pickLocale("bilingual", "es;q=0.4,en;q=0.9")).toBe("en");
-    expect(pickLocale("bilingual", "de, fr")).toBe("es");
-    expect(pickLocale("bilingual", null)).toBe("es");
-  });
-  it("keeps a wanted locale only when the form offers it", () => {
-    expect(localeFor("bilingual", "en")).toBe("en");
-    expect(localeFor("es", "en")).toBe("es");
-  });
-});
-```
-
-`protection.test.ts`:
-
-```ts
-import { describe, expect, it } from "vitest";
-import { decoyReference, isSilentAccept } from "./protection";
-
-describe("isSilentAccept", () => {
-  const startedAt = new Date("2026-10-10T12:00:00.000Z");
-  it("catches a filled honeypot and anything faster than 3 seconds", () => {
-    expect(isSilentAccept({ honeypot: "http://spam.example", startedAt, now: new Date("2026-10-10T12:05:00Z") })).toBe(true);
-    expect(isSilentAccept({ honeypot: "", startedAt, now: new Date("2026-10-10T12:00:02.999Z") })).toBe(true);
-    expect(isSilentAccept({ honeypot: "  ", startedAt, now: new Date("2026-10-10T12:00:03.000Z") })).toBe(false);
-  });
-  it("makes a four-digit decoy reference with the form's prefix", () => {
-    expect(decoyReference("HP", () => 0)).toBe("HP-1000");
-    expect(decoyReference("HP", () => 0.9999)).toBe("HP-9999");
-  });
-});
-```
+More domain cases:
+- `navigation.test.ts`, "skips a hidden page in both directions and in the count", on `storyVersion()`: `firstPageKey` is `page_contact`; `nextPageKey` from `page_contact` is `page_consent` with `{ f_baby: "no_opt" }` and `page_baby` with `{ f_baby: "yes_opt" }`; `previousPageKey` from `page_consent` with `no_opt` is `page_contact`; `nextPageKey` from `page_consent` with `{}` is null; `pagePosition` of `page_consent` is `{ n: 2, total: 2 }` with `no_opt` and `{ n: 3, total: 3 }` with `yes_opt`.
+- `locale.test.ts`, "uses the form's only language, else the browser's preference, else Spanish": `pickLocale("en", "es-PA,es;q=0.9")` is `en`; `pickLocale("bilingual", …)` is `en` for `fr-FR,en-US;q=0.8,es;q=0.5` and for `es;q=0.4,en;q=0.9`, and `es` for `de, fr` and for null. "keeps a wanted locale only when the form offers it": `localeFor("bilingual", "en")` is `en`; `localeFor("es", "en")` is `es`.
+- `protection.test.ts` (`startedAt = 2026-10-10T12:00:00.000Z`): "catches a filled honeypot and anything faster than 3 seconds" (honeypot `http://spam.example` at 12:05 is true; blank at 12:00:02.999 is true; `"  "` at 12:00:03.000 is false); "calls a honeypot filled only when it holds more than blanks" (`"x"` true, `" \t"` false); "makes a four-digit decoy reference with the form's prefix" (`decoyReference("HP", () => 0)` is `HP-1000`, with `() => 0.9999` `HP-9999`).
 
 `intake.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { firstLanguage, firstPageWithIssue, planFiles, submitterAddress, uploadFields } from "./intake";
-import { todayIn } from "./dates";
-import { registry, storyVersion } from "./testing/versions";
-
 const upload = (id: string) => ({ id, stagingRef: `in-progress/r/${id}.jpg`, kind: "image" as const, contentType: "image/jpeg", size: 1 });
 
 describe("intake planning", () => {
@@ -4929,7 +2343,12 @@ describe("intake planning", () => {
     expect(uploadFields(v, registry).map((u) => [u.field.key, u.limits.maxFiles])).toEqual([["f_photos", 3]]);
     expect(submitterAddress(v, registry, { f_email: "family@example.com" })).toBe("family@example.com");
     expect(submitterAddress(v, registry, {})).toBeNull();
-    expect(firstPageWithIssue(v, [{ code: "consent", field: "f_consent" }, { code: "required", field: "f_photos" }])).toBe("page_baby");
+    expect(
+      firstPageWithIssue(v, [
+        { code: "consent", field: asKey("f_consent") },
+        { code: "required", field: asKey("f_photos") },
+      ]),
+    ).toBe("page_baby");
     expect(firstLanguage("bilingual")).toBe("en");
     expect(firstLanguage("es")).toBe("es");
   });
@@ -4943,295 +2362,14 @@ describe("intake planning", () => {
 
 - [ ] **Step 3: Run** `pnpm test src/modules/submissions/domain`: fails.
 
-- [ ] **Step 4: Implement.** `in-progress.ts`:
-
-```ts
-import type { ValidationIssue } from "@/shared/domain/form-model";
-import type { Locale } from "@/shared/domain/localized-text";
-
-/** In-progress records live 24 hours from creation; specs/use-cases/fill-and-submit-form.md. */
-export const IN_PROGRESS_TTL_MS = 24 * 60 * 60 * 1000;
-
-export type RawValues = Record<string, string | string[]>;
-export type FileIssueCode = "file_too_large" | "file_wrong_type" | "file_unreadable" | "upload_failed";
-/** A refused file of a post without script. `file` is the name the browser sent, kept for the message only. */
-export interface FileIssue {
-  fieldKey: string;
-  code: FileIssueCode;
-  file: string;
-}
-/** The last refused post of a page: what was typed and why it was refused, shown once. */
-export interface PendingPage {
-  pageKey: string;
-  raw: RawValues;
-  issues: ValidationIssue[];
-  fileIssues: FileIssue[];
-}
-export interface StagedUpload {
-  id: string;
-  stagingRef: string;
-  kind: "image" | "video";
-  contentType: string;
-  size: number;
-}
-export interface InProgress {
-  id: string;
-  formId: string;
-  versionId: string;
-  locale: Locale;
-  pageKey: string;
-  answers: Record<string, unknown>;
-  files: Record<string, StagedUpload[]>;
-  pending: PendingPage | null;
-  submitToken: string;
-  startedAt: Date;
-  expiresAt: Date;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export function newInProgress(input: {
-  id: string;
-  formId: string;
-  versionId: string;
-  locale: Locale;
-  pageKey: string;
-  submitToken: string;
-  startedAt: Date;
-  now: Date;
-}): InProgress {
-  const { now, ...rest } = input;
-  return {
-    ...rest,
-    answers: {},
-    files: {},
-    pending: null,
-    expiresAt: new Date(now.getTime() + IN_PROGRESS_TTL_MS),
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-export function isExpired(record: Pick<InProgress, "expiresAt">, now: Date): boolean {
-  return now.getTime() >= record.expiresAt.getTime();
-}
-
-/** The page 1 render time as the start of the minimum fill time; specs/system/security.md. */
-export function clampStartedAt(renderedAt: Date | null, now: Date): Date {
-  if (renderedAt === null || Number.isNaN(renderedAt.getTime())) return now;
-  const earliest = now.getTime() - IN_PROGRESS_TTL_MS;
-  return new Date(Math.min(now.getTime(), Math.max(renderedAt.getTime(), earliest)));
-}
-
-/** The answers with each upload field answered by its staged file ids, in upload order. */
-export function withFileAnswers(
-  answers: Readonly<Record<string, unknown>>,
-  files: Readonly<Record<string, readonly StagedUpload[]>>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...answers };
-  for (const [key, uploads] of Object.entries(files)) out[key] = uploads.map((u) => u.id);
-  return out;
-}
-
-export function removeUpload(
-  files: Readonly<Record<string, readonly StagedUpload[]>>,
-  fileId: string,
-): { files: Record<string, StagedUpload[]>; removed: StagedUpload | null } {
-  let removed: StagedUpload | null = null;
-  const out: Record<string, StagedUpload[]> = {};
-  for (const [key, uploads] of Object.entries(files)) {
-    out[key] = uploads.filter((u) => {
-      if (u.id !== fileId) return true;
-      removed = u;
-      return false;
-    });
-  }
-  return { files: out, removed };
-}
-```
-
-`navigation.ts`:
-
-```ts
-import { visiblePages, type FieldTypeRegistry, type Version } from "@/shared/domain/form-model";
-
-type Answers = Readonly<Record<string, unknown>>;
-
-export function visiblePageKeys(version: Version, answers: Answers, registry: FieldTypeRegistry): string[] {
-  return visiblePages(version, answers, registry).map((p) => p.key);
-}
-
-export function firstPageKey(version: Version, registry: FieldTypeRegistry): string {
-  return visiblePageKeys(version, {}, registry)[0] ?? version.pages[0]?.key ?? "";
-}
-
-export function nextPageKey(version: Version, answers: Answers, registry: FieldTypeRegistry, current: string): string | null {
-  const visible = new Set(visiblePageKeys(version, answers, registry));
-  const index = version.pages.findIndex((p) => p.key === current);
-  return version.pages.slice(index + 1).find((p) => visible.has(p.key))?.key ?? null;
-}
-
-export function previousPageKey(version: Version, answers: Answers, registry: FieldTypeRegistry, current: string): string | null {
-  const visible = new Set(visiblePageKeys(version, answers, registry));
-  const index = version.pages.findIndex((p) => p.key === current);
-  return [...version.pages.slice(0, Math.max(index, 0))].reverse().find((p) => visible.has(p.key))?.key ?? null;
-}
-
-/** "Page n of total" counts visible pages, so it changes when conditions do. */
-export function pagePosition(version: Version, answers: Answers, registry: FieldTypeRegistry, current: string): { n: number; total: number } {
-  const visible = visiblePageKeys(version, answers, registry);
-  const index = visible.indexOf(current);
-  if (index >= 0) return { n: index + 1, total: visible.length };
-  const at = version.pages.findIndex((p) => p.key === current);
-  const before = version.pages.slice(0, Math.max(at, 0)).filter((p) => visible.includes(p.key)).length;
-  return { n: before + 1, total: visible.length + 1 };
-}
-```
-
-`locale.ts`:
-
-```ts
-import { requiredLocales, type Languages, type Locale } from "@/shared/domain/localized-text";
-
-/** Bilingual forms follow the browser, falling back to Spanish; specs/use-cases/fill-and-submit-form.md. */
-export function pickLocale(languages: Languages, acceptLanguage: string | null): Locale {
-  if (languages !== "bilingual") return languages;
-  const ranked = (acceptLanguage ?? "")
-    .split(",")
-    .map((part, order) => {
-      const [tag = "", ...params] = part.trim().split(";");
-      const q = params.map((p) => p.trim()).find((p) => p.startsWith("q="));
-      return { base: tag.toLowerCase().split("-")[0] ?? "", q: q ? Number(q.slice(2)) : 1, order };
-    })
-    .filter((x) => x.base !== "" && x.q > 0)
-    .sort((a, b) => b.q - a.q || a.order - b.order);
-  const hit = ranked.find((x) => x.base === "en" || x.base === "es");
-  return hit ? (hit.base as Locale) : "es";
-}
-
-export function localeFor(languages: Languages, wanted: Locale): Locale {
-  const offered = requiredLocales(languages);
-  return offered.includes(wanted) ? wanted : (offered[0] ?? "es");
-}
-```
-
-`protection.ts`:
-
-```ts
-/** Cheap abuse protection before any bot challenge; specs/system/security.md. */
-export const MIN_FILL_MS = 3_000;
-export const HONEYPOT_FIELD = "website-url";
-
-export function isSilentAccept(input: { honeypot: string; startedAt: Date; now: Date }): boolean {
-  return input.honeypot.trim() !== "" || input.now.getTime() - input.startedAt.getTime() < MIN_FILL_MS;
-}
-
-/** A plausible reference for the silent-accept confirmation; nothing is stored under it. */
-export function decoyReference(prefix: string, random: () => number): string {
-  return `${prefix}-${String(1000 + Math.floor(random() * 9000))}`;
-}
-```
-
-`dates.ts`:
-
-```ts
-/** Today's date in `timeZone`, as YYYY-MM-DD, for the `not_future` rule. */
-export function todayIn(timeZone: string, now: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-}
-```
-
-`intake.ts`:
-
-```ts
-import type { Field, FieldTypeRegistry, UploadLimits, ValidationIssue, Version } from "@/shared/domain/form-model";
-import type { Languages, Locale } from "@/shared/domain/localized-text";
-import type { StagedUpload } from "./in-progress";
-
-/** Fields that take files, found through the `uploadLimits` hook (ADR 0016). */
-export function uploadFields(version: Version, registry: FieldTypeRegistry): { field: Field; limits: UploadLimits }[] {
-  return version.pages.flatMap((p) =>
-    p.fields.flatMap((field) => {
-      const limits = registry.get(field.type).uploadLimits?.(field.settings);
-      return limits ? [{ field, limits }] : [];
-    }),
-  );
-}
-
-/** The language field slugs come from; specs/system/media-storage.md, "Keys". */
-export function firstLanguage(languages: Languages): Locale {
-  return languages === "es" ? "es" : "en";
-}
-
-export interface PlannedFile {
-  fieldKey: string;
-  position: number;
-  upload: StagedUpload;
-}
-
-/** Files the validated answers name are attached in answer order; every other staged file is discarded. */
-export function planFiles(
-  answers: Readonly<Record<string, unknown>>,
-  files: Readonly<Record<string, readonly StagedUpload[]>>,
-): { attached: PlannedFile[]; discarded: StagedUpload[] } {
-  const attached: PlannedFile[] = [];
-  const discarded: StagedUpload[] = [];
-  for (const [fieldKey, uploads] of Object.entries(files)) {
-    const answer = answers[fieldKey];
-    const ids = Array.isArray(answer) ? answer.filter((x): x is string => typeof x === "string") : [];
-    const byId = new Map(uploads.map((u) => [u.id, u]));
-    ids.forEach((id, i) => {
-      const upload = byId.get(id);
-      if (upload) attached.push({ fieldKey, position: i + 1, upload });
-      byId.delete(id);
-    });
-    discarded.push(...byId.values());
-  }
-  return { attached, discarded };
-}
-
-/** The answer of the field holding the `submitter_address` role, when it has one. */
-export function submitterAddress(
-  version: Version,
-  registry: FieldTypeRegistry,
-  answers: Readonly<Record<string, unknown>>,
-): string | null {
-  for (const page of version.pages) {
-    for (const field of page.fields) {
-      const roles = registry.get(field.type).exclusiveRoles?.(field.settings) ?? [];
-      if (roles.some((r) => r.role === "submitter_address")) {
-        const value = answers[field.key];
-        return typeof value === "string" && value !== "" ? value : null;
-      }
-    }
-  }
-  return null;
-}
-
-export function firstPageWithIssue(version: Version, issues: readonly ValidationIssue[]): string | null {
-  const keys = new Set(issues.map((i) => i.field));
-  return version.pages.find((p) => p.fields.some((f) => keys.has(f.key)))?.key ?? null;
-}
-```
-
-`submission.ts`:
-
-```ts
-import type { Locale } from "@/shared/domain/localized-text";
-
-/** A completed response; specs/form-definition.md, "Submissions". Answers never change after insert. */
-export interface Submission {
-  id: string;
-  formId: string;
-  versionId: string;
-  locale: Locale;
-  answers: Record<string, unknown>;
-  consent: { fieldKey: string; textVersion: string; acceptedAt: Date } | null;
-  receivedAt: Date;
-  reference: string;
-  submitToken: string;
-}
-```
+- [ ] **Step 4: Implement.**
+  - `in-progress.ts` (TTL comment links `fill-and-submit-form.md`; `RefusedFile` and `PendingPage` carry the doc comments above): `newInProgress` adds empty answers, files and pending, `expiresAt = now + 24 h`, both timestamps `now`. `isExpired` is `now >= expiresAt`. `clampStartedAt` returns `now` for null or an invalid date, else the render time clamped into `[now - 24 h, now]` (comment links `security.md`). `withFileAnswers` sets each upload field to its staged ids in order. `removeUpload` filters the id out of every field and returns the removed upload or null. `stagedBytes` sums `size` over every field.
+  - `navigation.ts`: `visiblePageKeys` maps `visiblePages`; `firstPageKey` is the first visible page with no answers (falling back to the first page); `nextPageKey` and `previousPageKey` walk `version.pages` from the current index to the nearest visible page. `pagePosition` counts visible pages; when the current page is not visible (its condition just changed) it counts the visible pages before it plus one, and the total plus one.
+  - `locale.ts` (comment links `fill-and-submit-form.md`): a single-language form returns its language; otherwise parse `Accept-Language` into base tags with `q` (default 1, `q=0` dropped), sort by `q` descending then position, and take the first `en` or `es`, else `es`. `localeFor` returns `wanted` when `requiredLocales(languages)` includes it, else the first offered locale.
+  - `protection.ts` (comment links `security.md`): `isHoneypotFilled` is `honeypot.trim() !== ""`; `isSilentAccept` is a filled honeypot or `now - startedAt < MIN_FILL_MS`; `decoyReference` is `<prefix>-<1000 + floor(random() * 9000)>` (nothing is stored under it).
+  - `dates.ts`: `Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })` gives `YYYY-MM-DD` (for the `not_future` rule).
+  - `intake.ts`: `uploadFields` collects the fields whose type declares `uploadLimits` (ADR 0016), in document order. `firstLanguage` is `es` only for an es-only form (the slug language, `media-storage.md`, "Keys"). `planFiles` attaches, per field, the staged files the answer names in answer order (positions from 1) and discards every other staged file, including fields the answers no longer hold. `submitterAddress` returns the non-empty string answer of the field whose `exclusiveRoles` include `submitter_address`, else null. `firstPageWithIssue` is the first page holding a field named by an issue.
+  - `submission.ts`: the `Submission` record (comment: answers never change after insert; `form-definition.md`, "Submissions").
 
 - [ ] **Step 5: Run** `pnpm test src/modules/submissions && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 6: Commit** `feat(submissions): in-progress record, page navigation, locale choice, abuse rules and intake planning`
@@ -5327,46 +2465,11 @@ create trigger submission_answers_immutable before update on submission
   for each row execute function submission_answers_immutable();
 ```
 
-- [ ] **Step 1: Test factory** `tests/integration/submissions/factories.ts`:
-
-```ts
-import type { Pool } from "pg";
-import type { Version } from "@/shared/domain/form-model";
-import { PgFormRepository } from "@/modules/definitions/infrastructure/pg-form-repository";
-import { PgVersionRepository } from "@/modules/definitions/infrastructure/pg-version-repository";
-import { storyVersion } from "@/modules/submissions/domain/testing/versions";
-import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
-import { sampleForm, sampleVersion } from "../definitions/factories";
-
-/** A published form holding `document` (the synthetic story form by default). */
-export async function seedPublishedForm(
-  pool: Pool,
-  document: Version = storyVersion(),
-): Promise<{ formId: string; versionId: string; slug: string }> {
-  const forms = new PgFormRepository(pool);
-  const versions = new PgVersionRepository(pool);
-  const form = sampleForm({ status: "published", languages: document.languages });
-  const version = { ...sampleVersion(form.id, 1), document };
-  await new PgUnitOfWorkFactory(pool).run(async (uow) => {
-    await forms.insert(uow, form);
-    await versions.insert(uow, version);
-    await forms.update(uow, { ...form, currentVersionId: version.id, currentVersionNumber: 1 });
-  });
-  return { formId: form.id, versionId: version.id, slug: form.slug };
-}
-```
+- [ ] **Step 1: Test factory** `tests/integration/submissions/factories.ts`: `seedPublishedForm(pool, document = storyVersion())` inserts `sampleForm({ status: "published", languages: document.languages })` and `{ ...sampleVersion(form.id, 1), document }` (from `../definitions/factories`) through the Postgres definitions repositories in one unit of work, makes the version current, and returns the ids and slug.
 
 - [ ] **Step 2: Failing integration tests.** `pg-in-progress-repository.test.ts`:
 
 ```ts
-import { randomUUID } from "node:crypto";
-import { beforeEach, describe, expect, it } from "vitest";
-import { newInProgress } from "@/modules/submissions/domain/in-progress";
-import { PgInProgressRepository } from "@/modules/submissions/infrastructure/pg-in-progress-repository";
-import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
-import { testPool, truncateAll } from "../db";
-import { seedPublishedForm } from "./factories";
-
 describe("PgInProgressRepository", () => {
   const pool = testPool();
   const repo = new PgInProgressRepository(pool);
@@ -5380,7 +2483,11 @@ describe("PgInProgressRepository", () => {
       ...newInProgress({ id: randomUUID(), formId, versionId, locale: "es" as const, pageKey: "page_contact", submitToken: randomUUID(), startedAt: now, now }),
       answers: { f_name: "Ana Prueba" },
       files: { f_photos: [{ id: randomUUID(), stagingRef: "in-progress/r/a.jpg", kind: "image" as const, contentType: "image/jpeg", size: 3 }] },
-      pending: { pageKey: "page_contact", raw: { f_email: "nope" }, issues: [{ code: "email_syntax" as const, field: "f_email" }], fileIssues: [] },
+      pending: {
+        pageKey: "page_contact",
+        raw: { f_email: "nope" },
+        issues: [{ code: "email_syntax" as const, field: asKey("f_email") }],
+      },
     };
     await uow.run((u) => repo.insert(u, record));
     expect(await repo.find(record.id)).toEqual(record);
@@ -5392,86 +2499,16 @@ describe("PgInProgressRepository", () => {
     expect(await repo.find(record.id)).toEqual(updated);
     expect(await repo.find("not-a-uuid")).toBeNull();
   });
-
-  it("lists expired ids, oldest first, and deletes", async () => {
-    const { formId, versionId } = await seedPublishedForm(pool);
-    const old = newInProgress({ id: randomUUID(), formId, versionId, locale: "en", pageKey: "page_contact", submitToken: randomUUID(), startedAt: new Date("2026-10-08T00:00:00Z"), now: new Date("2026-10-08T00:00:00Z") });
-    const fresh = newInProgress({ id: randomUUID(), formId, versionId, locale: "en", pageKey: "page_contact", submitToken: randomUUID(), startedAt: new Date("2026-10-10T00:00:00Z"), now: new Date("2026-10-10T00:00:00Z") });
-    await uow.run(async (u) => {
-      await repo.insert(u, fresh);
-      await repo.insert(u, old);
-    });
-    expect(await repo.listExpired(new Date("2026-10-10T12:00:00Z"), 10)).toEqual([old.id]);
-    await uow.run((u) => repo.delete(u, old.id));
-    expect(await repo.find(old.id)).toBeNull();
-  });
 });
 ```
 
-`pg-submission-repository.test.ts`:
-
-```ts
-import { randomUUID } from "node:crypto";
-import { beforeEach, describe, expect, it } from "vitest";
-import type { Submission } from "@/modules/submissions/domain/submission";
-import { PgSubmissionRepository } from "@/modules/submissions/infrastructure/pg-submission-repository";
-import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
-import { testPool, truncateAll } from "../db";
-import { seedPublishedForm } from "./factories";
-
-describe("PgSubmissionRepository", () => {
-  const pool = testPool();
-  const repo = new PgSubmissionRepository(pool);
-  const uow = new PgUnitOfWorkFactory(pool);
-  beforeEach(() => truncateAll(pool));
-
-  async function sample(over: Partial<Submission> = {}): Promise<Submission> {
-    const { formId, versionId } = await seedPublishedForm(pool);
-    return {
-      id: randomUUID(), formId, versionId, locale: "es", answers: { f_name: "Ana Prueba" },
-      consent: { fieldKey: "f_consent", textVersion: "0123456789abcdef", acceptedAt: new Date("2026-10-10T12:00:00.000Z") },
-      receivedAt: new Date("2026-10-10T12:00:00.000Z"), reference: "ST-0001", submitToken: randomUUID(), ...over,
-    };
-  }
-
-  it("inserts, finds by id and by submit token", async () => {
-    const s = await sample();
-    expect(await uow.run((u) => repo.insert(u, s))).toBe("inserted");
-    expect(await repo.findById(s.id)).toEqual(s);
-    expect(await repo.findBySubmitToken(s.submitToken)).toEqual(s);
-    expect(await repo.findBySubmitToken("nope")).toBeNull();
-  });
-
-  it("reports a repeated submit token without aborting the transaction", async () => {
-    const s = await sample();
-    await uow.run(async (u) => {
-      await repo.insert(u, s);
-      expect(await repo.insert(u, { ...s, id: randomUUID(), reference: "ST-0002" })).toBe("duplicate_token");
-      expect(await repo.findById(s.id)).toBeNull(); // not yet committed: the pool reads outside the transaction
-    });
-    expect(await repo.findById(s.id)).not.toBeNull();
-  });
-
-  it("refuses any change to answers, but not to the status", async () => {
-    const s = await sample();
-    await uow.run((u) => repo.insert(u, s));
-    await expect(pool.query("update submission set answers = '{}' where id = $1", [s.id])).rejects.toThrow(/immutable/);
-    await pool.query("update submission set status = 'viewed' where id = $1", [s.id]);
-  });
-});
-```
+and the cases:
+- "lists expired ids, oldest first, and deletes": records created at `2026-10-08T00:00:00Z` (old) and `2026-10-10T00:00:00Z` (fresh), inserted fresh first; `listExpired(2026-10-10T12:00:00Z, 10)` is `[old.id]`; after `delete(old.id)`, `find(old.id)` is null.
+- `pg-submission-repository.test.ts`, with `sample(over)` seeding a form and returning a `Submission` (`locale: "es"`, answers `{ f_name: "Ana Prueba" }`, consent `{ fieldKey: "f_consent", textVersion: "0123456789abcdef", acceptedAt: 2026-10-10T12:00:00.000Z }`, `receivedAt` the same instant, `reference: "ST-0001"`, random id and token, then `...over`): "inserts, finds by id and by submit token" (`inserted`; both finders return it equal; `findBySubmitToken("nope")` is null); "reports a repeated submit token without aborting the transaction" (inside one unit of work, a second insert with a new id and `ST-0002` but the same token is `duplicate_token`, `findById` through the pool is still null before commit, and the first row exists after it); "refuses any change to answers, but not to the status" (`update submission set answers = '{}'` rejects with `/immutable/`; `update submission set status = 'viewed'` succeeds).
 
 `pg-submission-stats.test.ts`:
 
 ```ts
-import { randomUUID } from "node:crypto";
-import { beforeEach, describe, expect, it } from "vitest";
-import { PgSubmissionRepository } from "@/modules/submissions/infrastructure/pg-submission-repository";
-import { PgSubmissionStats } from "@/modules/submissions/infrastructure/pg-submission-stats";
-import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
-import { testPool, truncateAll } from "../db";
-import { seedPublishedForm } from "./factories";
-
 describe("PgSubmissionStats", () => {
   const pool = testPool();
   const stats = new PgSubmissionStats(pool);
@@ -5494,7 +2531,8 @@ describe("PgSubmissionStats", () => {
     expect(summary.get(other)).toEqual({ total: 0, lastReceivedAt: null });
     expect(await stats.countReceivedAfter(formId, new Date("2026-09-30T00:00:00Z"))).toBe(2);
     expect(await stats.countOlderThan(formId, 12, new Date("2026-10-10T00:00:00Z"))).toBe(1);
-    expect(await stats.answerCounts(formId, ["f_name", "f_email", "f_missing"])).toEqual(new Map([["f_name", 3], ["f_email", 1], ["f_missing", 0]]));
+    const keys = ["f_name", "f_email", "f_missing"].map(asKey);
+    expect(await stats.answerCounts(formId, keys)).toEqual(new Map([["f_name", 3], ["f_email", 1], ["f_missing", 0]]));
     expect(await stats.hasAny(formId)).toBe(true);
     expect(await stats.hasAny(other)).toBe(false);
   });
@@ -5503,223 +2541,10 @@ describe("PgSubmissionStats", () => {
 
 - [ ] **Step 3: Run** `pnpm test:integration tests/integration/submissions`: fails.
 
-- [ ] **Step 4: Implement** the two ports exactly as in Interfaces, the migration above, then `pg-in-progress-repository.ts`:
-
-```ts
-import type { Pool } from "pg";
-import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
-import { txOf } from "@/shared/infrastructure/postgres/tx";
-import { isUuid } from "@/shared/infrastructure/uuid";
-import type { InProgressRepository } from "../application/ports/in-progress-repository";
-import type { InProgress, PendingPage, StagedUpload } from "../domain/in-progress";
-import type { Locale } from "@/shared/domain/localized-text";
-
-const COLUMNS = `id, form_id, form_version_id, locale, page_key, answers, files, pending, submit_token,
-  started_at, expires_at, created_at, updated_at`;
-
-interface Row {
-  id: string;
-  form_id: string;
-  form_version_id: string;
-  locale: Locale;
-  page_key: string;
-  answers: Record<string, unknown>;
-  files: Record<string, StagedUpload[]>;
-  pending: PendingPage | null;
-  submit_token: string;
-  started_at: Date;
-  expires_at: Date;
-  created_at: Date;
-  updated_at: Date;
-}
-
-function toRecord(r: Row): InProgress {
-  return {
-    id: r.id, formId: r.form_id, versionId: r.form_version_id, locale: r.locale, pageKey: r.page_key,
-    answers: r.answers, files: r.files, pending: r.pending, submitToken: r.submit_token,
-    startedAt: r.started_at, expiresAt: r.expires_at, createdAt: r.created_at, updatedAt: r.updated_at,
-  };
-}
-
-/** `submission_in_progress`. The row holds personal data: never logged, gone at submit or expiry. */
-export class PgInProgressRepository implements InProgressRepository {
-  constructor(private readonly pool: Pool) {}
-
-  async insert(uow: UnitOfWork, r: InProgress): Promise<void> {
-    await txOf(uow).client.query(
-      `insert into submission_in_progress (${COLUMNS}) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-      [r.id, r.formId, r.versionId, r.locale, r.pageKey, JSON.stringify(r.answers), JSON.stringify(r.files),
-        r.pending === null ? null : JSON.stringify(r.pending), r.submitToken, r.startedAt, r.expiresAt, r.createdAt, r.updatedAt],
-    );
-  }
-
-  async find(id: string): Promise<InProgress | null> {
-    if (!isUuid(id)) return null;
-    const { rows } = await this.pool.query<Row>(`select ${COLUMNS} from submission_in_progress where id = $1`, [id]);
-    return rows[0] ? toRecord(rows[0]) : null;
-  }
-
-  async findForUpdate(uow: UnitOfWork, id: string): Promise<InProgress | null> {
-    if (!isUuid(id)) return null;
-    const { rows } = await txOf(uow).client.query<Row>(
-      `select ${COLUMNS} from submission_in_progress where id = $1 for update`,
-      [id],
-    );
-    return rows[0] ? toRecord(rows[0]) : null;
-  }
-
-  async update(uow: UnitOfWork, r: InProgress): Promise<void> {
-    await txOf(uow).client.query(
-      `update submission_in_progress
-          set locale = $2, page_key = $3, answers = $4, files = $5, pending = $6, updated_at = $7
-        where id = $1`,
-      [r.id, r.locale, r.pageKey, JSON.stringify(r.answers), JSON.stringify(r.files),
-        r.pending === null ? null : JSON.stringify(r.pending), r.updatedAt],
-    );
-  }
-
-  async delete(uow: UnitOfWork, id: string): Promise<void> {
-    await txOf(uow).client.query("delete from submission_in_progress where id = $1", [id]);
-  }
-
-  async listExpired(now: Date, limit: number): Promise<string[]> {
-    const { rows } = await this.pool.query<{ id: string }>(
-      "select id from submission_in_progress where expires_at <= $1 order by expires_at limit $2",
-      [now, limit],
-    );
-    return rows.map((r) => r.id);
-  }
-}
-```
-
-`pg-submission-repository.ts`:
-
-```ts
-import type { Pool } from "pg";
-import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
-import type { Locale } from "@/shared/domain/localized-text";
-import { txOf } from "@/shared/infrastructure/postgres/tx";
-import { isUuid } from "@/shared/infrastructure/uuid";
-import type { SubmissionRepository } from "../application/ports/submission-repository";
-import type { Submission } from "../domain/submission";
-
-const COLUMNS = "id, form_id, form_version_id, locale, answers, consent, received_at, reference, submit_token";
-
-interface Row {
-  id: string;
-  form_id: string;
-  form_version_id: string;
-  locale: Locale;
-  answers: Record<string, unknown>;
-  consent: { fieldKey: string; textVersion: string; acceptedAt: string } | null;
-  received_at: Date;
-  reference: string;
-  submit_token: string;
-}
-
-function toSubmission(r: Row): Submission {
-  return {
-    id: r.id, formId: r.form_id, versionId: r.form_version_id, locale: r.locale, answers: r.answers,
-    consent: r.consent === null ? null : { ...r.consent, acceptedAt: new Date(r.consent.acceptedAt) },
-    receivedAt: r.received_at, reference: r.reference, submitToken: r.submit_token,
-  };
-}
-
-/** `submission`. Answers are written once; the trigger refuses any later change. */
-export class PgSubmissionRepository implements SubmissionRepository {
-  constructor(private readonly pool: Pool) {}
-
-  async insert(uow: UnitOfWork, s: Submission): Promise<"inserted" | "duplicate_token"> {
-    const res = await txOf(uow).client.query(
-      `insert into submission (${COLUMNS}) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       on conflict (submit_token) do nothing returning id`,
-      [s.id, s.formId, s.versionId, s.locale, JSON.stringify(s.answers),
-        s.consent === null ? null : JSON.stringify(s.consent), s.receivedAt, s.reference, s.submitToken],
-    );
-    return res.rowCount === 1 ? "inserted" : "duplicate_token";
-  }
-
-  async findBySubmitToken(token: string): Promise<Submission | null> {
-    if (!isUuid(token)) return null;
-    const { rows } = await this.pool.query<Row>(`select ${COLUMNS} from submission where submit_token = $1`, [token]);
-    return rows[0] ? toSubmission(rows[0]) : null;
-  }
-
-  async findById(id: string): Promise<Submission | null> {
-    if (!isUuid(id)) return null;
-    const { rows } = await this.pool.query<Row>(`select ${COLUMNS} from submission where id = $1`, [id]);
-    return rows[0] ? toSubmission(rows[0]) : null;
-  }
-}
-```
-
-`pg-submission-stats.ts`:
-
-```ts
-import type { Pool } from "pg";
-import type { SubmissionStats, SubmissionSummary } from "@/modules/definitions/application";
-import type { Key } from "@/shared/domain/form-model";
-import { isUuid } from "@/shared/infrastructure/uuid";
-
-/** The submission figures definitions needs (its SubmissionStats port), from the `submission` table. */
-export class PgSubmissionStats implements SubmissionStats {
-  constructor(private readonly pool: Pool) {}
-
-  async summary(formIds: readonly string[]): Promise<Map<string, SubmissionSummary>> {
-    const ids = formIds.filter(isUuid);
-    const result = new Map<string, SubmissionSummary>(formIds.map((id) => [id, { total: 0, lastReceivedAt: null }]));
-    if (ids.length === 0) return result;
-    const { rows } = await this.pool.query<{ form_id: string; total: number; last: Date }>(
-      `select form_id, count(*)::int as total, max(received_at) as last
-         from submission where form_id = any($1::uuid[]) group by form_id`,
-      [ids],
-    );
-    for (const r of rows) result.set(r.form_id, { total: r.total, lastReceivedAt: r.last });
-    return result;
-  }
-
-  async countReceivedAfter(formId: string, after: Date): Promise<number> {
-    if (!isUuid(formId)) return 0;
-    const { rows } = await this.pool.query<{ n: number }>(
-      "select count(*)::int as n from submission where form_id = $1 and received_at > $2",
-      [formId, after],
-    );
-    return rows[0]?.n ?? 0;
-  }
-
-  async countOlderThan(formId: string, months: number, now: Date): Promise<number> {
-    if (!isUuid(formId)) return 0;
-    const { rows } = await this.pool.query<{ n: number }>(
-      `select count(*)::int as n from submission
-        where form_id = $1 and received_at < $3::timestamptz - make_interval(months => $2)`,
-      [formId, months, now],
-    );
-    return rows[0]?.n ?? 0;
-  }
-
-  async answerCounts(formId: string, keys: readonly Key[]): Promise<Map<Key, number>> {
-    const result = new Map<Key, number>(keys.map((k) => [k, 0]));
-    if (!isUuid(formId) || keys.length === 0) return result;
-    const { rows } = await this.pool.query<{ key: Key; n: number }>(
-      `select k as key, count(*)::int as n
-         from submission, jsonb_object_keys(answers) as k
-        where form_id = $1 and k = any($2::text[]) group by k`,
-      [formId, keys],
-    );
-    for (const r of rows) result.set(r.key, r.n);
-    return result;
-  }
-
-  async hasAny(formId: string): Promise<boolean> {
-    if (!isUuid(formId)) return false;
-    const { rows } = await this.pool.query<{ any: boolean }>(
-      "select exists (select 1 from submission where form_id = $1) as any",
-      [formId],
-    );
-    return rows[0]?.any ?? false;
-  }
-}
-```
+- [ ] **Step 4: Implement** the two ports exactly as in Interfaces, the migration above, and the three adapters per the repository pattern in Task 8 (JSON columns are written with `JSON.stringify`, a null `pending` or `consent` as SQL null):
+  - `PgInProgressRepository` (comment: the row holds personal data, never logged, gone at submit or expiry): `findForUpdate` is `select … for update` through the unit of work; `update` writes `locale`, `page_key`, `answers`, `files`, `pending` and `updated_at` only (the pinned version, token and dates never change); `listExpired` is `where expires_at <= $1 order by expires_at limit $2`.
+  - `PgSubmissionRepository` (comment: answers written once, the trigger refuses any later change): `insert` is `insert … on conflict (submit_token) do nothing returning id`, so a duplicate token returns `duplicate_token` without aborting the transaction; `consent.acceptedAt` is stored as an ISO string inside the jsonb and read back as a `Date`.
+  - `PgSubmissionStats` (definitions' `SubmissionStats` port): non-UUID form ids are skipped and give zero figures; `summary` is one `count(*)::int, max(received_at) … where form_id = any($1::uuid[]) group by form_id`, every asked id present in the map; `countReceivedAfter` is `received_at > $2`; `countOlderThan` is `received_at < $3::timestamptz - make_interval(months => $2)`; `answerCounts` counts `jsonb_object_keys(answers)` matching `any($2::text[])`, every asked key present; `hasAny` is `exists (…)`.
 
 - [ ] **Step 5: Run** `pnpm test:integration tests/integration/submissions && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 6: Commit** `feat(submissions): in-progress and submission tables with immutable answers, repositories and Postgres submission stats`
@@ -5733,7 +2558,7 @@ export class PgSubmissionStats implements SubmissionStats {
 - Test: `version-cache.test.ts`, `view-form.test.ts`, `post-context.test.ts` beside them; `tests/boundaries/boundaries.test.ts` (one probe)
 
 **Interfaces:**
-- Consumes: Tasks 14, 16, 17; `MediaDeps`, `makeMediaDeps` (Task 6); `makeDefinitionsDeps`, `seedPublished`, `publishAgain` (Task 14).
+- Consumes: Tasks 14, 16, 17; `MediaDeps`, `makeMediaDeps` (Task 6); `makeDefinitionsDeps`, `seedPublished`, `publishAgain` (Task 14). The testing fakes import other modules' fakes under ADR 0026.
 - Produces:
 
 ```ts
@@ -5756,7 +2581,9 @@ export interface PagePost {
   submitToken: string | null; acceptLanguage: string | null; state: FillState;
 }
 export type PostOutcome =
-  | { kind: "show"; recordId: string } | { kind: "submitted"; submitToken: string } | { kind: "decoy"; reference: string }
+  | { kind: "show"; recordId: string }                                                       // redirect to the page
+  | { kind: "refused"; recordId: string; locale: Locale; refusedFiles: RefusedFile[] }       // answer the post with the page
+  | { kind: "submitted"; submitToken: string } | { kind: "decoy"; reference: string }
   | { kind: "expired" } | { kind: "gate"; state: Gate };
 // version-cache.ts
 export class VersionCache { constructor(max?: number); get(definitions: DefinitionsDeps, id: string): Promise<FormVersion | null> }
@@ -5790,151 +2617,18 @@ export async function publishStory(deps: FakeSubmissionsDeps, settings?: Partial
 export function post(over: Partial<PagePost>): PagePost;               // defaults: page_contact, next, no answers
 ```
 
-The version cache is per process and keyed by version id, which is safe because versions never change (architecture.md, "Publishing data flow" step 4).
+The version cache is per process and keyed by version id, which is safe because versions never change (architecture.md, "Publishing data flow" step 4). Decision (answering a post): `refused` is the only outcome the page form answers directly; every other outcome redirects (Task 28).
 
-- [ ] **Step 1: Fakes** `testing/fakes.ts`:
-
-```ts
-/** Fakes for the submissions use cases: one clock, id generator and queue shared by every module. */
-import {
-  makeDefinitionsDeps,
-  seedPublished,
-  type FakeDefinitionsDeps,
-} from "@/modules/definitions/application/testing/fakes";
-import type { FormSettings } from "@/modules/definitions/application";
-import { makeMediaDeps, type FakeMediaDeps } from "@/modules/media/application/testing/fakes";
-import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
-import {
-  FakeUnitOfWorkFactory,
-  FixedClock,
-  InMemoryJobQueue,
-  RecordingLogger,
-  SequentialIdGenerator,
-} from "@/shared/application/testing/fakes";
-import type { InProgress } from "../../domain/in-progress";
-import type { Submission } from "../../domain/submission";
-import { registry, storyVersion } from "../../domain/testing/versions";
-import type { SubmissionsDeps } from "../deps";
-import type { PagePost } from "../fill-state";
-import type { InProgressRepository } from "../ports/in-progress-repository";
-import type { SubmissionRepository } from "../ports/submission-repository";
-import { VersionCache } from "../version-cache";
-
-export class InMemoryInProgressRepository implements InProgressRepository {
-  readonly rows = new Map<string, InProgress>();
-  insert(_uow: UnitOfWork, record: InProgress): Promise<void> {
-    if (this.rows.has(record.id)) return Promise.reject(new Error("record exists"));
-    this.rows.set(record.id, structuredClone(record));
-    return Promise.resolve();
-  }
-  find(id: string): Promise<InProgress | null> {
-    const row = this.rows.get(id);
-    return Promise.resolve(row ? structuredClone(row) : null);
-  }
-  findForUpdate(_uow: UnitOfWork, id: string): Promise<InProgress | null> {
-    return this.find(id);
-  }
-  update(_uow: UnitOfWork, record: InProgress): Promise<void> {
-    if (!this.rows.has(record.id)) return Promise.reject(new Error("no such record"));
-    this.rows.set(record.id, structuredClone(record));
-    return Promise.resolve();
-  }
-  delete(_uow: UnitOfWork, id: string): Promise<void> {
-    this.rows.delete(id);
-    return Promise.resolve();
-  }
-  listExpired(now: Date, limit: number): Promise<string[]> {
-    return Promise.resolve(
-      [...this.rows.values()].filter((r) => r.expiresAt.getTime() <= now.getTime()).slice(0, limit).map((r) => r.id),
-    );
-  }
-}
-
-export class InMemorySubmissionRepository implements SubmissionRepository {
-  readonly rows = new Map<string, Submission>();
-  insert(_uow: UnitOfWork, s: Submission): Promise<"inserted" | "duplicate_token"> {
-    if ([...this.rows.values()].some((r) => r.submitToken === s.submitToken)) return Promise.resolve("duplicate_token");
-    this.rows.set(s.id, structuredClone(s));
-    return Promise.resolve("inserted");
-  }
-  findBySubmitToken(token: string): Promise<Submission | null> {
-    const found = [...this.rows.values()].find((r) => r.submitToken === token);
-    return Promise.resolve(found ? structuredClone(found) : null);
-  }
-  findById(id: string): Promise<Submission | null> {
-    const row = this.rows.get(id);
-    return Promise.resolve(row ? structuredClone(row) : null);
-  }
-}
-
-export interface FakeSubmissionsDeps extends SubmissionsDeps {
-  definitions: FakeDefinitionsDeps;
-  media: FakeMediaDeps;
-  inProgress: InMemoryInProgressRepository;
-  submissions: InMemorySubmissionRepository;
-  queue: InMemoryJobQueue;
-  clock: FixedClock;
-  logger: RecordingLogger;
-}
-
-export function makeSubmissionsDeps(): FakeSubmissionsDeps {
-  const clock = new FixedClock();
-  const ids = new SequentialIdGenerator();
-  const queue = new InMemoryJobQueue();
-  const uow = new FakeUnitOfWorkFactory();
-  return {
-    definitions: makeDefinitionsDeps({ clock, ids, uow, registry }),
-    media: makeMediaDeps({ clock, ids, queue, uow }),
-    inProgress: new InMemoryInProgressRepository(),
-    submissions: new InMemorySubmissionRepository(),
-    queue,
-    uow,
-    clock,
-    ids,
-    registry,
-    logger: new RecordingLogger(),
-    versions: new VersionCache(),
-    random: () => 0.5,
-  };
-}
-
-export async function publishStory(
-  deps: FakeSubmissionsDeps,
-  settings: Partial<FormSettings> = {},
-): Promise<{ formId: string; versionId: string; slug: "story-form" }> {
-  const seeded = await seedPublished(deps.definitions, {
-    slug: "story-form",
-    document: storyVersion(),
-    settings: { referencePrefix: "ST", notificationRecipients: ["stories@example.com"], ...settings },
-  });
-  return { ...seeded, slug: "story-form" };
-}
-
-export function post(over: Partial<PagePost> = {}): PagePost {
-  return {
-    pageKey: "page_contact",
-    action: { kind: "next" },
-    answers: {},
-    decodeIssues: [],
-    raw: {},
-    incoming: [],
-    renderedAt: null,
-    honeypot: "",
-    submitToken: null,
-    acceptLanguage: "es",
-    state: { kind: "none" },
-    ...over,
-  };
-}
-```
+- [ ] **Step 1: Fakes** `testing/fakes.ts` (header: one clock, id generator and queue shared by every module):
+  - `InMemoryInProgressRepository` stores `structuredClone`s; `insert` rejects an existing id, `update` a missing one; `findForUpdate` is `find`; `listExpired` filters `expiresAt <= now`, up to `limit`.
+  - `InMemorySubmissionRepository.insert` returns `duplicate_token` when any row has the token, else stores a clone; the finders return clones.
+  - `makeSubmissionsDeps()` builds one `FixedClock`, `SequentialIdGenerator`, `InMemoryJobQueue` and `FakeUnitOfWorkFactory`, passes them into `makeDefinitionsDeps({ clock, ids, uow, registry })` and `makeMediaDeps({ clock, ids, queue, uow })`, and adds the two repositories, a `RecordingLogger`, a `VersionCache` and `random: () => 0.5`.
+  - `publishStory(deps, settings)` is `seedPublished` with slug `story-form`, `storyVersion()` and settings `{ referencePrefix: "ST", notificationRecipients: ["stories@example.com"], ...settings }`.
+  - `post(over)` defaults: `pageKey: "page_contact"`, `action: { kind: "next" }`, empty answers, decode issues, raw values and files, `renderedAt: null`, `honeypot: ""`, `submitToken: null`, `acceptLanguage: "es"`, `state: { kind: "none" }`.
 
 - [ ] **Step 2: Failing tests.** `version-cache.test.ts`:
 
 ```ts
-import { describe, expect, it, vi } from "vitest";
-import { makeSubmissionsDeps, publishStory } from "./testing/fakes";
-import { VersionCache } from "./version-cache";
-
 describe("VersionCache", () => {
   it("reads each version once and evicts the least recently used beyond its size", async () => {
     const deps = makeSubmissionsDeps();
@@ -5954,11 +2648,6 @@ describe("VersionCache", () => {
 `view-form.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { newInProgress } from "../domain/in-progress";
-import { viewForm } from "./view-form";
-import { makeSubmissionsDeps, publishStory } from "./testing/fakes";
-
 describe("viewForm", () => {
   it("shows page 1 fresh, in the browser's language, without a record", async () => {
     const deps = makeSubmissionsDeps();
@@ -5970,309 +2659,37 @@ describe("viewForm", () => {
     expect(view.page.position).toEqual({ n: 1, total: 2 });
   });
 
-  it("shows the gate screens and the expired screen", async () => {
-    const deps = makeSubmissionsDeps();
-    const { formId } = await publishStory(deps);
-    expect((await viewForm(deps, { slug: "nope", state: { kind: "none" }, acceptLanguage: null, expired: false })).screen).toBe("not_found");
-    expect((await viewForm(deps, { slug: "story-form", state: { kind: "record", id: "00000000-0000-4000-8000-00000000abcd" }, acceptLanguage: null, expired: false })).screen).toBe("expired");
-    expect((await viewForm(deps, { slug: "story-form", state: { kind: "none" }, acceptLanguage: null, expired: true })).screen).toBe("expired");
-    const stored = deps.definitions.store.forms.get(formId);
-    if (stored) deps.definitions.store.forms.set(formId, { ...stored, status: "closed" });
-    expect((await viewForm(deps, { slug: "story-form", state: { kind: "none" }, acceptLanguage: null, expired: false })).screen).toBe("closed");
-  });
-
-  it("shows a record's page on its pinned version, with the pending post once", async () => {
+  it("shows a record's page on its pinned version, with the pending post", async () => {
     const deps = makeSubmissionsDeps();
     const { formId, versionId } = await publishStory(deps);
     const now = deps.clock.now();
     const record = {
       ...newInProgress({ id: "00000000-0000-4000-8000-0000000000aa", formId, versionId, locale: "es", pageKey: "page_contact", submitToken: "00000000-0000-4000-8000-0000000000bb", startedAt: now, now }),
-      pending: { pageKey: "page_contact", raw: { f_name: "" }, issues: [{ code: "required" as const, field: "f_name" }], fileIssues: [] },
+      pending: { pageKey: "page_contact", raw: { f_name: "" }, issues: [{ code: "required" as const, field: asKey("f_name") }] },
     };
     await deps.inProgress.insert(await deps.uow.begin(), record);
     const view = await viewForm(deps, { slug: "story-form", state: { kind: "record", id: record.id }, acceptLanguage: "en", expired: false });
     expect(view.screen === "page" && view.page.pending?.issues).toEqual([{ code: "required", field: "f_name" }]);
     expect(view.screen === "page" && view.page.locale).toBe("es");
   });
-
-  it("shows the confirmation for a done cookie and for a decoy", async () => {
-    const deps = makeSubmissionsDeps();
-    const { formId, versionId } = await publishStory(deps);
-    await deps.submissions.insert(await deps.uow.begin(), {
-      id: "00000000-0000-4000-8000-0000000000cc", formId, versionId, locale: "en", answers: {}, consent: null,
-      receivedAt: deps.clock.now(), reference: "ST-0007", submitToken: "00000000-0000-4000-8000-0000000000dd",
-    });
-    const done = await viewForm(deps, { slug: "story-form", state: { kind: "done", submitToken: "00000000-0000-4000-8000-0000000000dd" }, acceptLanguage: "es", expired: false });
-    expect(done).toMatchObject({ screen: "confirmation", reference: "ST-0007", locale: "en" });
-    const decoy = await viewForm(deps, { slug: "story-form", state: { kind: "decoy", reference: "ST-4321" }, acceptLanguage: "es", expired: false });
-    expect(decoy).toMatchObject({ screen: "confirmation", reference: "ST-4321", locale: "es" });
-  });
 });
 ```
 
-`post-context.test.ts`:
+More cases, each on fresh `makeSubmissionsDeps()` with `publishStory`:
+- `viewForm`, "shows the gate screens and the expired screen": slug `nope` → `not_found`; a record cookie for the unknown id `00000000-0000-4000-8000-00000000abcd` → `expired`; no cookie with `expired: true` → `expired`; after setting the stored form's status to `closed`, no cookie → `closed`.
+- `viewForm`, "shows the confirmation for a done cookie and for a decoy": with a submission `{ id: "00000000-0000-4000-8000-0000000000cc", locale: "en", answers: {}, consent: null, reference: "ST-0007", submitToken: "00000000-0000-4000-8000-0000000000dd" }` on the story form, a `done` cookie with that token and `acceptLanguage: "es"` → `{ screen: "confirmation", reference: "ST-0007", locale: "en" }`; a `decoy` cookie `ST-4321` → `{ screen: "confirmation", reference: "ST-4321", locale: "es" }`.
+- `postContext`, "answers submitted for a repeated Submit whose record is gone": with that submission stored under the token `00000000-0000-4000-8000-0000000000dd`, a record cookie for the absent `…0000aa` plus that token → `{ ok: false, outcome: { kind: "submitted", submitToken } }`, and a `done` cookie with it → the same.
+- `postContext`, "refuses a record of another form or past its 24 hours as expired": a record `newInProgress({ id: "…0000aa", pageKey: "page_contact", submitToken: "…0000bb", … })` stored, the clock advanced 24 hours → `{ ok: false, outcome: { kind: "expired" } }`.
 
-```ts
-import { describe, expect, it } from "vitest";
-import { newInProgress } from "../domain/in-progress";
-import { postContext } from "./post-context";
-import { makeSubmissionsDeps, publishStory } from "./testing/fakes";
-
-describe("postContext", () => {
-  it("answers submitted for a repeated Submit whose record is gone", async () => {
-    const deps = makeSubmissionsDeps();
-    const { formId, versionId } = await publishStory(deps);
-    const token = "00000000-0000-4000-8000-0000000000dd";
-    await deps.submissions.insert(await deps.uow.begin(), {
-      id: "00000000-0000-4000-8000-0000000000cc", formId, versionId, locale: "en", answers: {}, consent: null,
-      receivedAt: deps.clock.now(), reference: "ST-0001", submitToken: token,
-    });
-    const gone = await postContext(deps, { slug: "story-form", state: { kind: "record", id: "00000000-0000-4000-8000-0000000000aa" }, submitToken: token });
-    expect(gone).toEqual({ ok: false, outcome: { kind: "submitted", submitToken: token } });
-    const again = await postContext(deps, { slug: "story-form", state: { kind: "done", submitToken: token }, submitToken: token });
-    expect(again).toEqual({ ok: false, outcome: { kind: "submitted", submitToken: token } });
-  });
-
-  it("refuses a record of another form or past its 24 hours as expired", async () => {
-    const deps = makeSubmissionsDeps();
-    const { formId, versionId } = await publishStory(deps);
-    const now = deps.clock.now();
-    const record = newInProgress({ id: "00000000-0000-4000-8000-0000000000aa", formId, versionId, locale: "es", pageKey: "page_contact", submitToken: "00000000-0000-4000-8000-0000000000bb", startedAt: now, now });
-    await deps.inProgress.insert(await deps.uow.begin(), record);
-    deps.clock.advance(24 * 60 * 60 * 1000);
-    expect(await postContext(deps, { slug: "story-form", state: { kind: "record", id: record.id }, submitToken: null })).toEqual({ ok: false, outcome: { kind: "expired" } });
-  });
-});
-```
-
-Boundary probe, inside `describe("layer boundaries")`:
-
-```ts
-  it("forbids definitions importing submissions, which would make a cycle", async () => {
-    const rules = await lintVirtual(
-      "src/modules/definitions/application/boundary-probe-subs.ts",
-      `import { viewForm } from "@/modules/submissions/application";\nexport const v = viewForm;\n`,
-    );
-    expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
-  });
-```
+Boundary probe inside `describe("layer boundaries")`, per the probe pattern in Task 2: "forbids definitions importing submissions, which would make a cycle", probe file `src/modules/definitions/application/boundary-probe-subs.ts`, importing `viewForm` from `@/modules/submissions/application`, refused by `boundaries/dependencies`.
 
 - [ ] **Step 3: Run** `pnpm test src/modules/submissions tests/boundaries`: fails.
 
-- [ ] **Step 4: Implement** `deps.ts` and `fill-state.ts` exactly as in Interfaces (types only), then `version-cache.ts`:
-
-```ts
-import { loadVersion, type DefinitionsDeps, type FormVersion } from "@/modules/definitions/application";
-
-/**
- * The per-process definition cache keyed by version id (specs/architecture.md,
- * "Publishing data flow" step 4). Versions are immutable, so nothing invalidates it.
- */
-export class VersionCache {
-  private readonly entries = new Map<string, FormVersion>();
-
-  constructor(private readonly max = 100) {}
-
-  async get(definitions: DefinitionsDeps, id: string): Promise<FormVersion | null> {
-    const hit = this.entries.get(id);
-    if (hit) {
-      this.entries.delete(id);
-      this.entries.set(id, hit);
-      return hit;
-    }
-    const version = await loadVersion(definitions, id);
-    if (version) {
-      this.entries.set(id, version);
-      if (this.entries.size > this.max) {
-        const oldest = this.entries.keys().next();
-        if (!oldest.done) this.entries.delete(oldest.value);
-      }
-    }
-    return version;
-  }
-}
-```
-
-`post-context.ts`:
-
-```ts
-import { resolvePublicForm, type Form, type FormVersion } from "@/modules/definitions/application";
-import { isExpired, type InProgress } from "../domain/in-progress";
-import type { SubmissionsDeps } from "./deps";
-import type { FillState, PostOutcome } from "./fill-state";
-
-export interface OpenContext {
-  form: Form;
-  version: FormVersion;
-  record: InProgress | null;
-}
-export type PostContext = ({ ok: true } & OpenContext) | { ok: false; outcome: PostOutcome };
-
-/**
- * What a post works against: the open form, and the record with its pinned
- * version, or the current version when there is no record yet. A Submit that
- * already went through (its record gone, its token known) answers submitted.
- * Read without locks; the use cases lock the record before writing.
- */
-export async function postContext(
-  deps: SubmissionsDeps,
-  input: { slug: string; state: FillState; submitToken: string | null },
-): Promise<PostContext> {
-  const resolved = await resolvePublicForm(deps.definitions, input.slug);
-  if (resolved.state !== "open") return { ok: false, outcome: { kind: "gate", state: resolved.state } };
-  const token = input.state.kind === "done" ? input.state.submitToken : input.submitToken;
-  const alreadySubmitted = async (): Promise<PostContext | null> => {
-    if (token === null) return null;
-    const done = await deps.submissions.findBySubmitToken(token);
-    return done !== null && done.formId === resolved.form.id
-      ? { ok: false, outcome: { kind: "submitted", submitToken: done.submitToken } }
-      : null;
-  };
-  if (input.state.kind === "done") {
-    const answered = await alreadySubmitted();
-    if (answered) return answered;
-  }
-  if (input.state.kind !== "record") {
-    return { ok: true, form: resolved.form, version: resolved.version, record: null };
-  }
-  const record = await deps.inProgress.find(input.state.id);
-  if (record === null) return (await alreadySubmitted()) ?? { ok: false, outcome: { kind: "expired" } };
-  if (record.formId !== resolved.form.id || isExpired(record, deps.clock.now())) {
-    return { ok: false, outcome: { kind: "expired" } };
-  }
-  const version = await deps.versions.get(deps.definitions, record.versionId);
-  if (version === null) return { ok: false, outcome: { kind: "expired" } };
-  return { ok: true, form: resolved.form, version, record };
-}
-```
-
-`view-form.ts`:
-
-```ts
-import { loadForm, resolvePublicForm, type Form, type FormVersion } from "@/modules/definitions/application";
-import type { Locale } from "@/shared/domain/localized-text";
-import { isExpired, withFileAnswers, type InProgress, type PendingPage, type StagedUpload } from "../domain/in-progress";
-import { pickLocale } from "../domain/locale";
-import { firstPageKey, nextPageKey, pagePosition, previousPageKey } from "../domain/navigation";
-import type { SubmissionsDeps } from "./deps";
-import type { FillState } from "./fill-state";
-
-export interface PageView {
-  locale: Locale;
-  pageKey: string;
-  position: { n: number; total: number };
-  isFirst: boolean;
-  isLast: boolean;
-  answers: Record<string, unknown>;
-  files: Record<string, StagedUpload[]>;
-  pending: PendingPage | null;
-  submitToken: string | null;
-  renderedAt: Date;
-  hasRecord: boolean;
-}
-
-export type ViewResult =
-  | { screen: "not_found" }
-  | { screen: "closed"; form: Form }
-  | { screen: "not_open"; form: Form; opensAt: string }
-  | { screen: "expired"; form: Form }
-  | { screen: "confirmation"; form: Form; version: FormVersion; locale: Locale; reference: string }
-  | { screen: "page"; form: Form; version: FormVersion; page: PageView };
-
-function pageOf(deps: SubmissionsDeps, version: FormVersion, record: InProgress, now: Date): PageView {
-  const doc = version.document;
-  const answers = withFileAnswers(record.answers, record.files);
-  return {
-    locale: record.locale,
-    pageKey: record.pageKey,
-    position: pagePosition(doc, answers, deps.registry, record.pageKey),
-    isFirst: previousPageKey(doc, answers, deps.registry, record.pageKey) === null,
-    isLast: nextPageKey(doc, answers, deps.registry, record.pageKey) === null,
-    answers: record.answers,
-    files: record.files,
-    pending: record.pending?.pageKey === record.pageKey ? record.pending : null,
-    submitToken: record.submitToken,
-    renderedAt: now,
-    hasRecord: true,
-  };
-}
-
-/** The screen behind `GET /f/<slug>`; specs/ui-ux/renderer.md, "Screens". */
-export async function viewForm(
-  deps: SubmissionsDeps,
-  input: { slug: string; state: FillState; acceptLanguage: string | null; expired: boolean },
-): Promise<ViewResult> {
-  const { state } = input;
-  if (state.kind === "done") {
-    const s = await deps.submissions.findBySubmitToken(state.submitToken);
-    if (s !== null) {
-      const [form, version] = await Promise.all([
-        loadForm(deps.definitions, s.formId),
-        deps.versions.get(deps.definitions, s.versionId),
-      ]);
-      if (form !== null && version !== null && form.slug === input.slug) {
-        return { screen: "confirmation", form, version, locale: s.locale, reference: s.reference };
-      }
-    }
-  }
-  const resolved = await resolvePublicForm(deps.definitions, input.slug);
-  if (resolved.state === "not_found") return { screen: "not_found" };
-  if (resolved.state === "closed") return { screen: "closed", form: resolved.form };
-  if (resolved.state === "not_open_yet") return { screen: "not_open", form: resolved.form, opensAt: resolved.opensAt };
-  const { form, version } = resolved;
-  const doc = version.document;
-  if (state.kind === "decoy") {
-    return { screen: "confirmation", form, version, locale: pickLocale(doc.languages, input.acceptLanguage), reference: state.reference };
-  }
-  const now = deps.clock.now();
-  if (state.kind === "record") {
-    const record = await deps.inProgress.find(state.id);
-    if (record === null || record.formId !== form.id || isExpired(record, now)) return { screen: "expired", form };
-    const pinned = await deps.versions.get(deps.definitions, record.versionId);
-    if (pinned === null) return { screen: "expired", form };
-    return { screen: "page", form, version: pinned, page: pageOf(deps, pinned, record, now) };
-  }
-  if (input.expired) return { screen: "expired", form };
-  const pageKey = firstPageKey(doc, deps.registry);
-  return {
-    screen: "page",
-    form,
-    version,
-    page: {
-      locale: pickLocale(doc.languages, input.acceptLanguage),
-      pageKey,
-      position: pagePosition(doc, {}, deps.registry, pageKey),
-      isFirst: true,
-      isLast: nextPageKey(doc, {}, deps.registry, pageKey) === null,
-      answers: {},
-      files: {},
-      pending: null,
-      submitToken: null,
-      renderedAt: now,
-      hasRecord: false,
-    },
-  };
-}
-```
-
-`index.ts` (grown by the next tasks):
-
-```ts
-/** Public API of the submissions module. Only src/app imports it; no module depends on submissions. */
-export type { SubmissionsDeps } from "./deps";
-export type { FillState, Gate, PageAction, PagePost, PostOutcome, IncomingFile } from "./fill-state";
-export type { OpenContext, PostContext } from "./post-context";
-export type { PageView, ViewResult } from "./view-form";
-export type { InProgressRepository } from "./ports/in-progress-repository";
-export type { SubmissionRepository } from "./ports/submission-repository";
-export type { InProgress, PendingPage, StagedUpload, RawValues, FileIssue, FileIssueCode } from "../domain/in-progress";
-export type { Submission } from "../domain/submission";
-export { VersionCache } from "./version-cache";
-export { postContext } from "./post-context";
-export { viewForm } from "./view-form";
-export { HONEYPOT_FIELD, MIN_FILL_MS } from "../domain/protection";
-export { uploadFields } from "../domain/intake";
-```
+- [ ] **Step 4: Implement** `deps.ts` and `fill-state.ts` exactly as in Interfaces (types only), then:
+  - `VersionCache` (comment links the publishing data flow; nothing invalidates it): a `Map` used as an LRU of at most `max` (default 100) entries; a hit is deleted and re-set to become the newest; a miss calls `loadVersion` and stores non-null results, evicting the oldest key past `max`.
+  - `postContext` (comment: read without locks; the use cases lock the record before writing): `resolvePublicForm`; not open is `{ kind: "gate", state }`. The token to check is the `done` cookie's, else the posted one. A `done` cookie whose submission exists for this form answers `submitted`. Without a record cookie the context is the current version with `record: null`. A record cookie whose row is missing answers `submitted` when the token names a submission of this form, else `expired`; a row of another form, past `expiresAt`, or whose pinned version cannot be loaded is `expired`; otherwise the context is the pinned version (through the cache) and the record.
+  - `viewForm` (comment links `renderer.md`, "Screens"): a `done` cookie whose submission belongs to this slug shows its confirmation in the submission's locale, on its own version. Otherwise resolve the form: `not_found`, `closed`, `not_open` (with `opensAt`) map one to one; a `decoy` cookie shows the confirmation with the decoy reference in `pickLocale(languages, acceptLanguage)`. A record cookie shows the record's page on its pinned version (missing, foreign, expired or unloadable is `expired`): position, `isFirst` and `isLast` come from the navigation functions over `withFileAnswers(answers, files)`, `pending` only when it belongs to the current page, `submitToken` the record's, `renderedAt` now, `hasRecord: true`. No cookie and `expired` asked is the expired screen; otherwise page 1 of the current version, fresh, in the browser's language, `submitToken: null`, `hasRecord: false`.
+  - `index.ts` (header: only `src/app` imports it; no module depends on submissions): the types `SubmissionsDeps`, `FillState`, `Gate`, `PageAction`, `PagePost`, `PostOutcome`, `IncomingFile`, `OpenContext`, `PostContext`, `PageView`, `ViewResult`, `InProgressRepository`, `SubmissionRepository`, `InProgress`, `PendingPage`, `StagedUpload`, `RawValues`, `FileIssueCode`, `RefusedFile`, `Submission`; the values `VersionCache`, `postContext`, `viewForm`, `HONEYPOT_FIELD`, `MIN_FILL_MS`, `uploadFields`, `withFileAnswers`, `localeFor`, `pickLocale` (later tasks add theirs).
 
 - [ ] **Step 5: Run** `pnpm test src/modules/submissions tests/boundaries && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 6: Commit** `feat(submissions): post context, form view and a per-process version cache`
@@ -6292,13 +2709,14 @@ export { uploadFields } from "../domain/intake";
 
 ```ts
 // staging.ts
-export interface StagedBatch { added: Record<string, StagedUpload[]>; fileIssues: FileIssue[]; countIssues: ValidationIssue[]; refs: string[] }
+export interface StagedBatch { added: Record<string, StagedUpload[]>; refused: RefusedFile[]; countIssues: ValidationIssue[]; refs: string[] }
 export async function stageIncoming(deps: SubmissionsDeps, input: {
   recordId: string; version: Version; pageKey: string;
   existing: Readonly<Record<string, readonly StagedUpload[]>>; incoming: readonly IncomingFile[];
 }): Promise<StagedBatch>;
 export function mergeBatch(record: InProgress, batch: StagedBatch, version: Version, registry: FieldTypeRegistry):
   { record: InProgress; overflow: string[]; issues: ValidationIssue[] };   // re-checks counts on the locked record
+export async function discardQuietly(deps: SubmissionsDeps, refs: readonly string[]): Promise<void>;
 // answers.ts
 export function pageInputKeys(version: Version, registry: FieldTypeRegistry, pageKey: string): { answers: string[]; uploads: string[] };
 export function storePageAnswers(stored: Readonly<Record<string, unknown>>, version: Version, registry: FieldTypeRegistry, pageKey: string, valid: Readonly<Record<string, unknown>>): Record<string, unknown>;
@@ -6309,17 +2727,11 @@ export function checkField(deps: SubmissionsDeps, context: OpenContext, input: {
   { field: Field; issue: ValidationIssue | null } | null;     // null: no such input field in the version
 ```
 
-Rules savePage keeps, each pinned by a test below: a post without a record is accepted only for the first page (otherwise `expired`), and creates the record with the post's version, the browser's language and `started_at` from `_rendered`; files are staged before the unit of work, and on any failure the files staged by this post are removed; Next enforces required, Back and the language switch do not, and an invalid answer is never stored; the stored answers of the page are replaced by the page's valid answers; decode issues (a number that is not a number, an impossible date) replace the form model's issue for that field; a refused Next keeps the raw values and issues as `pending` and stays; the language switch and a Remove keep the raw values without issues; Remove deletes the staging copy after commit.
+Rules savePage keeps, each pinned by a test below: a post without a record is accepted only for the first page (otherwise `expired`), and creates the record with the post's version, the browser's language and `started_at` from `_rendered`; files are staged before the unit of work, and on any failure the files staged by this post are removed; Next enforces required, Back and the language switch do not, and an invalid answer is never stored; the stored answers of the page are replaced by the page's valid answers; decode issues (a number that is not a number, an impossible date) replace the form model's issue for that field; a refused Next keeps the raw values and issues as `pending`, stays on the page and answers `refused` with the post's refused files; the language switch and a Remove keep the raw values without issues and answer `show`, or `refused` when a file of theirs was refused; Remove deletes the staging copy after commit; no file name reaches the record.
 
 - [ ] **Step 1: Failing tests.** `save-page.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { fakeImage } from "@/modules/media/application/testing/fakes";
-import { postContext } from "./post-context";
-import { savePage } from "./save-page";
-import { makeSubmissionsDeps, post, publishStory, type FakeSubmissionsDeps } from "./testing/fakes";
-
 async function context(deps: FakeSubmissionsDeps, state: Parameters<typeof postContext>[1]["state"] = { kind: "none" }) {
   const ctx = await postContext(deps, { slug: "story-form", state, submitToken: null });
   if (!ctx.ok) throw new Error(ctx.outcome.kind);
@@ -6355,9 +2767,10 @@ describe("savePage", () => {
     await publishStory(deps);
     const out = await savePage(deps, await context(deps), post({
       answers: { f_email: "nope" }, raw: { f_name: "", f_email: "nope" },
-      decodeIssues: [{ code: "invalid_shape", field: "f_baby" }],
+      decodeIssues: [{ code: "invalid_shape", field: asKey("f_baby") }],
     }));
-    if (out.kind !== "show") throw new Error(out.kind);
+    if (out.kind !== "refused") throw new Error(out.kind);
+    expect(out.refusedFiles).toEqual([]);
     const record = deps.inProgress.rows.get(out.recordId);
     expect(record?.pageKey).toBe("page_contact");
     expect(record?.pending?.issues.map((i) => [i.field, i.code])).toEqual([["f_name", "required"], ["f_email", "email_syntax"], ["f_baby", "invalid_shape"]]);
@@ -6391,7 +2804,7 @@ describe("savePage", () => {
     const id = await startOnPhotos(deps);
     const ctx = await context(deps, { kind: "record", id });
     const four = Array.from({ length: 4 }, (_, i) => ({ fieldKey: "f_photos", name: `p${String(i)}.jpg`, bytes: fakeImage() }));
-    await savePage(deps, ctx, post({ pageKey: "page_baby", incoming: four }));
+    expect((await savePage(deps, ctx, post({ pageKey: "page_baby", incoming: four }))).kind).toBe("refused");
     expect(deps.inProgress.rows.get(id)?.pending?.issues).toEqual([{ code: "files_max", field: "f_photos", params: { n: 3 } }]);
     expect(deps.media.staging.files.size).toBe(0);
 
@@ -6407,14 +2820,13 @@ describe("savePage", () => {
     expect(deps.media.staging.files.has(removed.stagingRef)).toBe(false);
   });
 
-  it("reports a refused file by name without storing the name anywhere but pending", async () => {
+  it("answers a refused file by name and stores the name nowhere", async () => {
     const deps = makeSubmissionsDeps();
     await publishStory(deps);
     const id = await startOnPhotos(deps);
-    await savePage(deps, await context(deps, { kind: "record", id }), post({ pageKey: "page_baby", incoming: [{ fieldKey: "f_photos", name: "notes.txt", bytes: new TextEncoder().encode("hello") }] }));
-    const record = deps.inProgress.rows.get(id);
-    expect(record?.pending?.fileIssues).toEqual([{ fieldKey: "f_photos", code: "file_wrong_type", file: "notes.txt" }]);
-    expect(JSON.stringify(record?.files)).not.toContain("notes.txt");
+    const out = await savePage(deps, await context(deps, { kind: "record", id }), post({ pageKey: "page_baby", incoming: [{ fieldKey: "f_photos", name: "notes.txt", bytes: new TextEncoder().encode("hello") }] }));
+    expect(out).toEqual({ kind: "refused", recordId: id, locale: "es", refusedFiles: [{ fieldKey: "f_photos", code: "file_wrong_type", name: "notes.txt" }] });
+    expect(JSON.stringify(deps.inProgress.rows.get(id))).not.toContain("notes.txt");
   });
 
   it("removes the files it staged when the save fails", async () => {
@@ -6433,11 +2845,6 @@ describe("savePage", () => {
 `check-field.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { checkField } from "./check-field";
-import { postContext } from "./post-context";
-import { makeSubmissionsDeps, publishStory } from "./testing/fakes";
-
 describe("checkField", () => {
   it("runs the server's rules for one field, and passes decode issues through", async () => {
     const deps = makeSubmissionsDeps();
@@ -6455,284 +2862,31 @@ describe("checkField", () => {
 
 - [ ] **Step 2: Run** `pnpm test src/modules/submissions/application`: fails.
 
-- [ ] **Step 3: Implement.** `answers.ts`:
-
-```ts
-import type { FieldTypeRegistry, Version } from "@/shared/domain/form-model";
-
-/** The page's input field keys, answers and upload fields apart (uploads live in `files`). */
-export function pageInputKeys(
-  version: Version,
-  registry: FieldTypeRegistry,
-  pageKey: string,
-): { answers: string[]; uploads: string[] } {
-  const page = version.pages.find((p) => p.key === pageKey);
-  const answers: string[] = [];
-  const uploads: string[] = [];
-  for (const field of page?.fields ?? []) {
-    const def = registry.get(field.type);
-    if (!def.isInput) continue;
-    (def.uploadLimits ? uploads : answers).push(field.key);
-  }
-  return { answers, uploads };
-}
-
-/** The stored answers with this page's replaced by its valid answers; invalid answers are never stored. */
-export function storePageAnswers(
-  stored: Readonly<Record<string, unknown>>,
-  version: Version,
-  registry: FieldTypeRegistry,
-  pageKey: string,
-  valid: Readonly<Record<string, unknown>>,
-): Record<string, unknown> {
-  const { answers } = pageInputKeys(version, registry, pageKey);
-  const out: Record<string, unknown> = { ...stored };
-  for (const key of answers) {
-    delete out[key];
-    if (Object.hasOwn(valid, key)) out[key] = valid[key];
-  }
-  return out;
-}
-```
-
-`staging.ts`:
-
-```ts
-import { discardStaged, stageFile } from "@/modules/media/application";
-import type { FieldTypeRegistry, ValidationIssue, Version } from "@/shared/domain/form-model";
-import type { FileIssue, InProgress, StagedUpload } from "../domain/in-progress";
-import { uploadFields } from "../domain/intake";
-import type { SubmissionsDeps } from "./deps";
-import type { IncomingFile } from "./fill-state";
-
-const MB = 1024 * 1024;
-
-export interface StagedBatch {
-  added: Record<string, StagedUpload[]>;
-  fileIssues: FileIssue[];
-  countIssues: ValidationIssue[];
-  refs: string[];
-}
-
-/**
- * Stages the files a post carried for the page's upload fields, before any
- * transaction. A field asked for more files than it allows stages none of
- * them. Empty file parts (no file chosen) are ignored.
- */
-export async function stageIncoming(
-  deps: SubmissionsDeps,
-  input: {
-    recordId: string;
-    version: Version;
-    pageKey: string;
-    existing: Readonly<Record<string, readonly StagedUpload[]>>;
-    incoming: readonly IncomingFile[];
-  },
-): Promise<StagedBatch> {
-  const batch: StagedBatch = { added: {}, fileIssues: [], countIssues: [], refs: [] };
-  const page = input.version.pages.find((p) => p.key === input.pageKey);
-  const onPage = new Set(page?.fields.map((f) => f.key) ?? []);
-  for (const { field, limits } of uploadFields(input.version, deps.registry)) {
-    if (!onPage.has(field.key)) continue;
-    const files = input.incoming.filter((f) => f.fieldKey === field.key && f.bytes.byteLength > 0);
-    if (files.length === 0) continue;
-    const have = input.existing[field.key]?.length ?? 0;
-    if (have + files.length > limits.maxFiles) {
-      batch.countIssues.push({ code: "files_max", field: field.key, params: { n: limits.maxFiles } });
-      continue;
-    }
-    for (const file of files) {
-      const staged = await stageFile(deps.media, {
-        recordId: input.recordId,
-        bytes: file.bytes,
-        accept: limits.kinds,
-        maxBytes: limits.maxSizeMb * MB,
-      });
-      if (!staged.ok) {
-        batch.fileIssues.push({ fieldKey: field.key, code: staged.code, file: file.name });
-        continue;
-      }
-      (batch.added[field.key] ??= []).push(staged.file);
-      batch.refs.push(staged.file.stagingRef);
-    }
-  }
-  return batch;
-}
-
-/** Adds the batch to the locked record; files a concurrent upload pushed over the limit are returned as overflow. */
-export function mergeBatch(
-  record: InProgress,
-  batch: StagedBatch,
-  version: Version,
-  registry: FieldTypeRegistry,
-): { record: InProgress; overflow: string[]; issues: ValidationIssue[] } {
-  const files: Record<string, StagedUpload[]> = { ...record.files };
-  const overflow: string[] = [];
-  const issues: ValidationIssue[] = [];
-  const limits = new Map(uploadFields(version, registry).map((u) => [u.field.key, u.limits.maxFiles]));
-  for (const [key, added] of Object.entries(batch.added)) {
-    const current = files[key] ?? [];
-    const max = limits.get(key) ?? 0;
-    if (current.length + added.length > max) {
-      overflow.push(...added.map((f) => f.stagingRef));
-      issues.push({ code: "files_max", field: key, params: { n: max } });
-      continue;
-    }
-    files[key] = [...current, ...added];
-  }
-  return { record: { ...record, files }, overflow, issues };
-}
-
-/** Best effort: a file that cannot be deleted now goes with its record's prefix at expiry. */
-export async function discardQuietly(deps: SubmissionsDeps, refs: readonly string[]): Promise<void> {
-  if (refs.length === 0) return;
-  await discardStaged(deps.media, refs).catch((e: unknown) => {
-    deps.logger.warn("staged files not removed", { count: refs.length, error: e instanceof Error ? e.name : "Error" });
-  });
-}
-```
-
-`save-page.ts`:
-
-```ts
-import { validatePage } from "@/shared/domain/form-model";
-import { isExpired, newInProgress, removeUpload, withFileAnswers, clampStartedAt } from "../domain/in-progress";
-import { localeFor, pickLocale } from "../domain/locale";
-import { firstPageKey, nextPageKey, previousPageKey } from "../domain/navigation";
-import { todayIn } from "../domain/dates";
-import { storePageAnswers } from "./answers";
-import type { SubmissionsDeps } from "./deps";
-import type { PagePost, PostOutcome } from "./fill-state";
-import type { OpenContext } from "./post-context";
-import { discardQuietly, mergeBatch, stageIncoming } from "./staging";
-
-/**
- * Next, Back, the language switch and Remove. Every post stores the page's
- * valid answers server-side, which is what lets Back, Next and a refresh keep
- * them. See specs/ui-ux/renderer.md, "Navigation and state".
- */
-export async function savePage(deps: SubmissionsDeps, context: OpenContext, post: PagePost): Promise<PostOutcome> {
-  const { form, version } = context;
-  const doc = version.document;
-  const now = deps.clock.now();
-  const first = firstPageKey(doc, deps.registry);
-  if (context.record === null && post.pageKey !== first) return { kind: "expired" };
-  const page = doc.pages.find((p) => p.key === post.pageKey);
-  if (!page) return context.record ? { kind: "show", recordId: context.record.id } : { kind: "expired" };
-
-  const recordId = context.record?.id ?? deps.ids.newId();
-  const batch = await stageIncoming(deps, {
-    recordId, version: doc, pageKey: page.key, existing: context.record?.files ?? {}, incoming: post.incoming,
-  });
-
-  try {
-    const result = await deps.uow.run(async (uow) => {
-      const locked = context.record ? await deps.inProgress.findForUpdate(uow, context.record.id) : null;
-      if (context.record && (locked === null || isExpired(locked, now))) {
-        return { outcome: { kind: "expired" } as const, discard: batch.refs };
-      }
-      const base =
-        locked ??
-        newInProgress({
-          id: recordId, formId: form.id, versionId: version.id,
-          locale: post.action.kind === "language" ? localeFor(doc.languages, post.action.locale) : pickLocale(doc.languages, post.acceptLanguage),
-          pageKey: first, submitToken: deps.ids.newId(), startedAt: clampStartedAt(post.renderedAt, now), now,
-        });
-      const merged = mergeBatch(base, batch, doc, deps.registry);
-      let record = merged.record;
-      const discard = [...merged.overflow];
-      if (post.action.kind === "remove") {
-        const { files, removed } = removeUpload(record.files, post.action.fileId);
-        record = { ...record, files };
-        if (removed) discard.push(removed.stagingRef);
-      }
-
-      const body = withFileAnswers({ ...record.answers, ...post.answers }, record.files);
-      const checked = validatePage(doc, deps.registry, body, page.key, { today: todayIn(form.settings.timezone, now) }, {
-        enforceRequired: post.action.kind === "next",
-      });
-      // A decode or count issue says more than the model's issue for the same field, so it replaces it.
-      const own = [...post.decodeIssues, ...batch.countIssues, ...merged.issues];
-      const replaced = new Set(own.map((i) => i.field));
-      const issues = [...checked.issues.filter((i) => !replaced.has(i.field)), ...own];
-      const answers = storePageAnswers(record.answers, doc, deps.registry, page.key, checked.answers);
-      const navigable = withFileAnswers(answers, record.files);
-      record = { ...record, answers, updatedAt: now };
-
-      if (post.action.kind === "next") {
-        const refused = issues.length > 0 || batch.fileIssues.length > 0;
-        record = refused
-          ? { ...record, pageKey: page.key, pending: { pageKey: page.key, raw: post.raw, issues, fileIssues: batch.fileIssues } }
-          : { ...record, pageKey: nextPageKey(doc, navigable, deps.registry, page.key) ?? page.key, pending: null };
-      } else if (post.action.kind === "back") {
-        record = { ...record, pageKey: previousPageKey(doc, navigable, deps.registry, page.key) ?? page.key, pending: null };
-      } else {
-        const locale = post.action.kind === "language" ? localeFor(doc.languages, post.action.locale) : record.locale;
-        record = { ...record, locale, pageKey: page.key, pending: { pageKey: page.key, raw: post.raw, issues: [], fileIssues: batch.fileIssues } };
-      }
-
-      if (locked) await deps.inProgress.update(uow, record);
-      else await deps.inProgress.insert(uow, record);
-      return { outcome: { kind: "show", recordId: record.id } as const, discard };
-    });
-    await discardQuietly(deps, result.discard);
-    return result.outcome;
-  } catch (e) {
-    await discardQuietly(deps, batch.refs);
-    throw e;
-  }
-}
-```
-
-(`submit` never reaches `savePage`; the route sends it to `submitForm`, Task 21. If it did, it would be treated like the language switch: stored and shown again.)
-
-`check-field.ts`:
-
-```ts
-import { validatePage, type Field, type ValidationCode, type ValidationIssue } from "@/shared/domain/form-model";
-import { withFileAnswers } from "../domain/in-progress";
-import { todayIn } from "../domain/dates";
-import type { SubmissionsDeps } from "./deps";
-import type { OpenContext } from "./post-context";
-
-/** The blur check: the server's own rules for one field, so the browser ships none of them. */
-export function checkField(
-  deps: SubmissionsDeps,
-  context: OpenContext,
-  input: { fieldKey: string; answer: unknown; decodeIssue: ValidationCode | null },
-): { field: Field; issue: ValidationIssue | null } | null {
-  const doc = context.version.document;
-  const page = doc.pages.find((p) => p.fields.some((f) => f.key === input.fieldKey));
-  const field = page?.fields.find((f) => f.key === input.fieldKey);
-  if (!page || !field || !deps.registry.get(field.type).isInput) return null;
-  if (input.decodeIssue !== null) return { field, issue: { code: input.decodeIssue, field: field.key } };
-  const record = context.record;
-  const body = withFileAnswers({ ...record?.answers, [field.key]: input.answer }, record?.files ?? {});
-  const today = todayIn(context.form.settings.timezone, deps.clock.now());
-  const { issues } = validatePage(doc, deps.registry, body, page.key, { today }, { enforceRequired: true });
-  return { field, issue: issues.find((i) => i.field === field.key) ?? null };
-}
-```
-
-Add to `index.ts`: `export { savePage } from "./save-page";`, `export { checkField } from "./check-field";`.
+- [ ] **Step 3: Implement.**
+  - `answers.ts`: `pageInputKeys` splits the page's input fields into answer fields and upload fields (those whose type declares `uploadLimits`; uploads live in `files`). `storePageAnswers` deletes every answer key of the page from the stored answers and sets the valid ones back.
+  - `staging.ts`: `stageIncoming` (before any transaction) walks the version's upload fields that sit on the page; empty file parts (no file chosen) are ignored; a field asked for more files than `maxFiles` minus those already staged gets one `files_max` count issue (`params: { n: maxFiles }`) and stages none of them; every other file goes through `stageFile` with the field's kinds and `maxSizeMb`, a refusal becoming a `RefusedFile` with the browser's name, a success joining `added` and `refs`. `mergeBatch` adds the batch to the locked record field by field; a field the batch would push past `maxFiles` (a concurrent early upload) keeps its files, and the batch's files for it become `overflow` refs with a `files_max` issue. `discardQuietly` deletes refs through `discardStaged` and on failure only logs `staged files not removed` with the count and the error class (the record's prefix delete at expiry catches them).
+  - `savePage` (comment: every post stores the page's valid answers server-side, which lets Back, Next and a refresh keep them; `renderer.md`, "Navigation and state"): checks the first-page rule and that the page exists, stages the batch under the record id (a new id when there is no record), then in one unit of work: lock the record (`findForUpdate`; missing or expired is `expired`, the batch discarded); or create it with `newInProgress` (locale from the language action or `pickLocale`, `clampStartedAt(renderedAt)`, a new submit token); `mergeBatch`; apply a Remove with `removeUpload`; validate with `validatePage` over `withFileAnswers({ ...stored, ...posted }, files)` and `{ today: todayIn(timezone, now) }`, `enforceRequired` only for Next; issues are the model's except for fields that have a decode or count issue, which replace them; store the page's valid answers; then move: a Next with issues or refused files stays with `pending { pageKey, raw, issues }` and answers `refused` with the record's locale and the batch's refused files; a clean Next moves to `nextPageKey` with `pending: null`; Back moves to `previousPageKey` with `pending: null`; language and Remove stay with `pending { raw, issues: [] }`, answering `refused` only when the batch refused a file. Insert or update the record. After commit, discard the overflow and removed refs; when the unit of work throws, discard the batch's refs and rethrow. (Submit never reaches `savePage`; the action sends it to `submitForm`, Task 21.)
+  - `checkField` (the blur check: the server's own rules for one field, so the browser ships none of them): find the page holding the field; a non-input or unknown field is null; a decode issue answers at once as `{ code, field: field.key }`; otherwise `validatePage` with `enforceRequired: true` over the record's answers and files plus this one answer, returning the issue for that field or null.
+  - `index.ts`: export `savePage` and `checkField`.
 
 - [ ] **Step 4: Run** `pnpm test src/modules/submissions && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 5: Commit** `feat(submissions): save a page on Next, Back, language switch and Remove; check one field`
 
 ---
 
-### Task 20: Submissions application: early uploads and removal
+### Task 20: Submissions application: early uploads, removal and the per-submission size
 
 **Files:**
 - Create: `src/modules/submissions/application/upload-file.ts`, `upload-file.test.ts`
-- Modify: `src/modules/submissions/application/index.ts`
+- Modify: `src/modules/submissions/application/staging.ts` (the per-submission size), `save-page.test.ts` (one case), `index.ts`
 
 **Interfaces:**
-- Consumes: `OpenContext` (Task 18); `stageFile` (Task 6) called directly for the single file; `discardQuietly`, `mergeBatch` (Task 19).
+- Consumes: `OpenContext` (Task 18); `stageFile` (Task 6) called directly for the single file; `discardQuietly`, `mergeBatch`, `stageIncoming` (Task 19); `stagedBytes` (Task 16); `LIMITS.submissionSizeMb`.
 - Produces:
 
 ```ts
-export type UploadRefusal = StageRefusal | "files_max" | "not_allowed" | "expired";
+// upload-file.ts
+export type UploadRefusal = StageRefusal | "files_max" | "submission_too_large" | "not_allowed" | "expired";
 export type UploadOutcome =
   | { ok: true; recordId: string; file: { id: string; kind: "image" | "video"; size: number }; count: number }
   | { ok: false; code: UploadRefusal; params?: { n: number } };
@@ -6740,31 +2894,16 @@ export async function uploadFile(deps: SubmissionsDeps, context: OpenContext, in
   fieldKey: string; bytes: Uint8Array; renderedAt: Date | null; acceptLanguage: string | null;
 }): Promise<UploadOutcome>;
 export async function removeFile(deps: SubmissionsDeps, context: OpenContext, fileId: string): Promise<boolean>;
+// staging.ts addition
+export const SUBMISSION_BYTES: number;   // LIMITS.submissionSizeMb MB
 ```
 
-Decision (upload authentication): the cookie's record, and the posted field key must name a visible upload field of the record's current page (the first page when there is no record yet, which this call then creates). Anything else is `not_allowed` and nothing is staged.
+Decision (upload authentication): the cookie's record, and the posted field key must name a visible upload field of the record's current page (the first page when there is no record yet, which this call then creates). Anything else is `not_allowed` and nothing is staged. Decision (per-submission size, `security.md`): a file that would take the record's staged bytes (`stagedBytes`, every field, early uploads included) past `SUBMISSION_BYTES` is refused with `submission_too_large` before staging, by `uploadFile` and by `stageIncoming` alike, and again on the locked record in the unit of work.
 
-- [ ] **Step 1: Failing tests** `upload-file.test.ts`:
+- [ ] **Step 1: Failing tests** `upload-file.test.ts`, with the helper `onPhotos(deps)`: `savePage` on a fresh context with `{ f_name: "Ana Prueba", f_baby: "yes_opt" }` (must answer `show`), then the `postContext` of that record:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { fakeImage } from "@/modules/media/application/testing/fakes";
-import { postContext } from "./post-context";
-import { savePage } from "./save-page";
-import { makeSubmissionsDeps, post, publishStory, type FakeSubmissionsDeps } from "./testing/fakes";
-import { removeFile, uploadFile } from "./upload-file";
-
 const MB = 1024 * 1024;
-
-async function onPhotos(deps: FakeSubmissionsDeps) {
-  const none = await postContext(deps, { slug: "story-form", state: { kind: "none" }, submitToken: null });
-  if (!none.ok) throw new Error("closed");
-  const out = await savePage(deps, none, post({ answers: { f_name: "Ana Prueba", f_baby: "yes_opt" } }));
-  if (out.kind !== "show") throw new Error(out.kind);
-  const ctx = await postContext(deps, { slug: "story-form", state: { kind: "record", id: out.recordId }, submitToken: null });
-  if (!ctx.ok) throw new Error("expired");
-  return ctx;
-}
 
 describe("uploadFile", () => {
   it("stages a file for a visible upload field of the current page and counts it", async () => {
@@ -6807,6 +2946,21 @@ describe("uploadFile", () => {
     expect(await uploadFile(deps, fresh, { fieldKey: "f_photos", bytes: fakeImage(), renderedAt: null, acceptLanguage: "es" })).toEqual({ ok: false, code: "files_max", params: { n: 3 } });
     expect(deps.media.staging.files.size).toBe(3);
   });
+
+  it("refuses a file that would take the record's staged files past 100 MB", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishStory(deps);
+    const ctx = await onPhotos(deps);
+    const id = ctx.record?.id ?? "";
+    const big = (n: string, size: number) => ({ id: n, stagingRef: `in-progress/${id}/${n}.mp4`, kind: "video" as const, contentType: "video/mp4", size });
+    const r = deps.inProgress.rows.get(id);
+    if (r) deps.inProgress.rows.set(id, { ...r, files: { f_photos: [big("a", 50 * MB), big("b", 46 * MB)] } });
+    const full = await postContext(deps, { slug: "story-form", state: { kind: "record", id }, submitToken: null });
+    if (!full.ok) throw new Error("expired");
+    expect(await uploadFile(deps, full, { fieldKey: "f_photos", bytes: fakeImage("image/jpeg", 5 * MB), renderedAt: null, acceptLanguage: "es" })).toEqual({ ok: false, code: "submission_too_large" });
+    expect(deps.media.staging.files.size).toBe(0);
+    expect((await uploadFile(deps, full, { fieldKey: "f_photos", bytes: fakeImage("image/jpeg", 3 * MB), renderedAt: null, acceptLanguage: "es" })).ok).toBe(true);
+  });
 });
 
 describe("removeFile", () => {
@@ -6823,165 +2977,61 @@ describe("removeFile", () => {
 });
 ```
 
-- [ ] **Step 2: Run** `pnpm test src/modules/submissions/application/upload-file.test.ts`: fails.
-
-- [ ] **Step 3: Implement** `upload-file.ts`:
+(`FakeEncoder` prefixes ten bytes, so the 3 MB image stays within the remaining 4 MB.) Append to `save-page.test.ts`:
 
 ```ts
-import { stageFile, type StageRefusal } from "@/modules/media/application";
-import { evaluateVisibility } from "@/shared/domain/form-model";
-import { clampStartedAt, isExpired, newInProgress, removeUpload, withFileAnswers } from "../domain/in-progress";
-import { uploadFields } from "../domain/intake";
-import { pickLocale } from "../domain/locale";
-import { firstPageKey } from "../domain/navigation";
-import type { SubmissionsDeps } from "./deps";
-import type { OpenContext } from "./post-context";
-import { discardQuietly, mergeBatch } from "./staging";
-
-const MB = 1024 * 1024;
-
-export type UploadRefusal = StageRefusal | "files_max" | "not_allowed" | "expired";
-export type UploadOutcome =
-  | { ok: true; recordId: string; file: { id: string; kind: "image" | "video"; size: number }; count: number }
-  | { ok: false; code: UploadRefusal; params?: { n: number } };
-
-/**
- * An early upload with script: one file, staged at once and linked to the
- * in-progress record, which this call creates on the first page. See
- * specs/ui-ux/renderer.md, "File upload".
- */
-export async function uploadFile(
-  deps: SubmissionsDeps,
-  context: OpenContext,
-  input: { fieldKey: string; bytes: Uint8Array; renderedAt: Date | null; acceptLanguage: string | null },
-): Promise<UploadOutcome> {
-  const doc = context.version.document;
-  const now = deps.clock.now();
-  const pageKey = context.record?.pageKey ?? firstPageKey(doc, deps.registry);
-  const page = doc.pages.find((p) => p.key === pageKey);
-  const target = uploadFields(doc, deps.registry).find((u) => u.field.key === input.fieldKey);
-  const answers = withFileAnswers(context.record?.answers ?? {}, context.record?.files ?? {});
-  const visible = evaluateVisibility(doc, answers, deps.registry).fields.get(input.fieldKey) === true;
-  if (!target || !page?.fields.some((f) => f.key === input.fieldKey) || !visible) return { ok: false, code: "not_allowed" };
-  const { maxFiles, kinds, maxSizeMb } = target.limits;
-  if ((context.record?.files[input.fieldKey]?.length ?? 0) >= maxFiles) {
-    return { ok: false, code: "files_max", params: { n: maxFiles } };
-  }
-
-  const recordId = context.record?.id ?? deps.ids.newId();
-  const staged = await stageFile(deps.media, { recordId, bytes: input.bytes, accept: kinds, maxBytes: maxSizeMb * MB });
-  if (!staged.ok) return { ok: false, code: staged.code };
-
-  try {
-    const result = await deps.uow.run(async (uow): Promise<UploadOutcome> => {
-      const locked = context.record ? await deps.inProgress.findForUpdate(uow, context.record.id) : null;
-      if (context.record && (locked === null || isExpired(locked, now))) return { ok: false, code: "expired" };
-      const base =
-        locked ??
-        newInProgress({
-          id: recordId, formId: context.form.id, versionId: context.version.id,
-          locale: pickLocale(doc.languages, input.acceptLanguage), pageKey,
-          submitToken: deps.ids.newId(), startedAt: clampStartedAt(input.renderedAt, now), now,
-        });
-      const merged = mergeBatch(base, { added: { [input.fieldKey]: [staged.file] }, fileIssues: [], countIssues: [], refs: [] }, doc, deps.registry);
-      if (merged.overflow.length > 0) return { ok: false, code: "files_max", params: { n: maxFiles } };
-      const record = { ...merged.record, updatedAt: now };
-      if (locked) await deps.inProgress.update(uow, record);
-      else await deps.inProgress.insert(uow, record);
-      const count = record.files[input.fieldKey]?.length ?? 0;
-      return { ok: true, recordId, file: { id: staged.file.id, kind: staged.file.kind, size: staged.file.size }, count };
-    });
-    if (!result.ok) await discardQuietly(deps, [staged.file.stagingRef]);
-    return result;
-  } catch (e) {
-    await discardQuietly(deps, [staged.file.stagingRef]);
-    throw e;
-  }
-}
-
-/** Removes a staged file from the record and from staging at once. */
-export async function removeFile(deps: SubmissionsDeps, context: OpenContext, fileId: string): Promise<boolean> {
-  if (context.record === null) return false;
-  const recordId = context.record.id;
-  const now = deps.clock.now();
-  const ref = await deps.uow.run(async (uow) => {
-    const locked = await deps.inProgress.findForUpdate(uow, recordId);
-    if (locked === null || isExpired(locked, now)) return null;
-    const { files, removed } = removeUpload(locked.files, fileId);
-    if (removed === null) return null;
-    await deps.inProgress.update(uow, { ...locked, files, updatedAt: now });
-    return removed.stagingRef;
+  it("refuses a file posted without script that would pass the per-submission size", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishStory(deps);
+    const id = await startOnPhotos(deps);
+    const r = deps.inProgress.rows.get(id);
+    const big = { id: "a", stagingRef: `in-progress/${id}/a.mp4`, kind: "video" as const, contentType: "video/mp4", size: 98 * 1024 * 1024 };
+    if (r) deps.inProgress.rows.set(id, { ...r, files: { f_photos: [big] } });
+    const out = await savePage(deps, await context(deps, { kind: "record", id }), post({ pageKey: "page_baby", incoming: [{ fieldKey: "f_photos", name: "b.jpg", bytes: fakeImage("image/jpeg", 3 * 1024 * 1024) }] }));
+    expect(out).toMatchObject({ kind: "refused", refusedFiles: [{ fieldKey: "f_photos", code: "submission_too_large", name: "b.jpg" }] });
+    expect(deps.media.staging.files.size).toBe(0);
   });
-  if (ref === null) return false;
-  await discardQuietly(deps, [ref]);
-  return true;
-}
 ```
 
-Add to `index.ts`: `export { uploadFile, removeFile } from "./upload-file";` and `export type { UploadOutcome, UploadRefusal } from "./upload-file";`.
+- [ ] **Step 2: Run** `pnpm test src/modules/submissions/application`: fails.
+
+- [ ] **Step 3: Implement.**
+  - `staging.ts`: `SUBMISSION_BYTES = LIMITS.submissionSizeMb * MB`; `stageIncoming` keeps a running total starting at `stagedBytes(existing)` and refuses, as a `RefusedFile` with `submission_too_large`, any file whose bytes would pass it, before calling `stageFile`; staged sizes add to the total. `mergeBatch` also overflows a field whose added files would take the locked record past `SUBMISSION_BYTES`.
+  - `uploadFile` (comment links `renderer.md`, "File upload"): the page is the record's current page or the first page; the field must be one of `uploadFields`, sit on that page and be visible (`evaluateVisibility` over the record's answers with files), else `not_allowed`. Refuse `files_max` when the field already holds `maxFiles`, and `submission_too_large` when `stagedBytes(record.files) + bytes.length > SUBMISSION_BYTES`. Stage with `stageFile` under the record id (a new id when there is none). Then one unit of work: lock the record (missing or expired is `expired`) or create it as `savePage` does on the first page; `mergeBatch` with the one file (overflow is `files_max`; over the total is `submission_too_large`); write the record; answer `ok` with the file's id, kind and size and the field's new count. Any refusal after staging, or a thrown error, discards the staged file.
+  - `removeFile`: without a record, false. Otherwise one unit of work locks the record (missing or expired: false), removes the upload (unknown id: false) and updates the record; after commit `discardQuietly` the staging ref and answer true.
+  - `index.ts`: export `uploadFile`, `removeFile`, `UploadOutcome`, `UploadRefusal`.
 
 - [ ] **Step 4: Run** `pnpm test src/modules/submissions && pnpm lint && pnpm typecheck && pnpm format:check`.
-- [ ] **Step 5: Commit** `feat(submissions): early uploads linked to the in-progress record, and removal`
+- [ ] **Step 5: Commit** `feat(submissions): early uploads linked to the in-progress record, removal, and the per-submission size`
 
 ---
 
-### Task 21: Submissions application: the intake transaction and expiry
+### Task 21: Submissions application: the intake transaction, silent accepts on every post, and expiry
 
 **Files:**
-- Create: `src/modules/submissions/application/submit-form.ts`, `submit-form.test.ts`, `expire.ts`, `expire.test.ts`
-- Modify: `src/modules/submissions/application/index.ts`
+- Create: `src/modules/submissions/application/submit-form.ts`, `submit-form.test.ts`, `silent-accept.ts`, `expire.ts`, `expire.test.ts`
+- Modify: `src/modules/submissions/application/save-page.ts` (the honeypot on every post), `index.ts`
 
 **Interfaces:**
-- Consumes: everything above; `allocateReference` (Task 14); `attachToSubmission`, `durableKey`, `uniqueFieldSlugs`, `extensionFor`, `discardRecordFiles` (Tasks 5, 6); `enqueueSubmissionEmails` (Task 11); `validateSubmission`.
+- Consumes: everything above; `allocateReference` (Task 14); `attachToSubmission`, `durableKey`, `uniqueFieldSlugs`, `extensionFor`, `discardRecordFiles` (Tasks 5, 6); `enqueueSubmissionEmails` (Task 11); `validateSubmission`; `isHoneypotFilled`, `isSilentAccept`, `decoyReference` (Task 16).
 - Produces:
 
 ```ts
+// submit-form.ts
 export async function submitForm(deps: SubmissionsDeps, context: OpenContext, post: PagePost): Promise<PostOutcome>;
+// silent-accept.ts: inside a unit of work; the caller discards `refs` and the record's prefix after commit
+export async function silentAccept(deps: SubmissionsDeps, uow: UnitOfWork, input: { form: Form; recordId: string; locked: boolean }): Promise<{ kind: "decoy"; reference: string }>;
+// expire.ts
 export async function expireInProgress(deps: SubmissionsDeps, input: { now: Date; logger: Logger; limit?: number }): Promise<number>;
 ```
 
-The single transaction, in order: lock the in-progress row; a missing row with a known submit token answers `submitted` (a double click); an expired row answers `expired`; the honeypot or the minimum time answers with a decoy reference after deleting the record (its files go after commit), storing nothing; the last page is validated as on Next; the whole submission is validated with `validateSubmission`, which drops answers to hidden fields (a refusal returns to the first page with an issue); `allocateReference` locks the form row and re-checks that it is open; then the submission, one media row and one `media.upload` job per attached file, the email jobs, and the deletion of the in-progress row. After commit, staged files no answer names (hidden fields, never attached) are deleted. Logs carry the form and submission ids only.
+The single transaction, in order: lock the in-progress row; a missing row with a known submit token answers `submitted` (a double click); an expired row answers `expired`; the honeypot or the minimum time answers with a decoy reference after deleting the record (its files go after commit), storing nothing; the last page is validated as on Next; the whole submission is validated with `validateSubmission`, which drops answers to hidden fields (a refusal stores `pending` on the first page with an issue and answers `refused`); a submission already holding this record's submit token answers `submitted` **before** any reference is taken; `allocateReference` locks the form row and re-checks that it is open; then the submission, one media row and one `media.upload` job per attached file, the email jobs, and the deletion of the in-progress row. Should the insert still meet the token (a race the pre-check lost), the transaction is rolled back by throwing a private `DuplicateSubmit` sentinel, caught outside the unit of work and answered `submitted`, so a duplicate commits nothing: `form.next_reference` and `form.updated_at` keep their values. After commit, staged files no answer names (hidden fields, never attached) are deleted. Logs carry the form and submission ids only.
 
-Decision (media keys, applied here): field slugs come from `uniqueFieldSlugs` over the version's upload fields in field order, with labels in `firstLanguage(languages)`. Decision (staff notification, applied here): enqueued when the cadence is per submission and the form has at least one recipient; the submitter confirmation when the version defines a confirmation email and the submitter-address field was answered.
+Decision (honeypot on every post): `savePage` checks `isHoneypotFilled` first in its unit of work, and a filled honeypot on Next, Back, a language switch or a Remove calls `silentAccept` exactly as Submit does. The minimum time is checked at Submit only. Decision (media keys, applied here): field slugs come from `uniqueFieldSlugs` over the version's upload fields in field order, with labels in `firstLanguage(languages)`. Decision (staff notification, applied here): enqueued when the cadence is per submission and the form has at least one recipient; the submitter confirmation when the version defines a confirmation email and the submitter-address field was answered.
 
-- [ ] **Step 1: Failing tests** `submit-form.test.ts`:
+- [ ] **Step 1: Failing tests** `submit-form.test.ts`. Shared helpers, described once: `consent = { accepted: true, textVersion: consentTextVersion(CONSENT_TEXT) }`; `ctxOf(deps, id, submitToken?)` is `postContext` for that record (or none) and throws on a refusal; `reachConsent(deps)` posts page 1 with `{ f_name: "Ana Prueba", f_email: "family@example.com", f_baby: "yes_opt" }` and `renderedAt: now`, uploads two `fakeImage()`s to `f_photos`, posts `page_baby` with Next, advances the clock 60 seconds and returns the record id; `submit(deps, id, over)` posts `page_consent` with `action: submit`, `answers: { f_consent: consent }`, the record's token and state, merged with `over`.
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { publishAgain } from "@/modules/definitions/application/testing/fakes";
-import { fakeImage } from "@/modules/media/application/testing/fakes";
-import { consentTextVersion, type Version } from "@/shared/domain/form-model";
-import { CONSENT_TEXT, storyVersion } from "../domain/testing/versions";
-import { postContext } from "./post-context";
-import { savePage } from "./save-page";
-import { submitForm } from "./submit-form";
-import { uploadFile } from "./upload-file";
-import { makeSubmissionsDeps, post, publishStory, type FakeSubmissionsDeps } from "./testing/fakes";
-
-const consent = { accepted: true, textVersion: consentTextVersion(CONSENT_TEXT) };
-
-async function ctxOf(deps: FakeSubmissionsDeps, id: string | null, submitToken: string | null = null) {
-  const ctx = await postContext(deps, { slug: "story-form", state: id ? { kind: "record", id } : { kind: "none" }, submitToken });
-  if (!ctx.ok) throw new Error(ctx.outcome.kind);
-  return ctx;
-}
-
-/** Fills page 1 with a baby, uploads two photos on page 2, reaches page 3. */
-async function reachConsent(deps: FakeSubmissionsDeps): Promise<string> {
-  const start = await savePage(deps, await ctxOf(deps, null), post({ answers: { f_name: "Ana Prueba", f_email: "family@example.com", f_baby: "yes_opt" }, renderedAt: deps.clock.now() }));
-  if (start.kind !== "show") throw new Error(start.kind);
-  const id = start.recordId;
-  for (let i = 0; i < 2; i++) await uploadFile(deps, await ctxOf(deps, id), { fieldKey: "f_photos", bytes: fakeImage(), renderedAt: null, acceptLanguage: "es" });
-  await savePage(deps, await ctxOf(deps, id), post({ pageKey: "page_baby", state: { kind: "record", id } }));
-  deps.clock.advance(60_000);
-  return id;
-}
-
-async function submit(deps: FakeSubmissionsDeps, id: string, over: Partial<Parameters<typeof post>[0]> = {}) {
-  const token = deps.inProgress.rows.get(id)?.submitToken ?? null;
-  return submitForm(deps, await ctxOf(deps, id, token), post({ pageKey: "page_consent", action: { kind: "submit" }, answers: { f_consent: consent }, submitToken: token, state: { kind: "record", id }, ...over }));
-}
-
 describe("submitForm", () => {
   it("stores the submission, media rows and jobs in one go and deletes the record", async () => {
     const deps = makeSubmissionsDeps();
@@ -7007,15 +3057,38 @@ describe("submitForm", () => {
     expect(JSON.stringify(deps.logger.lines)).not.toMatch(/@|Ana/);
   });
 
-  it("answers a repeated submit with the same confirmation and no second submission", async () => {
+  it("answers a repeated submit with the same confirmation, no second submission and no second reference", async () => {
     const deps = makeSubmissionsDeps();
-    await publishStory(deps);
+    const { formId } = await publishStory(deps);
     const id = await reachConsent(deps);
     const token = deps.inProgress.rows.get(id)?.submitToken ?? null;
     await submit(deps, id);
+    const updatedAt = deps.definitions.store.forms.get(formId)?.updatedAt;
     const again = await postContext(deps, { slug: "story-form", state: { kind: "record", id }, submitToken: token });
     expect(again).toEqual({ ok: false, outcome: { kind: "submitted", submitToken: token } });
     expect(deps.submissions.rows.size).toBe(1);
+    expect(deps.definitions.store.forms.get(formId)?.updatedAt).toEqual(updatedAt);
+    const uow = await deps.uow.begin();
+    expect(await allocateReference(deps.definitions, uow, formId)).toMatchObject({ ok: true, reference: "ST-0002" });
+  });
+
+  it("answers a token already used with the confirmation before taking a reference", async () => {
+    const deps = makeSubmissionsDeps();
+    const { formId, versionId } = await publishStory(deps);
+    const id = await reachConsent(deps);
+    const token = deps.inProgress.rows.get(id)?.submitToken ?? "";
+    await deps.submissions.insert(await deps.uow.begin(), {
+      id: "00000000-0000-4000-8000-0000000000ee", formId, versionId, locale: "es", answers: {}, consent: null,
+      receivedAt: deps.clock.now(), reference: "ST-0009", submitToken: token,
+    });
+    const updatedAt = deps.definitions.store.forms.get(formId)?.updatedAt;
+    expect(await submit(deps, id)).toEqual({ kind: "submitted", submitToken: token });
+    expect(deps.submissions.rows.size).toBe(1);
+    expect(deps.media.media.rows.size).toBe(0);
+    expect(deps.queue.ofType("media.upload")).toEqual([]);
+    expect(deps.definitions.store.forms.get(formId)?.updatedAt).toEqual(updatedAt);
+    const uow = await deps.uow.begin();
+    expect(await allocateReference(deps.definitions, uow, formId)).toMatchObject({ ok: true, reference: "ST-0001" });
   });
 
   it("silently accepts a filled honeypot or a too-fast submission, storing nothing", async () => {
@@ -7070,7 +3143,7 @@ describe("submitForm", () => {
     const id = await reachConsent(deps);
     const r = deps.inProgress.rows.get(id);
     if (r) deps.inProgress.rows.set(id, { ...r, answers: { ...r.answers, f_name: undefined }, files: {} });
-    expect(await submit(deps, id)).toEqual({ kind: "show", recordId: id });
+    expect(await submit(deps, id)).toMatchObject({ kind: "refused", recordId: id, refusedFiles: [] });
     expect(deps.inProgress.rows.get(id)).toMatchObject({ pageKey: "page_contact", pending: { issues: [{ code: "required", field: "f_name" }] } });
     expect(deps.submissions.rows.size).toBe(0);
   });
@@ -7106,21 +3179,36 @@ describe("submitForm", () => {
     expect(deps.queue.ofType("email.staff_notification")).toEqual([]);
   });
 });
+
+describe("a filled honeypot on any post", () => {
+  it("deletes the record and its staged files on Next, Back and the language switch, and answers the decoy", async () => {
+    for (const action of [{ kind: "next" }, { kind: "back" }, { kind: "language", locale: "en" }] as const) {
+      const deps = makeSubmissionsDeps();
+      await publishStory(deps);
+      const id = await reachConsent(deps);
+      expect(deps.media.staging.files.size).toBe(2);
+      const out = await savePage(deps, await ctxOf(deps, id), post({ pageKey: "page_consent", action, honeypot: "x", state: { kind: "record", id } }));
+      expect(out).toEqual({ kind: "decoy", reference: "ST-5500" });
+      expect(deps.inProgress.rows.size).toBe(0);
+      expect(deps.media.staging.files.size).toBe(0);
+      expect(deps.submissions.rows.size).toBe(0);
+    }
+  });
+
+  it("stores nothing for a filled honeypot on page 1, where there is no record yet", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishStory(deps);
+    expect(await savePage(deps, await ctxOf(deps, null), post({ answers: { f_name: "Ana Prueba", f_baby: "no_opt" }, honeypot: "x" }))).toEqual({ kind: "decoy", reference: "ST-5500" });
+    expect(deps.inProgress.rows.size).toBe(0);
+  });
+});
 ```
 
-(`random: () => 0.5` in the fakes gives the decoy `ST-5500`.)
+(`random: () => 0.5` in the fakes gives the decoy `ST-5500`. Imports: `allocateReference` and `publishAgain` from definitions' testing fakes and public API, `fakeImage` from media's fakes, `consentTextVersion` and `Version` from the form model, `CONSENT_TEXT` and `storyVersion` from `../domain/testing/versions`.)
 
 `expire.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { fakeImage } from "@/modules/media/application/testing/fakes";
-import { expireInProgress } from "./expire";
-import { postContext } from "./post-context";
-import { savePage } from "./save-page";
-import { makeSubmissionsDeps, post, publishStory } from "./testing/fakes";
-import { uploadFile } from "./upload-file";
-
 describe("expireInProgress", () => {
   it("removes records past 24 hours with their staged files, and keeps fresh ones", async () => {
     const deps = makeSubmissionsDeps();
@@ -7144,200 +3232,19 @@ describe("expireInProgress", () => {
 
 - [ ] **Step 2: Run** `pnpm test src/modules/submissions/application`: fails.
 
-- [ ] **Step 3: Implement** `submit-form.ts`:
-
-```ts
-import { allocateReference } from "@/modules/definitions/application";
-import { attachToSubmission, discardRecordFiles, durableKey, extensionFor, uniqueFieldSlugs } from "@/modules/media/application";
-import { enqueueSubmissionEmails } from "@/modules/notifications/application";
-import { validatePage, validateSubmission, type ValidationIssue } from "@/shared/domain/form-model";
-import { resolveText } from "@/shared/domain/localized-text";
-import { todayIn } from "../domain/dates";
-import { clampStartedAt, isExpired, newInProgress, withFileAnswers } from "../domain/in-progress";
-import { firstLanguage, firstPageWithIssue, planFiles, submitterAddress, uploadFields } from "../domain/intake";
-import { pickLocale } from "../domain/locale";
-import { firstPageKey } from "../domain/navigation";
-import { decoyReference, isSilentAccept } from "../domain/protection";
-import { storePageAnswers } from "./answers";
-import type { SubmissionsDeps } from "./deps";
-import type { PagePost, PostOutcome } from "./fill-state";
-import type { OpenContext } from "./post-context";
-import { discardQuietly, mergeBatch, stageIncoming } from "./staging";
-
-interface IntakeResult {
-  outcome: PostOutcome;
-  discard: string[];
-  discardRecord: string | null;
-}
-
-/**
- * Submit: the intake transaction of specs/architecture.md, "Submission data
- * flow" step 3. Nothing external is called; the jobs do that after commit.
- */
-export async function submitForm(deps: SubmissionsDeps, context: OpenContext, post: PagePost): Promise<PostOutcome> {
-  const { form, version } = context;
-  const doc = version.document;
-  const now = deps.clock.now();
-  const first = firstPageKey(doc, deps.registry);
-  if (context.record === null && post.pageKey !== first) return { kind: "expired" };
-  const page = doc.pages.find((p) => p.key === post.pageKey);
-  if (!page) return context.record ? { kind: "show", recordId: context.record.id } : { kind: "expired" };
-  const recordId = context.record?.id ?? deps.ids.newId();
-  const batch = await stageIncoming(deps, { recordId, version: doc, pageKey: page.key, existing: context.record?.files ?? {}, incoming: post.incoming });
-  const ctx = { today: todayIn(form.settings.timezone, now) };
-
-  let result: IntakeResult;
-  try {
-    result = await deps.uow.run(async (uow): Promise<IntakeResult> => {
-      const nothing = (outcome: PostOutcome): IntakeResult => ({ outcome, discard: batch.refs, discardRecord: null });
-      const locked = context.record ? await deps.inProgress.findForUpdate(uow, context.record.id) : null;
-      if (context.record && locked === null) {
-        const done = post.submitToken ? await deps.submissions.findBySubmitToken(post.submitToken) : null;
-        return nothing(done && done.formId === form.id ? { kind: "submitted", submitToken: done.submitToken } : { kind: "expired" });
-      }
-      if (locked && isExpired(locked, now)) return nothing({ kind: "expired" });
-      const base =
-        locked ??
-        newInProgress({
-          id: recordId, formId: form.id, versionId: version.id, locale: pickLocale(doc.languages, post.acceptLanguage),
-          pageKey: first, submitToken: deps.ids.newId(), startedAt: clampStartedAt(post.renderedAt, now), now,
-        });
-      const merged = mergeBatch(base, batch, doc, deps.registry);
-      let record = merged.record;
-
-      if (isSilentAccept({ honeypot: post.honeypot, startedAt: record.startedAt, now })) {
-        if (locked) await deps.inProgress.delete(uow, record.id);
-        const reference = decoyReference(form.settings.referencePrefix, deps.random);
-        return { outcome: { kind: "decoy", reference }, discard: batch.refs, discardRecord: record.id };
-      }
-
-      /** Keeps the refusal on `pageKey` and shows that page again. */
-      const save = async (pageKey: string, issues: ValidationIssue[]): Promise<IntakeResult> => {
-        const samePage = pageKey === page.key;
-        record = {
-          ...record,
-          pageKey,
-          updatedAt: now,
-          pending: { pageKey, raw: samePage ? post.raw : {}, issues, fileIssues: samePage ? batch.fileIssues : [] },
-        };
-        if (locked) await deps.inProgress.update(uow, record);
-        else await deps.inProgress.insert(uow, record);
-        return { outcome: { kind: "show", recordId: record.id }, discard: merged.overflow, discardRecord: null };
-      };
-
-      const body = withFileAnswers({ ...record.answers, ...post.answers }, record.files);
-      const checked = validatePage(doc, deps.registry, body, page.key, ctx, { enforceRequired: true });
-      const own = [...post.decodeIssues, ...batch.countIssues, ...merged.issues];
-      const replaced = new Set(own.map((i) => i.field));
-      const pageIssues = [...checked.issues.filter((i) => !replaced.has(i.field)), ...own];
-      record = { ...record, answers: storePageAnswers(record.answers, doc, deps.registry, page.key, checked.answers) };
-      if (pageIssues.length > 0 || batch.fileIssues.length > 0) return save(page.key, pageIssues);
-
-      const full = validateSubmission(doc, deps.registry, withFileAnswers(record.answers, record.files), ctx);
-      if (!full.ok) {
-        const target = firstPageWithIssue(doc, full.issues) ?? page.key;
-        const onTarget = new Set(doc.pages.find((p) => p.key === target)?.fields.map((f) => f.key) ?? []);
-        return save(target, full.issues.filter((i) => onTarget.has(i.field)));
-      }
-
-      const allocated = await allocateReference(deps.definitions, uow, form.id);
-      if (!allocated.ok) return nothing({ kind: "gate", state: allocated.state });
-
-      const submissionId = deps.ids.newId();
-      const inserted = await deps.submissions.insert(uow, {
-        id: submissionId, formId: form.id, versionId: version.id, locale: record.locale, answers: full.answers,
-        consent: full.consent ? { ...full.consent, acceptedAt: now } : null,
-        receivedAt: now, reference: allocated.reference, submitToken: record.submitToken,
-      });
-      if (inserted === "duplicate_token") return nothing({ kind: "submitted", submitToken: record.submitToken });
-
-      const plan = planFiles(full.answers, record.files);
-      const language = firstLanguage(doc.languages);
-      const slugs = uniqueFieldSlugs(
-        uploadFields(doc, deps.registry).map(({ field }) => ({ fieldKey: field.key, label: resolveText(field.label, language, doc.languages) })),
-      );
-      await attachToSubmission(deps.media, uow, {
-        submissionId,
-        formId: form.id,
-        files: plan.attached.map((p) => ({
-          fieldKey: p.fieldKey,
-          position: p.position,
-          file: p.upload,
-          durableKey: durableKey({
-            formSlug: allocated.form.slug, reference: allocated.reference, position: p.position,
-            fieldSlug: slugs.get(p.fieldKey) ?? "file", ext: extensionFor(p.upload.contentType),
-          }),
-        })),
-      });
-      const settings = allocated.form.settings;
-      await enqueueSubmissionEmails(deps.queue, uow, {
-        submissionId,
-        submitterConfirmation: doc.confirmation.email !== undefined && submitterAddress(doc, deps.registry, full.answers) !== null,
-        staffNotification: settings.notificationCadence === "per_submission" && settings.notificationRecipients.length > 0,
-      });
-      if (locked) await deps.inProgress.delete(uow, record.id);
-      deps.logger.info("submission received", { formId: form.id, submissionId });
-      return {
-        outcome: { kind: "submitted", submitToken: record.submitToken },
-        discard: [...merged.overflow, ...plan.discarded.map((u) => u.stagingRef)],
-        discardRecord: null,
-      };
-    });
-  } catch (e) {
-    await discardQuietly(deps, batch.refs);
-    throw e;
-  }
-  await discardQuietly(deps, result.discard);
-  if (result.discardRecord !== null) {
-    await discardRecordFiles(deps.media, result.discardRecord).catch(() => undefined);
-  }
-  return result.outcome;
-}
-```
-
-`expire.ts`:
-
-```ts
-import { discardRecordFiles } from "@/modules/media/application";
-import type { Logger } from "@/shared/application/ports/logger";
-import { isExpired } from "../domain/in-progress";
-import type { SubmissionsDeps } from "./deps";
-
-/**
- * The `jobs.cleanup` step for submissions: removes in-progress records past
- * their 24 hours, their staged files first and under the row lock, so a
- * failure leaves the row for the next run rather than orphaned files.
- * See specs/system/jobs.md, "Recurring jobs".
- */
-export async function expireInProgress(
-  deps: SubmissionsDeps,
-  input: { now: Date; logger: Logger; limit?: number },
-): Promise<number> {
-  const ids = await deps.inProgress.listExpired(input.now, input.limit ?? 500);
-  let removed = 0;
-  for (const id of ids) {
-    const done = await deps.uow.run(async (uow) => {
-      const record = await deps.inProgress.findForUpdate(uow, id);
-      if (record === null || !isExpired(record, input.now)) return false;
-      await discardRecordFiles(deps.media, id);
-      await deps.inProgress.delete(uow, id);
-      return true;
-    });
-    if (done) removed += 1;
-  }
-  input.logger.info("expired in-progress records removed", { removed });
-  return removed;
-}
-```
-
-Add to `index.ts`: `export { submitForm } from "./submit-form";` and `export { expireInProgress } from "./expire";`.
+- [ ] **Step 3: Implement.**
+  - `silentAccept`: when `locked`, deletes the in-progress row in the given unit of work; returns `{ kind: "decoy", reference: decoyReference(form.settings.referencePrefix, deps.random) }`. Both callers, after commit, `discardQuietly` the post's staged refs and `discardRecordFiles(deps.media, recordId)` (errors swallowed: the prefix goes at expiry anyway).
+  - `savePage` gains, first inside its unit of work (after locking or deciding to create), `if (isHoneypotFilled(post.honeypot))` returning `silentAccept` with `locked: locked !== null`; nothing is inserted for a post without a record.
+  - `submitForm` (comment: the intake transaction of `architecture.md`, "Submission data flow" step 3; nothing external is called, the jobs do that after commit) follows the order above. Staging and merging are as in `savePage`; a refusal on the posted page stores `pending { pageKey, raw, issues }` and answers `refused` with the record's locale and the batch's refused files; a whole-submission refusal stores `pending` with the issues of `firstPageWithIssue` on that page (raw values empty unless it is the posted page) and answers `refused` with no files. The pre-check is `deps.submissions.findBySubmitToken(record.submitToken)` of this form. Attached files come from `planFiles(full.answers, record.files)`; each gets `durableKey({ formSlug: allocated.form.slug, reference, position, fieldSlug, ext: extensionFor(contentType) })`. The consent record is `{ ...full.consent, acceptedAt: now }` or null. The info log is `submission received` with `{ formId, submissionId }`. After commit: discard the overflow and the discarded plan refs; for a decoy also the record prefix. If the unit of work throws anything but `DuplicateSubmit`, discard the batch refs and rethrow.
+  - `expireInProgress` (comment: the `jobs.cleanup` step for submissions; files first and under the row lock, so a failure leaves the row for the next run rather than orphaned files; `jobs.md`, "Recurring jobs"): `listExpired(now, limit ?? 500)`; per id one unit of work locks the row, re-checks `isExpired`, calls `discardRecordFiles`, deletes the row; logs `expired in-progress records removed` with `{ removed }` and returns the count.
+  - `index.ts`: export `submitForm` and `expireInProgress`.
 
 - [ ] **Step 4: Run** `pnpm test src/modules/submissions && pnpm lint && pnpm typecheck && pnpm format:check`.
-- [ ] **Step 5: Commit** `feat(submissions): the intake transaction with silent accepts, duplicate submits and expiry`
+- [ ] **Step 5: Commit** `feat(submissions): the intake transaction with silent accepts on every post, duplicate submits and expiry`
 
 ---
 
-### Task 22: Submissions against Postgres: fault injection, the close race, cleanup, and the message source
+### Task 22: Submissions against Postgres: fault injection, the close race, duplicates, cleanup, and the message source
 
 **Files:**
 - Create: `src/modules/submissions/infrastructure/message-source.ts`
@@ -7359,148 +3266,13 @@ export class SubmissionMessageSource implements MessageSource {
 export function pgSubmissionsDeps(pool: Pool, dirs: { staging: string; durable: string }, over?: { queue?: JobQueue }): SubmissionsDeps;
 ```
 
-The message source formats the received time per locale in the form's time zone (`Intl.DateTimeFormat(locale, { dateStyle: "long", timeZone })` for the submitter; `YYYY-MM-DD HH:mm <zone>, HH:mm UTC` for staff) and builds the manager link `${publicBaseUrl}/admin/forms/<form id>`. It returns null when the submission is gone, when the version has no confirmation email or no submitter address was answered, or, for staff, when the cadence is not per submission or there are no recipients.
+The message source formats the received time per locale in the form's time zone (`Intl.DateTimeFormat(locale, { dateStyle: "long", timeZone })` for the submitter; `YYYY-MM-DD HH:mm <zone>, HH:mm UTC` for staff, from `en-CA` parts with `hourCycle: "h23"`) and builds the manager link `${publicBaseUrl}/admin/forms/<form id>` (the form's page until the review plan adds the submission page). It returns null when the submission is gone, when the version has no confirmation email or no submitter address was answered, or, for staff, when the cadence is not per submission or there are no recipients.
 
-- [ ] **Step 1: Wiring helper** `tests/integration/submissions/wiring.ts`:
+- [ ] **Step 1: Wiring helper** `tests/integration/submissions/wiring.ts`: `pgSubmissionsDeps` builds the real adapters of the three modules the way the container does: `DefinitionsDeps` over the Postgres form, draft and version repositories, `PgSubmissionStats`, `PgAuditLog`, `PgAuditLogReader`, `allowedRecipientDomains: ["example.com"]`, `publicBaseUrl: "http://localhost:3000"`; `MediaDeps` with `LocalDiskStorage` for both directories, `FileTypeSniffer`, `SharpImageEncoder`, `PgMediaRepository`; the Postgres in-progress and submission repositories; one `PgUnitOfWorkFactory`, the queue (`over.queue` or `PgJobQueue(systemIdGenerator, systemClock)`) shared by all three; `systemClock`, `systemIdGenerator`, `buildDefaultRegistry()`, a `RecordingLogger`, a `VersionCache` and `Math.random`.
 
-```ts
-import type { Pool } from "pg";
-import type { DefinitionsDeps } from "@/modules/definitions/application/deps";
-import { PgDraftRepository } from "@/modules/definitions/infrastructure/pg-draft-repository";
-import { PgFormRepository } from "@/modules/definitions/infrastructure/pg-form-repository";
-import { PgVersionRepository } from "@/modules/definitions/infrastructure/pg-version-repository";
-import { PgAuditLog } from "@/modules/identity/infrastructure/pg-audit-log";
-import { PgAuditLogReader } from "@/modules/identity/infrastructure/pg-audit-log-reader";
-import { FileTypeSniffer } from "@/modules/media/infrastructure/file-type-sniffer";
-import { LocalDiskStorage } from "@/modules/media/infrastructure/local-disk-storage";
-import { PgMediaRepository } from "@/modules/media/infrastructure/pg-media-repository";
-import { SharpImageEncoder } from "@/modules/media/infrastructure/sharp-image-encoder";
-import { VersionCache, type SubmissionsDeps } from "@/modules/submissions/application";
-import { PgInProgressRepository } from "@/modules/submissions/infrastructure/pg-in-progress-repository";
-import { PgSubmissionRepository } from "@/modules/submissions/infrastructure/pg-submission-repository";
-import { PgSubmissionStats } from "@/modules/submissions/infrastructure/pg-submission-stats";
-import type { JobQueue } from "@/shared/application/ports/job-queue";
-import { RecordingLogger } from "@/shared/application/testing/fakes";
-import { buildDefaultRegistry } from "@/shared/domain/form-model";
-import { systemClock } from "@/shared/infrastructure/clock";
-import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
-import { PgJobQueue } from "@/shared/infrastructure/jobs/pg-job-queue";
-import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
-
-/** The real adapters of the three modules, as the container wires them. */
-export function pgSubmissionsDeps(pool: Pool, dirs: { staging: string; durable: string }, over: { queue?: JobQueue } = {}): SubmissionsDeps {
-  const uow = new PgUnitOfWorkFactory(pool);
-  const registry = buildDefaultRegistry();
-  const queue = over.queue ?? new PgJobQueue(systemIdGenerator, systemClock);
-  const definitions: DefinitionsDeps = {
-    forms: new PgFormRepository(pool), drafts: new PgDraftRepository(pool), versions: new PgVersionRepository(pool),
-    stats: new PgSubmissionStats(pool), audit: new PgAuditLog(), auditReader: new PgAuditLogReader(pool), uow,
-    clock: systemClock, ids: systemIdGenerator, registry, allowedRecipientDomains: ["example.com"], publicBaseUrl: "http://localhost:3000",
-  };
-  return {
-    definitions,
-    media: {
-      staging: new LocalDiskStorage(dirs.staging), durable: new LocalDiskStorage(dirs.durable), sniffer: new FileTypeSniffer(),
-      encoder: new SharpImageEncoder(), media: new PgMediaRepository(pool), queue, uow, ids: systemIdGenerator, clock: systemClock,
-    },
-    inProgress: new PgInProgressRepository(pool), submissions: new PgSubmissionRepository(pool), queue, uow,
-    clock: systemClock, ids: systemIdGenerator, registry, logger: new RecordingLogger(), versions: new VersionCache(), random: Math.random,
-  };
-}
-```
-
-- [ ] **Step 2: Failing integration tests** `tests/integration/submissions/intake.test.ts`:
+- [ ] **Step 2: Failing integration tests** `tests/integration/submissions/intake.test.ts`. Setup and helpers, described once: each test truncates, makes a `mkdtemp` directory (removed afterwards) and seeds `({ slug, formId, versionId } = await seedPublishedForm(pool))`; `count(table)`; `stagedFiles()` lists files (names with a dot) under `<dir>/staging`; `contextOf(deps, id)`; `emptyPost(id)` is a `PagePost` on `page_consent` with Next, nothing posted, `state: { kind: "record", id }`; `reachPhotos(deps)` posts page 1 with `{ f_name: "Ana Prueba", f_email: "family@example.com", f_baby: "yes_opt" }` and `renderedAt` a minute ago, returning the record id; `reachConsent(deps)` adds two real uploads (`syntheticJpegWithGps()`, `syntheticPng()`) and posts `page_baby`; `submit(deps, id, over)` reads the record's token from `submission_in_progress`, takes `postContext` (a refusal is returned as the outcome) and calls `submitForm` with Submit, `{ f_consent: consent }` and the token, merged with `over`; `formRow()` selects `next_reference, updated_at` of the seeded form; `FailingQueue(inner, failAt)` is a `JobQueue` whose `failAt`-th enqueue rejects with `injected enqueue failure`.
 
 ```ts
-import { mkdtemp, readdir, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { applyLifecycle } from "@/modules/definitions/application";
-import { expireInProgress, postContext, savePage, submitForm, uploadFile, type SubmissionsDeps } from "@/modules/submissions/application";
-import { CONSENT_TEXT } from "@/modules/submissions/domain/testing/versions";
-import type { EnqueueOptions, JobPayload, JobQueue } from "@/shared/application/ports/job-queue";
-import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
-import { RecordingLogger } from "@/shared/application/testing/fakes";
-import { consentTextVersion } from "@/shared/domain/form-model";
-import { systemClock } from "@/shared/infrastructure/clock";
-import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
-import { PgJobQueue } from "@/shared/infrastructure/jobs/pg-job-queue";
-import { brokenMp4, htmlPretendingToBeJpeg, syntheticJpegWithGps, syntheticPng } from "../../fakes/media-files";
-import { testPool, truncateAll, waitForLockWaiters } from "../db";
-import { seedPublishedForm } from "./factories";
-import { pgSubmissionsDeps } from "./wiring";
-
-const consent = { accepted: true, textVersion: consentTextVersion(CONSENT_TEXT) };
-
-/** A queue whose nth enqueue fails, to prove the intake is one transaction. */
-class FailingQueue implements JobQueue {
-  private calls = 0;
-  constructor(private readonly inner: JobQueue, private readonly failAt: number) {}
-  enqueue(uow: UnitOfWork, type: string, payload: JobPayload, opts?: EnqueueOptions): Promise<string | null> {
-    if (this.calls++ === this.failAt) return Promise.reject(new Error("injected enqueue failure"));
-    return this.inner.enqueue(uow, type, payload, opts);
-  }
-}
-
-describe("the intake against Postgres", () => {
-  const pool = testPool();
-  let dir: string;
-  let slug: string;
-  let formId: string;
-  beforeEach(async () => {
-    await truncateAll(pool);
-    dir = await mkdtemp(path.join(os.tmpdir(), "effluz-intake-"));
-    ({ slug, formId } = await seedPublishedForm(pool));
-  });
-  afterEach(() => rm(dir, { recursive: true, force: true }));
-
-  const count = async (table: string) => (await pool.query<{ n: number }>(`select count(*)::int as n from ${table}`)).rows[0]?.n ?? 0;
-  const stagedFiles = async () => (await readdir(path.join(dir, "staging"), { recursive: true }).catch(() => [])).filter((f) => String(f).includes("."));
-
-  async function contextOf(deps: SubmissionsDeps, id: string) {
-    const ctx = await postContext(deps, { slug, state: { kind: "record", id }, submitToken: null });
-    if (!ctx.ok) throw new Error(ctx.outcome.kind);
-    return ctx;
-  }
-
-  /** Page 1 answered with a baby; the record now stands on the photos page. */
-  async function reachPhotos(deps: SubmissionsDeps): Promise<string> {
-    const none = await postContext(deps, { slug, state: { kind: "none" }, submitToken: null });
-    if (!none.ok) throw new Error("closed");
-    const start = await savePage(deps, none, {
-      pageKey: "page_contact", action: { kind: "next" }, answers: { f_name: "Ana Prueba", f_email: "family@example.com", f_baby: "yes_opt" },
-      decodeIssues: [], raw: {}, incoming: [], renderedAt: new Date(Date.now() - 60_000), honeypot: "", submitToken: null, acceptLanguage: "es", state: { kind: "none" },
-    });
-    if (start.kind !== "show") throw new Error(start.kind);
-    return start.recordId;
-  }
-
-  /** Two real photos uploaded, then on to the consent page. */
-  async function reachConsent(deps: SubmissionsDeps): Promise<string> {
-    const id = await reachPhotos(deps);
-    for (const bytes of [await syntheticJpegWithGps(), await syntheticPng()]) {
-      const up = await uploadFile(deps, await contextOf(deps, id), { fieldKey: "f_photos", bytes, renderedAt: null, acceptLanguage: "es" });
-      if (!up.ok) throw new Error(up.code);
-    }
-    await savePage(deps, await contextOf(deps, id), { ...emptyPost(id), pageKey: "page_baby" });
-    return id;
-  }
-
-  function emptyPost(id: string) {
-    return {
-      pageKey: "page_consent", action: { kind: "next" as const }, answers: {}, decodeIssues: [], raw: {}, incoming: [],
-      renderedAt: null, honeypot: "", submitToken: null, acceptLanguage: "es", state: { kind: "record" as const, id },
-    };
-  }
-
-  async function submit(deps: SubmissionsDeps, id: string) {
-    const token = (await pool.query<{ t: string }>("select submit_token as t from submission_in_progress where id = $1", [id])).rows[0]?.t ?? null;
-    const ctx = await postContext(deps, { slug, state: { kind: "record", id }, submitToken: token });
-    if (!ctx.ok) return ctx.outcome;
-    return submitForm(deps, ctx, { ...emptyPost(id), action: { kind: "submit" }, answers: { f_consent: consent }, submitToken: token });
-  }
-
   it("stores everything in one transaction", async () => {
     const deps = pgSubmissionsDeps(pool, { staging: path.join(dir, "staging"), durable: path.join(dir, "durable") });
     const id = await reachConsent(deps);
@@ -7522,8 +3294,7 @@ describe("the intake against Postgres", () => {
       await expect(submit(deps, id)).rejects.toThrow("injected enqueue failure");
       expect([await count("submission"), await count("media"), await count("job")]).toEqual([0, 0, 0]);
       expect(await count("submission_in_progress")).toBe(1);
-      const { rows } = await pool.query<{ n: number }>("select next_reference as n from form where id = $1", [formId]);
-      expect(rows[0]?.n).toBe(1);
+      expect((await formRow())?.next_reference).toBe(1);
       expect((await readdir(path.join(dir, `staging-${String(failAt)}`), { recursive: true })).filter((f) => String(f).includes("."))).toHaveLength(2);
     }
   });
@@ -7546,13 +3317,28 @@ describe("the intake against Postgres", () => {
     expect([await count("submission"), await count("media"), await count("job")]).toEqual([0, 0, 0]);
   });
 
-  it("answers two simultaneous Submits with one submission", async () => {
+  it("answers two simultaneous Submits with one submission and one reference", async () => {
     const deps = pgSubmissionsDeps(pool, { staging: path.join(dir, "staging"), durable: path.join(dir, "durable") });
     const id = await reachConsent(deps);
+    const before = await formRow();
     const [a, b] = await Promise.all([submit(deps, id), submit(deps, id)]);
     expect(a).toEqual(b);
     expect(a.kind).toBe("submitted");
     expect(await count("submission")).toBe(1);
+    expect(await formRow()).toEqual({ next_reference: 2, updated_at: before?.updated_at });
+  });
+
+  it("commits nothing for a submit token that already has a submission", async () => {
+    const deps = pgSubmissionsDeps(pool, { staging: path.join(dir, "staging"), durable: path.join(dir, "durable") });
+    const id = await reachConsent(deps);
+    const token = (await pool.query<{ t: string }>("select submit_token as t from submission_in_progress where id = $1", [id])).rows[0]?.t ?? "";
+    await deps.uow.run((u) =>
+      deps.submissions.insert(u, { id: randomUUID(), formId, versionId, locale: "es", answers: {}, consent: null, receivedAt: new Date(), reference: "SF-0009", submitToken: token }),
+    );
+    const before = await formRow();
+    expect(await submit(deps, id)).toEqual({ kind: "submitted", submitToken: token });
+    expect([await count("submission"), await count("media"), await count("job")]).toEqual([1, 0, 0]);
+    expect(await formRow()).toEqual(before);
   });
 
   it("refuses a lying, truncated or oversized file and stages nothing", async () => {
@@ -7572,7 +3358,17 @@ describe("the intake against Postgres", () => {
     expect(await stagedFiles()).toEqual([]);
   });
 
-  it("jobs.cleanup removes expired records and their staged files", async () => {
+  it("deletes the record and its staged files for a filled honeypot on a Next post", async () => {
+    const deps = pgSubmissionsDeps(pool, { staging: path.join(dir, "staging"), durable: path.join(dir, "durable") });
+    const id = await reachConsent(deps);
+    expect(await stagedFiles()).toHaveLength(2);
+    const out = await savePage(deps, await contextOf(deps, id), { ...emptyPost(id), honeypot: "https://spam.example" });
+    expect(out.kind).toBe("decoy");
+    expect([await count("submission"), await count("submission_in_progress"), await count("media")]).toEqual([0, 0, 0]);
+    expect(await stagedFiles()).toEqual([]);
+  });
+
+  it("expireInProgress removes expired records and their staged files", async () => {
     const deps = pgSubmissionsDeps(pool, { staging: path.join(dir, "staging"), durable: path.join(dir, "durable") });
     await reachConsent(deps);
     expect(await stagedFiles()).toHaveLength(2);
@@ -7588,23 +3384,11 @@ describe("the intake against Postgres", () => {
     expect((await applyLifecycle(deps.definitions, { email: "editor@example.com", ip: "203.0.113.7" }, { formId, action: "close" })).ok).toBe(true);
     expect(await submit(deps, id)).toEqual({ kind: "gate", state: "closed" });
   });
-});
 ```
 
 `tests/integration/submissions/message-source.test.ts`:
 
 ```ts
-import { randomUUID } from "node:crypto";
-import { beforeEach, describe, expect, it } from "vitest";
-import { updateSettings } from "@/modules/definitions/application";
-import { VersionCache } from "@/modules/submissions/application";
-import { registry } from "@/modules/submissions/domain/testing/versions";
-import { SubmissionMessageSource } from "@/modules/submissions/infrastructure/message-source";
-import { PgSubmissionRepository } from "@/modules/submissions/infrastructure/pg-submission-repository";
-import { testPool, truncateAll } from "../db";
-import { seedPublishedForm } from "./factories";
-import { pgSubmissionsDeps } from "./wiring";
-
 describe("SubmissionMessageSource", () => {
   const pool = testPool();
   beforeEach(() => truncateAll(pool));
@@ -7644,81 +3428,7 @@ describe("SubmissionMessageSource", () => {
 
 - [ ] **Step 3: Run** `pnpm test:integration tests/integration/submissions`: the intake tests fail only on behavior the earlier tasks did not cover (none expected) and the message source test fails on the missing class.
 
-- [ ] **Step 4: Implement** `message-source.ts`:
-
-```ts
-import { loadForm, type DefinitionsDeps } from "@/modules/definitions/application";
-import type { MessageSource, StaffNotificationData, SubmitterConfirmationData } from "@/modules/notifications/application";
-import type { FieldTypeRegistry } from "@/shared/domain/form-model";
-import { resolveText } from "@/shared/domain/localized-text";
-import type { SubmissionRepository } from "../application/ports/submission-repository";
-import type { VersionCache } from "../application/version-cache";
-import { submitterAddress } from "../domain/intake";
-
-function parts(at: Date, timeZone: string): { date: string; time: string } {
-  const f = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-  const get = (type: string) => f.formatToParts(at).find((p) => p.type === type)?.value ?? "";
-  return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}` };
-}
-
-/** The data the two email jobs need, read at run time from a submission id (specs/system/jobs.md). */
-export class SubmissionMessageSource implements MessageSource {
-  constructor(
-    private readonly deps: {
-      submissions: SubmissionRepository;
-      definitions: DefinitionsDeps;
-      versions: VersionCache;
-      registry: FieldTypeRegistry;
-      publicBaseUrl: string;
-      privacyContact: string;
-    },
-  ) {}
-
-  async submitterConfirmation(id: string): Promise<{ to: string; data: SubmitterConfirmationData } | null> {
-    const s = await this.deps.submissions.findById(id);
-    if (s === null) return null;
-    const [form, version] = await Promise.all([loadForm(this.deps.definitions, s.formId), this.deps.versions.get(this.deps.definitions, s.versionId)]);
-    const email = version?.document.confirmation.email;
-    if (form === null || version === null || email === undefined) return null;
-    const to = submitterAddress(version.document, this.deps.registry, s.answers);
-    if (to === null) return null;
-    const { languages } = version.document;
-    return {
-      to,
-      data: {
-        locale: s.locale,
-        formTitle: resolveText(version.document.title, s.locale, languages),
-        subject: resolveText(email.subject, s.locale, languages),
-        body: resolveText(email.body, s.locale, languages),
-        receivedOn: new Intl.DateTimeFormat(s.locale, { dateStyle: "long", timeZone: form.settings.timezone }).format(s.receivedAt),
-        reference: s.reference,
-        retentionMonths: form.settings.retentionMonths,
-        contact: this.deps.privacyContact,
-      },
-    };
-  }
-
-  async staffNotification(id: string): Promise<{ to: string[]; data: StaffNotificationData } | null> {
-    const s = await this.deps.submissions.findById(id);
-    if (s === null) return null;
-    const form = await loadForm(this.deps.definitions, s.formId);
-    if (form === null) return null;
-    const { notificationCadence, notificationRecipients, timezone } = form.settings;
-    if (notificationCadence !== "per_submission" || notificationRecipients.length === 0) return null;
-    const local = parts(s.receivedAt, timezone);
-    const utc = parts(s.receivedAt, "UTC");
-    return {
-      to: [...notificationRecipients],
-      data: {
-        formTitle: resolveText(form.title, "en", form.languages),
-        reference: s.reference,
-        receivedAt: `${local.date} ${local.time} ${timezone}, ${utc.time} UTC`,
-        link: `${this.deps.publicBaseUrl}/admin/forms/${form.id}`,
-      },
-    };
-  }
-}
-```
+- [ ] **Step 4: Implement** `SubmissionMessageSource` (comment: the data the two email jobs need, read at run time from a submission id; `jobs.md`). `submitterConfirmation`: load the submission, the form (`loadForm`) and the pinned version (cache); null unless the version has a confirmation email and `submitterAddress` answers; the data resolves title, subject and body in the submission's locale, `receivedOn` as above in the form's time zone, the reference, the form's retention months and the privacy contact. `staffNotification`: load the submission and the form; null unless the cadence is `per_submission` and recipients exist; `to` is a copy of the recipients, the title in English, `receivedAt` and `link` as above.
 
 - [ ] **Step 5: Run** `pnpm test:integration tests/integration/submissions && pnpm test && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 6: Commit** `test(submissions): intake atomicity, the close race, duplicate submits and cleanup against Postgres; email message source`
@@ -7731,7 +3441,7 @@ export class SubmissionMessageSource implements MessageSource {
 - Create: `src/modules/submissions/presentation/copy.ts`, `format.ts`, `messages.ts`, with `copy.test.ts`, `format.test.ts`, `messages.test.ts` beside them
 
 **Interfaces:**
-- Consumes: `fill`, `Text` from `@/shared/presentation/copy`; `specTableRows` (Task 3); `validationCodes`, `ValidationIssue`, `UploadLimits`; `FileIssue`, `UploadRefusal` (Tasks 16, 20).
+- Consumes: `fill`, `Text` from `@/shared/presentation/copy`; `specTableRows` (Task 3); `validationCodes`, `ValidationIssue`, `UploadLimits`; `RefusedFile`, `UploadRefusal` (Tasks 16, 20).
 - Produces:
 
 ```ts
@@ -7745,30 +3455,25 @@ export function isOne(locale: Locale, n: number): boolean;     // Intl.PluralRul
 // format.ts
 export function formatNumber(n: number, locale: Locale): string;
 export function formatMegabytes(mb: number, locale: Locale): string;          // "10 MB"
-export function formatBytes(bytes: number, locale: Locale): string;           // "512 kB", "1.5 MB"
-export function formatIsoDate(iso: string, locale: Locale): string;           // "10 October 2026" / "10 de octubre de 2026"
+export function formatBytes(bytes: number, locale: Locale): string;           // "512 kB", "1.5 MB" / "1,5 MB"
+export function formatIsoDate(iso: string, locale: Locale): string;           // "November 9, 2026" / "9 de noviembre de 2026"
 export function formatInstant(iso: string, locale: Locale, timeZone: string): string;
 export function kindsKey(kinds: readonly ("image" | "video")[]): "kinds_images" | "kinds_videos" | "kinds_mixed";
 export function limitsKey(kinds: readonly ("image" | "video")[]): "files_limits_images" | "files_limits_videos" | "files_limits_mixed";
 export function acceptAttribute(kinds: readonly ("image" | "video")[]): string;
 // messages.ts
-export function issueMessage(issue: ValidationIssue, label: string, locale: Locale): string;
-export function fileIssueMessage(issue: Pick<FileIssue, "code" | "file">, limits: UploadLimits, locale: Locale): string;
+export function issueMessage(issue: Pick<ValidationIssue, "code" | "params">, label: string, locale: Locale): string;
+export function fileIssueMessage(issue: Pick<RefusedFile, "code" | "name">, limits: UploadLimits, locale: Locale): string;
 export function uploadRefusalMessage(code: UploadRefusal, ctx: { file: string; label: string; limits: UploadLimits }, locale: Locale): string;
 export function errorSummaryHeading(count: number, locale: Locale): string;
 export function filesCount(count: number, max: number, locale: Locale): string;
 ```
 
-A catalog row is found from the code by replacing underscores with spaces (`files_min` is "files min"); when `{n}` is one in that language the `… one` row is used if it exists (renderer.md, "Message catalog").
+A catalog row is found from the code by replacing underscores with spaces (`files_min` is "files min"); when `{n}` is one in that language the `… one` row is used if it exists (renderer.md, "Message catalog"). Messages take the code and parameters only, never a field key, so production code never builds a `ValidationIssue` it does not have.
 
 - [ ] **Step 1: Failing tests.** `copy.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { validationCodes } from "@/shared/domain/form-model";
-import { specTableRows } from "@/shared/presentation/testing/spec-copy";
-import { catalog, chrome, t } from "./copy";
-
 const asText = (rows: Map<string, string[]>) => Object.fromEntries([...rows].map(([k, [en, es]]) => [k, { en, es }]));
 
 describe("renderer copy", () => {
@@ -7781,7 +3486,7 @@ describe("renderer copy", () => {
   });
 
   it("has a catalog row for every validation code and every file refusal", () => {
-    for (const code of [...validationCodes, "file_too_large", "file_wrong_type", "file_unreadable", "upload_failed"]) {
+    for (const code of [...validationCodes, "file_too_large", "file_wrong_type", "file_unreadable", "upload_failed", "submission_too_large"]) {
       expect(Object.hasOwn(catalog, code.replaceAll("_", " ")), code).toBe(true);
     }
   });
@@ -7795,9 +3500,6 @@ describe("renderer copy", () => {
 `format.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { acceptAttribute, formatBytes, formatIsoDate, formatMegabytes, kindsKey, limitsKey } from "./format";
-
 describe("format", () => {
   it("formats sizes and dates per locale", () => {
     expect(formatMegabytes(10, "en")).toBe("10 MB");
@@ -7822,22 +3524,19 @@ describe("format", () => {
 `messages.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { errorSummaryHeading, fileIssueMessage, filesCount, issueMessage, uploadRefusalMessage } from "./messages";
-
 const limits = { kinds: ["image", "video"] as const, maxFiles: 10, maxSizeMb: 10 };
 
 describe("messages", () => {
   it("builds each message from the rule and the label, in the locale", () => {
-    expect(issueMessage({ code: "required", field: "f" }, "Celular", "es")).toBe("Celular es obligatorio");
-    expect(issueMessage({ code: "email_syntax", field: "f" }, "E-mail", "en")).toBe("Enter a valid email address, like name@example.com");
-    expect(issueMessage({ code: "date_min", field: "f", params: { date: "2026-01-31" } }, "Birth", "en")).toBe("Birth must be on or after January 31, 2026");
+    expect(issueMessage({ code: "required" }, "Celular", "es")).toBe("Celular es obligatorio");
+    expect(issueMessage({ code: "email_syntax" }, "E-mail", "en")).toBe("Enter a valid email address, like name@example.com");
+    expect(issueMessage({ code: "date_min", params: { date: "2026-01-31" } }, "Birth", "en")).toBe("Birth must be on or after January 31, 2026");
   });
 
   it("uses the singular row when n is one", () => {
-    expect(issueMessage({ code: "files_min", field: "f", params: { n: 1 } }, "Fotos", "es")).toBe("Sube al menos 1 archivo en Fotos");
-    expect(issueMessage({ code: "files_min", field: "f", params: { n: 2 } }, "Fotos", "es")).toBe("Sube al menos 2 archivos en Fotos");
-    expect(issueMessage({ code: "max_length", field: "f", params: { n: 1 } }, "Code", "en")).toBe("Code must have no more than 1 character");
+    expect(issueMessage({ code: "files_min", params: { n: 1 } }, "Fotos", "es")).toBe("Sube al menos 1 archivo en Fotos");
+    expect(issueMessage({ code: "files_min", params: { n: 2 } }, "Fotos", "es")).toBe("Sube al menos 2 archivos en Fotos");
+    expect(issueMessage({ code: "max_length", params: { n: 1 } }, "Code", "en")).toBe("Code must have no more than 1 character");
     expect(errorSummaryHeading(1, "en")).toBe("Please fix 1 problem before continuing");
     expect(errorSummaryHeading(3, "es")).toBe("Corrige 3 problemas para continuar");
     expect(filesCount(0, 1, "en")).toBe("0 of 1 file");
@@ -7845,10 +3544,11 @@ describe("messages", () => {
   });
 
   it("names the file, the size and the kinds in file messages", () => {
-    expect(fileIssueMessage({ code: "file_too_large", file: "a.jpg" }, limits, "en")).toBe("a.jpg is larger than 10 MB");
-    expect(fileIssueMessage({ code: "file_wrong_type", file: "a.txt" }, limits, "es")).toBe(
+    expect(fileIssueMessage({ code: "file_too_large", name: "a.jpg" }, limits, "en")).toBe("a.jpg is larger than 10 MB");
+    expect(fileIssueMessage({ code: "file_wrong_type", name: "a.txt" }, limits, "es")).toBe(
       "a.txt no es un tipo permitido. Usa fotos JPEG, PNG, WebP o HEIC, o videos MP4 o MOV",
     );
+    expect(fileIssueMessage({ code: "submission_too_large", name: "v.mp4" }, limits, "en")).toBe("v.mp4 would take this form's files past 100 MB in total");
     expect(uploadRefusalMessage("files_max", { file: "a.jpg", label: "Fotos", limits }, "es")).toBe("Puedes subir hasta 10 archivos en Fotos");
     expect(uploadRefusalMessage("expired", { file: "a.jpg", label: "Fotos", limits }, "en")).toBe("a.jpg did not upload. Check your connection and retry");
   });
@@ -7857,258 +3557,27 @@ describe("messages", () => {
 
 - [ ] **Step 2: Run** `pnpm test src/modules/submissions/presentation`: fails.
 
-- [ ] **Step 3: Implement** `copy.ts` (every row exactly as in `specs/ui-ux/renderer.md` after Task 1):
-
-```ts
-import type { Locale } from "@/shared/domain/localized-text";
-import { fill, type Text } from "@/shared/presentation/copy";
-
-/**
- * The renderer's fixed chrome and message catalog. The text is owned by
- * specs/ui-ux/renderer.md ("Fixed chrome copy", "Message catalog");
- * copy.test.ts keeps these objects equal to those rows.
- */
-export const chrome = {
-  skip_link: { en: "Skip to form", es: "Ir al formulario" },
-  language_switch_label: { en: "Language", es: "Idioma" },
-  progress: { en: "Page {n} of {total}", es: "Página {n} de {total}" },
-  required_legend: { en: "Fields marked with * are required", es: "Los campos marcados con * son obligatorios" },
-  back: { en: "Back", es: "Atrás" },
-  next: { en: "Next", es: "Siguiente" },
-  submit: { en: "Submit", es: "Enviar" },
-  submitting: { en: "Submitting…", es: "Enviando…" },
-  choose_one: { en: "Choose one", es: "Elige una opción" },
-  choose_files: { en: "Choose files", es: "Elegir archivos" },
-  files_count: { en: "{count} of {max} files", es: "{count} de {max} archivos" },
-  files_limits_images: { en: "Photos up to {size} each.", es: "Fotos de hasta {size} cada una." },
-  files_limits_mixed: { en: "Photos and videos up to {size} each.", es: "Fotos y videos de hasta {size} cada uno." },
-  video_notice: {
-    en: "Videos are stored exactly as sent. Unlike photos, we cannot remove hidden details such as location from them.",
-    es: "Los videos se guardan tal como se envían. A diferencia de las fotos, no podemos quitarles datos ocultos como la ubicación.",
-  },
-  uploading: { en: "Uploading {percent}%", es: "Subiendo {percent}%" },
-  uploaded: { en: "Uploaded", es: "Subido" },
-  remove: { en: "Remove", es: "Quitar" },
-  retry: { en: "Retry", es: "Reintentar" },
-  uploads_pending: { en: "Wait for uploads to finish before continuing", es: "Espera a que terminen las subidas para continuar" },
-  error_summary_heading: { en: "Please fix {count} problems before continuing", es: "Corrige {count} problemas para continuar" },
-  consent_checkbox: { en: "I have read and agree", es: "He leído y acepto" },
-  char_count: { en: "{n} of {max} characters", es: "{n} de {max} caracteres" },
-  confirmation_reference: { en: "Your reference: {ref}", es: "Tu referencia: {ref}" },
-  confirmation_close: { en: "You can close this page.", es: "Puedes cerrar esta página." },
-  fill_another: { en: "Fill in another form", es: "Llenar otro formulario" },
-  closed_title: { en: "This form is closed", es: "Este formulario está cerrado" },
-  closed_body: { en: "It no longer accepts responses. Thank you for your interest.", es: "Ya no acepta respuestas. Gracias por tu interés." },
-  not_open_title: { en: "This form is not open yet", es: "Este formulario aún no está abierto" },
-  not_open_body: { en: "It opens on {date}.", es: "Abre el {date}." },
-  not_found_title: { en: "We could not find this form", es: "No encontramos este formulario" },
-  not_found_body: { en: "Check the link, or ask the person who shared it with you.", es: "Revisa el enlace o pregunta a quien te lo compartió." },
-  expired_title: { en: "Your session expired", es: "Tu sesión expiró" },
-  expired_body: {
-    en: "For your privacy, unfinished answers are kept for 24 hours only. Please start again.",
-    es: "Por tu privacidad, las respuestas sin terminar se guardan solo 24 horas. Por favor, empieza de nuevo.",
-  },
-  start_again: { en: "Start again", es: "Empezar de nuevo" },
-  error_title: { en: "Something went wrong", es: "Algo salió mal" },
-  error_body: { en: "Your answers on this page were not saved. Please try again.", es: "Las respuestas de esta página no se guardaron. Inténtalo de nuevo." },
-  try_again: { en: "Try again", es: "Intentar de nuevo" },
-  submit_failed: {
-    en: "Your answers were not sent. Check your connection and try again.",
-    es: "Tus respuestas no se enviaron. Revisa tu conexión e inténtalo de nuevo.",
-  },
-  offline: {
-    en: "You seem to be offline. We will continue when you reconnect.",
-    es: "Parece que no tienes conexión. Continuaremos cuando vuelvas a conectarte.",
-  },
-  privacy_footer: {
-    en: "This form is run by Effluz. Answers are stored in the United States and deleted after {retention} months. To request deletion, write to {contact}.",
-    es: "Este formulario es de Effluz. Las respuestas se guardan en Estados Unidos y se eliminan después de {retention} meses. Para pedir que se eliminen, escribe a {contact}.",
-  },
-  switch_to_en: { en: "English", es: "English" },
-  switch_to_es: { en: "Español", es: "Español" },
-  wordmark: { en: "Effluz", es: "Effluz" },
-  date_day: { en: "Day", es: "Día" },
-  date_month: { en: "Month", es: "Mes" },
-  date_year: { en: "Year", es: "Año" },
-  files_limits_videos: { en: "Videos up to {size} each.", es: "Videos de hasta {size} cada uno." },
-  kinds_images: { en: "JPEG, PNG, WebP or HEIC photos", es: "fotos JPEG, PNG, WebP o HEIC" },
-  kinds_videos: { en: "MP4 or MOV videos", es: "videos MP4 o MOV" },
-  kinds_mixed: { en: "JPEG, PNG, WebP or HEIC photos, or MP4 or MOV videos", es: "fotos JPEG, PNG, WebP o HEIC, o videos MP4 o MOV" },
-  file_row: { en: "File {n}, {size}", es: "Archivo {n}, {size}" },
-  removed: { en: "{file} removed", es: "Se quitó {file}" },
-  honeypot_label: { en: "Leave this field empty", es: "Deja este campo vacío" },
-  error_summary_heading_one: { en: "Please fix 1 problem before continuing", es: "Corrige 1 problema para continuar" },
-  files_count_one: { en: "{count} of 1 file", es: "{count} de 1 archivo" },
-} as const satisfies Record<string, Text>;
-
-export const catalog = {
-  required: { en: "{label} is required", es: "{label} es obligatorio" },
-  "min length": { en: "{label} must have at least {n} characters", es: "{label} debe tener al menos {n} caracteres" },
-  "max length": { en: "{label} must have no more than {n} characters", es: "{label} no debe tener más de {n} caracteres" },
-  pattern: { en: "{label} is not in the expected format", es: "{label} no tiene el formato esperado" },
-  "email syntax": { en: "Enter a valid email address, like name@example.com", es: "Escribe un correo válido, como nombre@ejemplo.com" },
-  "number min": { en: "{label} must be at least {n}", es: "{label} debe ser al menos {n}" },
-  "number max": { en: "{label} must be no more than {n}", es: "{label} no debe ser más de {n}" },
-  integer: { en: "{label} must be a whole number", es: "{label} debe ser un número entero" },
-  "not a number": { en: "{label} must be a number", es: "{label} debe ser un número" },
-  "date invalid": { en: "Enter a real date for {label}", es: "Escribe una fecha real para {label}" },
-  "date min": { en: "{label} must be on or after {date}", es: "{label} debe ser el {date} o después" },
-  "date max": { en: "{label} must be on or before {date}", es: "{label} debe ser el {date} o antes" },
-  "date not future": { en: "{label} cannot be in the future", es: "{label} no puede ser una fecha futura" },
-  "choice min": { en: "Select at least {n} options for {label}", es: "Selecciona al menos {n} opciones en {label}" },
-  "choice max": { en: "Select no more than {n} options for {label}", es: "Selecciona como máximo {n} opciones en {label}" },
-  "must be true": { en: "You must check {label} to continue", es: "Debes marcar {label} para continuar" },
-  consent: { en: "You must agree to continue", es: "Debes aceptar para continuar" },
-  "files min": { en: "Upload at least {n} files for {label}", es: "Sube al menos {n} archivos en {label}" },
-  "files max": { en: "You can upload up to {n} files for {label}", es: "Puedes subir hasta {n} archivos en {label}" },
-  "invalid shape": { en: "{label} has an unexpected value. Please try again", es: "{label} tiene un valor inesperado. Inténtalo de nuevo" },
-  "unknown option": { en: "Choose one of the listed options for {label}", es: "Elige una de las opciones de {label}" },
-  "file too large": { en: "{file} is larger than {size}", es: "{file} pesa más de {size}" },
-  "file wrong type": { en: "{file} is not a supported type. Use {kinds}", es: "{file} no es un tipo permitido. Usa {kinds}" },
-  "file unreadable": { en: "{file} could not be read. Try another file", es: "No se pudo leer {file}. Prueba con otro archivo" },
-  "upload failed": { en: "{file} did not upload. Check your connection and retry", es: "{file} no se subió. Revisa tu conexión y reintenta" },
-  "min length one": { en: "{label} must have at least {n} character", es: "{label} debe tener al menos {n} carácter" },
-  "max length one": { en: "{label} must have no more than {n} character", es: "{label} no debe tener más de {n} carácter" },
-  "choice min one": { en: "Select at least {n} option for {label}", es: "Selecciona al menos {n} opción en {label}" },
-  "choice max one": { en: "Select no more than {n} option for {label}", es: "Selecciona como máximo {n} opción en {label}" },
-  "files min one": { en: "Upload at least {n} file for {label}", es: "Sube al menos {n} archivo en {label}" },
-  "files max one": { en: "You can upload up to {n} file for {label}", es: "Puedes subir hasta {n} archivo en {label}" },
-} as const satisfies Record<string, Text>;
-
-export type ChromeKey = keyof typeof chrome;
-export type CatalogKey = keyof typeof catalog;
-
-export function t(locale: Locale, key: ChromeKey, vars: Readonly<Record<string, string>> = {}): string {
-  return fill(chrome[key][locale], vars);
-}
-
-export function isOne(locale: Locale, n: number): boolean {
-  return new Intl.PluralRules(locale).select(n) === "one";
-}
-```
-
-`format.ts`:
-
-```ts
-import type { Locale } from "@/shared/domain/localized-text";
-
-type Kind = "image" | "video";
-const MB = 1024 * 1024;
-
-export function formatNumber(n: number, locale: Locale): string {
-  return new Intl.NumberFormat(locale).format(n);
-}
-
-export function formatMegabytes(mb: number, locale: Locale): string {
-  return new Intl.NumberFormat(locale, { style: "unit", unit: "megabyte", unitDisplay: "short", maximumFractionDigits: 1 }).format(mb);
-}
-
-export function formatBytes(bytes: number, locale: Locale): string {
-  if (bytes >= MB) return formatMegabytes(bytes / MB, locale);
-  return new Intl.NumberFormat(locale, { style: "unit", unit: "kilobyte", unitDisplay: "short", maximumFractionDigits: 0 }).format(Math.max(1, bytes / 1024));
-}
-
-export function formatIsoDate(iso: string, locale: Locale): string {
-  const date = new Date(`${iso}T00:00:00Z`);
-  return Number.isNaN(date.getTime()) ? iso : new Intl.DateTimeFormat(locale, { dateStyle: "long", timeZone: "UTC" }).format(date);
-}
-
-export function formatInstant(iso: string, locale: Locale, timeZone: string): string {
-  return new Intl.DateTimeFormat(locale, { dateStyle: "long", timeStyle: "short", timeZone, timeZoneName: "short" }).format(new Date(iso));
-}
-
-export function kindsKey(kinds: readonly Kind[]): "kinds_images" | "kinds_videos" | "kinds_mixed" {
-  if (kinds.includes("image") && kinds.includes("video")) return "kinds_mixed";
-  return kinds.includes("video") ? "kinds_videos" : "kinds_images";
-}
-
-export function limitsKey(kinds: readonly Kind[]): "files_limits_images" | "files_limits_videos" | "files_limits_mixed" {
-  const k = kindsKey(kinds);
-  return k === "kinds_mixed" ? "files_limits_mixed" : k === "kinds_videos" ? "files_limits_videos" : "files_limits_images";
-}
-
-/** A hint for the file picker only; the server decides by content. */
-export function acceptAttribute(kinds: readonly Kind[]): string {
-  const parts: string[] = [];
-  if (kinds.includes("image")) parts.push("image/jpeg,image/png,image/webp,image/heic,image/heif,.heic");
-  if (kinds.includes("video")) parts.push("video/mp4,video/quicktime");
-  return parts.join(",");
-}
-```
-
-`messages.ts`:
-
-```ts
-import type { UploadLimits, ValidationIssue } from "@/shared/domain/form-model";
-import type { Locale } from "@/shared/domain/localized-text";
-import { fill } from "@/shared/presentation/copy";
-import type { FileIssue, UploadRefusal } from "../application";
-import { catalog, isOne, t, type CatalogKey } from "./copy";
-import { formatIsoDate, formatMegabytes, formatNumber, kindsKey } from "./format";
-
-function row(name: string, n: number | undefined, locale: Locale): CatalogKey {
-  const one = `${name} one`;
-  if (n !== undefined && isOne(locale, n) && Object.hasOwn(catalog, one)) return one as CatalogKey;
-  return name as CatalogKey;
-}
-
-/** The renderer builds every message from the rule and the label; staff never write them. */
-export function issueMessage(issue: ValidationIssue, label: string, locale: Locale): string {
-  const n = typeof issue.params?.["n"] === "number" ? issue.params["n"] : undefined;
-  const date = typeof issue.params?.["date"] === "string" ? issue.params["date"] : undefined;
-  return fill(catalog[row(issue.code.replaceAll("_", " "), n, locale)][locale], {
-    label,
-    n: n === undefined ? "" : formatNumber(n, locale),
-    date: date === undefined ? "" : formatIsoDate(date, locale),
-  });
-}
-
-function fileVars(file: string, limits: UploadLimits, locale: Locale) {
-  return { file, size: formatMegabytes(limits.maxSizeMb, locale), kinds: t(locale, kindsKey(limits.kinds)) };
-}
-
-export function fileIssueMessage(issue: Pick<FileIssue, "code" | "file">, limits: UploadLimits, locale: Locale): string {
-  return fill(catalog[issue.code.replaceAll("_", " ") as CatalogKey][locale], fileVars(issue.file, limits, locale));
-}
-
-/** The JSON answer of an early upload. An expired or refused session reads as a failed upload. */
-export function uploadRefusalMessage(
-  code: UploadRefusal,
-  ctx: { file: string; label: string; limits: UploadLimits },
-  locale: Locale,
-): string {
-  if (code === "files_max") return issueMessage({ code: "files_max", field: "", params: { n: ctx.limits.maxFiles } }, ctx.label, locale);
-  const name = code === "expired" || code === "not_allowed" ? "upload failed" : code.replaceAll("_", " ");
-  return fill(catalog[name as CatalogKey][locale], fileVars(ctx.file, ctx.limits, locale));
-}
-
-export function errorSummaryHeading(count: number, locale: Locale): string {
-  return isOne(locale, count) ? t(locale, "error_summary_heading_one") : t(locale, "error_summary_heading", { count: formatNumber(count, locale) });
-}
-
-export function filesCount(count: number, max: number, locale: Locale): string {
-  const vars = { count: formatNumber(count, locale), max: formatNumber(max, locale) };
-  return isOne(locale, max) ? t(locale, "files_count_one", vars) : t(locale, "files_count", vars);
-}
-```
-
-(`issueMessage` for `email_syntax` and `consent` ignores the label: those rows have no `{label}`.)
+- [ ] **Step 3: Implement.**
+  - `copy.ts` (header: the text is owned by `renderer.md`, "Fixed chrome copy" and "Message catalog"; `copy.test.ts` keeps these objects equal to those rows): transcribe every row of both spec tables, as they stand after Task 1, into `chrome` (keyed by the chrome key) and `catalog` (keyed by the rule name with spaces), each `{ en, es }`, `as const satisfies Record<string, Text>`. The copy test enforces completeness and exact text. `t` is `fill(chrome[key][locale], vars)`; `isOne` is `new Intl.PluralRules(locale).select(n) === "one"`.
+  - `format.ts`: `Intl.NumberFormat` throughout; megabytes with `style: "unit", unit: "megabyte", unitDisplay: "short", maximumFractionDigits: 1`; `formatBytes` uses megabytes from 1 MB and kilobytes (at least 1, no decimals) below; `formatIsoDate` formats `<iso>T00:00:00Z` with `dateStyle: "long", timeZone: "UTC"` (an unreadable date is returned as given); `formatInstant` uses `dateStyle: "long", timeStyle: "short"` in the zone with its short name; `kindsKey` and `limitsKey` map the kinds as the tests show; `acceptAttribute` is a picker hint only (the server decides by content).
+  - `messages.ts` (the renderer builds every message from the rule and the label; staff never write them): `issueMessage` picks the row (the `one` variant when `isOne(locale, n)` and it exists) and fills `label`, `n` (formatted) and `date` (`formatIsoDate`); rows without `{label}` simply ignore it. `fileIssueMessage` fills `file` (the name), `size` (`formatMegabytes(maxSizeMb)`, or `LIMITS.submissionSizeMb` for `submission_too_large`) and `kinds` (`t(locale, kindsKey(kinds))`). `uploadRefusalMessage` sends `files_max` through `issueMessage({ code: "files_max", params: { n: maxFiles } }, label, locale)`, reads `expired` and `not_allowed` as "upload failed", and otherwise uses the code's file row. `errorSummaryHeading` and `filesCount` use the `_one` chrome rows when `isOne` holds for the count (or the maximum).
 
 - [ ] **Step 4: Run** `pnpm test src/modules/submissions/presentation && pnpm lint && pnpm typecheck && pnpm format:check`.
 - [ ] **Step 5: Commit** `feat(submissions): renderer copy bound to the spec, locale formatting and validation messages`
 
 ---
 
-### Task 24: Field renderers, form decoding and the renderer conformance test
+### Task 24: Field renderers, the upload field, form decoding and the renderer conformance test
 
 **Files:**
 - Create: `src/modules/submissions/presentation/fields/types.ts`, `FieldShell.tsx`, `text.tsx`, `number.tsx`, `date.tsx`, `choice.tsx`, `checkbox.tsx`, `consent.tsx`, `file-upload.tsx`, `section.tsx`, `index.ts`
+- Create: `src/modules/submissions/presentation/page-form-state.ts`, `client/UploadField.tsx`, `client/refused-files.ts`, `client/UploadField.test.ts` (the no-script markup; Task 26 adds the behavior)
 - Create: `src/modules/submissions/presentation/styles.ts` and an empty `renderer.module.css` (Task 25 fills the stylesheet)
 - Create: `src/modules/submissions/presentation/decode.ts`, `decode.test.ts`
 - Test: `src/modules/submissions/presentation/fields/conformance.test.ts`, `fields/fields.test.ts`
 
 **Interfaces:**
-- Consumes: Task 23 copy and messages; `RichText` (Task 3); `effectiveDisplay`, `consentTextVersion`, `fieldTypeIds`, `FieldTypeId`, `Field`, `ValidationCode`, form model fixtures through `fieldTypes`; `PageAction`, `IncomingFile` (Task 18).
+- Consumes: Task 23 copy and messages; `RichText` (Task 3); `effectiveDisplay`, `consentTextVersion`, `fieldTypeIds`, `FieldTypeId`, `Field`, `ValidationCode`, form model fixtures through `fieldTypes`; `PageAction`, `IncomingFile`, `RawValues`, `HONEYPOT_FIELD` (Task 18).
 - Produces:
 
 ```ts
@@ -8130,8 +3599,36 @@ export interface FieldRenderer {
   Component(props: FieldProps): ReactElement | null;
 }
 export function ids(key: string): { control: string; help: string; error: string; legend: string };
+export const one: (values: FormValues, name: string) => string;      // first value or ""
+export const many: (values: FormValues, name: string) => string[];
+// fields/FieldShell.tsx
+export function describedBy(props: FieldProps, extra?: readonly string[]): string;
+export function Star(props: { required: boolean }): ReactElement | null;
+export function Help(props: { props: FieldProps }): ReactElement | null;
+export function ErrorSlot(props: { props: FieldProps }): ReactElement;
+export function FieldShell(props: { props: FieldProps; children: ReactNode }): ReactElement;
+export function GroupShell(props: { props: FieldProps; legend?: ReactNode; children: ReactNode }): ReactElement;
 // fields/index.ts
 export const fieldRenderers: Record<FieldTypeId, FieldRenderer>;
+// page-form-state.ts (no directive: shared by the Server Action and the client components)
+export interface RefusedFileMessage { fieldKey: string; message: string }
+export interface PageFormState { refusedFiles: RefusedFileMessage[] }       // what a refused post answers beyond the stored record
+export const EMPTY_PAGE_FORM_STATE: PageFormState;                          // { refusedFiles: [] }
+export type PageFormAction = (state: PageFormState, form: FormData) => Promise<PageFormState>;
+// client/refused-files.ts ('use client')
+export const RefusedFilesContext: Context<readonly RefusedFileMessage[]>;   // default []
+// client/UploadField.tsx ('use client')
+export interface UploadFieldProps {
+  slug: string; fieldKey: string; inputId: string; errorId: string; countId: string; describedBy: string; accept: string;
+  required: boolean; maxFiles: number; maxBytes: number; kinds: readonly ("image" | "video")[]; error: string | null;
+  initial: FileRowView[]; initialCount: string;
+  text: {
+    chooseFiles: string; uploading: string; uploaded: string; remove: string; retry: string; removed: string;
+    count: string; countOne: string; failed: string; tooLarge: string; wrongType: string;   // "{file}" left for the client
+  };
+  locale: Locale;
+}
+export function UploadField(props: UploadFieldProps): ReactElement;
 // decode.ts
 export interface DecodedPost {
   pageKey: string; action: PageAction; answers: Record<string, unknown>; decodeIssues: ValidationIssue[];
@@ -8143,20 +3640,13 @@ export async function decodePagePost(form: FormData, version: Version, registry:
 export function decodeField(form: FormData, field: Field): Decoded;
 ```
 
-Control names: a field's inputs use its key (`<key>`, or `<key>.day`, `<key>.month`, `<key>.year` for dates). The page's own fields are `_page`, `_action`, `_rendered`, `_token` and the honeypot `website-url`; none can be a field key (keys match `^[a-z][a-z0-9_]{3,31}$`).
+Control names: a field's inputs use its key (`<key>`, or `<key>.day`, `<key>.month`, `<key>.year` for dates). The page's own fields are `_page`, `_action`, `_rendered`, `_token` and the honeypot `website-url`; none can be a field key (keys match `^[a-z][a-z0-9_]{3,31}$`). Next's own hidden fields for the Server Action (names starting with `$`) are never read.
 
 Markup rules every component keeps (renderer.md, "Field rendering", and design-system/accessibility.md, "Forms"): `<label for>` or `<fieldset>` with `<legend>`; help before the control, linked with `aria-describedby`; the error slot `<p id="<key>-error">` always present, linked and `aria-invalid="true"` when it holds a message; `required` and `aria-required` on required inputs and the star after the label with `aria-hidden`; no `type="number"`, no native date picker, no custom widgets.
 
 - [ ] **Step 1: Failing conformance test** `fields/conformance.test.ts`:
 
 ```ts
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { fieldTypeIds, fieldTypes, type Field } from "@/shared/domain/form-model";
-import { fieldRenderers } from "./index";
-import type { FieldInput } from "./types";
-
 const input = (values: Record<string, string | string[]>): FieldInput => ({
   get: (n) => {
     const v = values[n];
@@ -8169,7 +3659,7 @@ const input = (values: Record<string, string | string[]>): FieldInput => ({
 });
 
 function fieldOf(id: (typeof fieldTypeIds)[number], settings: unknown): Field {
-  return { key: "f_probe", type: id, label: { en: "Probe", es: "Sonda" }, required: true, personal: false, validation: [], settings };
+  return { key: asKey("f_probe"), type: id, label: { en: "Probe", es: "Sonda" }, required: true, personal: false, validation: [], settings };
 }
 
 describe("renderer conformance", () => {
@@ -8218,207 +3708,54 @@ describe("renderer conformance", () => {
 });
 ```
 
-`fields/fields.test.ts` (per-type behavior the conformance loop does not reach):
+`fields/fields.test.ts` (per-type behavior the conformance loop does not reach). Helpers: `base(field)` is a `Field` with key `asKey("f_probe")`, label `{ en: "Probe", es: "Sonda" }`, not required, not personal, no rules, then `...field`; `render(props)` renders the type's `Component` with `locale: "en"`, `languages: "bilingual"`, `slug: "probe-form"`, `label: "Probe"`, no help, not required, empty values, no error, no files, then `...props`; `input(values)` is a `FieldInput` over a plain record. Cases:
+- "number: text input with a decimal keypad, unit after it, and not_a_number for words": `base({ type: "number", settings: { integerOnly: false, unit: { en: "weeks", es: "semanas" } } })` renders `inputmode="decimal"` and `weeks`; decoding `"2,5"` gives `{ value: 2.5, issue: null }`, `"thirty"` gives `{ value: undefined, issue: "not_a_number" }`, `" "` gives `{ value: undefined, issue: null }`.
+- "date: day, month and year in the locale's order inside a fieldset, impossible input is date_invalid": in `en`, `f_probe.month` comes before `f_probe.day`; in `es`, `f_probe.day` before `f_probe.month`, and the markup matches `/<fieldset[^>]*>\s*<legend/`; decoding `{ "f_probe.day": "9", "f_probe.month": "11", "f_probe.year": "2026" }` gives `{ value: "2026-11-09", issue: null }`, and without the month `{ value: undefined, issue: "date_invalid" }`.
+- "single choice: radio by default, dropdown only from seven options, with the Choose one placeholder": options `opt_0` to `opt_6` (`Option <i>` / `Opción <i>`); six of them with `display: "dropdown"` still render `type="radio"`; all seven render `<select` and `Choose one`.
+- "consent: the text as legend in plain paragraphs, never pre-checked, decoded with the pinned text version": `text = { en: "I agree to **synthetic** terms.\n\nSecond paragraph.", es: "Acepto términos sintéticos." }`, `coveredItems: []`; the markup holds `<legend`, the literal `I agree to **synthetic** terms.`, no `<strong>`, `Second paragraph.`, `I have read and agree`, and no `checked`; decoding `accepted` gives `{ value: { accepted: true, textVersion: consentTextVersion(text) }, issue: null }`.
+- "long text: counter only with a max length": `{ rows: 4 }` renders no `characters`; with `validation: [{ rule: "max_length", value: 500 }]` and value `abc` it renders `3 of 500 characters`.
+- "file upload: the video notice before the input, limits as help, rows with Remove, and the count": settings `{ kinds: ["image", "video"], maxFiles: 10, maxSizeMb: 10 }` and one file `{ id: "00000000-0000-4000-8000-000000000001", kind: "image", label: "File 1, 12 kB", size: "12 kB" }`; `Videos are stored exactly as sent` comes before `type="file"`; the markup holds `Photos and videos up to 10 MB each.`, `name="_action" value="remove:00000000-0000-4000-8000-000000000001"`, `1 of 10 files` and `accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,video/mp4,video/quicktime"`.
+- "short text infers autocomplete only where safe": label `Full name` renders `autocomplete="name"`; label `Hospital` renders `autocomplete="off"`.
+
+`client/UploadField.test.ts` (the server rendering, which is the no-script page). Helper `props(over)` builds `UploadFieldProps` for `f_photos` (`inputId: "f-f_photos"`, `errorId: "f_photos-error"`, `countId: "f_photos-count"`, `describedBy: "f_photos-limits f_photos-count"`, `accept: "image/jpeg"`, required, `maxFiles: 3`, `maxBytes: 10 MB`, `kinds: ["image"]`, no error, one initial row `{ id: "00000000-0000-4000-8000-000000000001", kind: "image", label: "File 1, 12 kB", size: "12 kB" }`, `initialCount: "1 of 3 files"`, the English chrome strings, `locale: "en"`, then `...over`):
 
 ```ts
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { consentTextVersion, type Field } from "@/shared/domain/form-model";
-import { fieldRenderers } from "./index";
-import type { FieldProps } from "./types";
-
-const base = (field: Partial<Field> & Pick<Field, "type" | "settings">): Field => ({
-  key: "f_probe", label: { en: "Probe", es: "Sonda" }, required: false, personal: false, validation: [], ...field,
-});
-const render = (props: Partial<FieldProps> & Pick<FieldProps, "field">) =>
-  renderToStaticMarkup(
-    createElement(fieldRenderers[props.field.type].Component, {
-      locale: "en", languages: "bilingual", slug: "probe-form", label: "Probe", help: null, required: false,
-      values: {}, error: null, files: [], ...props,
-    }),
-  );
-const input = (values: Record<string, string>) => ({ get: (n: string) => values[n] ?? null, getAll: (n: string) => (values[n] ? [values[n]] : []) });
-
-describe("field renderers", () => {
-  it("number: text input with a decimal keypad, unit after it, and not_a_number for words", () => {
-    const field = base({ type: "number", settings: { integerOnly: false, unit: { en: "weeks", es: "semanas" } } });
-    const html = render({ field });
-    expect(html).toContain('inputmode="decimal"');
-    expect(html).toContain("weeks");
-    expect(fieldRenderers.number.decode(input({ f_probe: "2,5" }), field)).toEqual({ value: 2.5, issue: null });
-    expect(fieldRenderers.number.decode(input({ f_probe: "thirty" }), field)).toEqual({ value: undefined, issue: "not_a_number" });
-    expect(fieldRenderers.number.decode(input({ f_probe: " " }), field)).toEqual({ value: undefined, issue: null });
+describe("UploadField without script", () => {
+  it("renders the native input, the count and a Remove submit button per staged file", () => {
+    const html = renderToStaticMarkup(createElement(UploadField, props()));
+    expect(html).toMatch(/<input[^>]*type="file"[^>]*multiple[^>]*name="f_photos"|<input[^>]*name="f_photos"[^>]*type="file"/);
+    expect(html).toContain('aria-describedby="f_photos-limits f_photos-count"');
+    expect(html).toContain("1 of 3 files");
+    expect(html).toContain("File 1, 12 kB");
+    expect(html).toMatch(/<button[^>]*type="submit"[^>]*name="_action"[^>]*value="remove:00000000-0000-4000-8000-000000000001"/);
+    expect(html).toContain('id="f_photos-error"');
   });
 
-  it("date: day, month and year in the locale's order inside a fieldset, impossible input is date_invalid", () => {
-    const field = base({ type: "date", settings: {} });
-    const en = render({ field, locale: "en" });
-    expect(en.indexOf("f_probe.month")).toBeLessThan(en.indexOf("f_probe.day"));
-    const es = render({ field, locale: "es" });
-    expect(es.indexOf("f_probe.day")).toBeLessThan(es.indexOf("f_probe.month"));
-    expect(es).toMatch(/<fieldset[^>]*>\s*<legend/);
-    expect(fieldRenderers.date.decode(input({ "f_probe.day": "9", "f_probe.month": "11", "f_probe.year": "2026" }), field)).toEqual({ value: "2026-11-09", issue: null });
-    expect(fieldRenderers.date.decode(input({ "f_probe.day": "9", "f_probe.year": "2026" }), field)).toEqual({ value: undefined, issue: "date_invalid" });
-  });
-
-  it("single choice: radio by default, dropdown only from seven options, with the Choose one placeholder", () => {
-    const options = Array.from({ length: 7 }, (_, i) => ({ key: `opt_${String(i)}`, label: { en: `Option ${String(i)}`, es: `Opción ${String(i)}` } }));
-    expect(render({ field: base({ type: "single_choice", settings: { options: options.slice(0, 6), display: "dropdown" } }) })).toContain('type="radio"');
-    const dropdown = render({ field: base({ type: "single_choice", settings: { options, display: "dropdown" } }) });
-    expect(dropdown).toContain("<select");
-    expect(dropdown).toContain("Choose one");
-  });
-
-  it("consent: the text as legend, never pre-checked, decoded with the pinned text version", () => {
-    const text = { en: "I agree to synthetic terms.", es: "Acepto términos sintéticos." };
-    const field = base({ type: "consent", settings: { text, coveredItems: [] } });
-    const html = render({ field, values: {} });
-    expect(html).toContain("<legend");
-    expect(html).toContain("I agree to synthetic terms.");
-    expect(html).toContain("I have read and agree");
-    expect(html).not.toContain("checked");
-    expect(fieldRenderers.consent.decode(input({ f_probe: "accepted" }), field)).toEqual({
-      value: { accepted: true, textVersion: consentTextVersion(text) }, issue: null,
-    });
-  });
-
-  it("long text: counter only with a max length", () => {
-    const plain = render({ field: base({ type: "long_text", settings: { rows: 4 } }) });
-    expect(plain).not.toContain("characters");
-    const capped = render({ field: base({ type: "long_text", settings: { rows: 4 }, validation: [{ rule: "max_length", value: 500 }] }), values: { f_probe: "abc" } });
-    expect(capped).toContain("3 of 500 characters");
-  });
-
-  it("file upload: the video notice before the input, limits as help, rows with Remove, and the count", () => {
-    const field = base({ type: "file_upload", settings: { kinds: ["image", "video"], maxFiles: 10, maxSizeMb: 10 } });
-    const html = render({ field, files: [{ id: "00000000-0000-4000-8000-000000000001", kind: "image", label: "File 1, 12 kB", size: "12 kB" }] });
-    expect(html.indexOf("Videos are stored exactly as sent")).toBeLessThan(html.indexOf('type="file"'));
-    expect(html).toContain("Photos and videos up to 10 MB each.");
-    expect(html).toContain('name="_action" value="remove:00000000-0000-4000-8000-000000000001"');
-    expect(html).toContain("1 of 10 files");
-    expect(html).toContain('accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,video/mp4,video/quicktime"');
-  });
-
-  it("short text infers autocomplete only where safe", () => {
-    expect(render({ field: base({ type: "short_text", settings: {}, label: { en: "Full name" } }), label: "Full name" })).toContain('autocomplete="name"');
-    expect(render({ field: base({ type: "short_text", settings: {} }), label: "Hospital" })).toContain('autocomplete="off"');
+  it("shows this field's refused files from the post's answer in its error slot, instead of the stored error", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        RefusedFilesContext.Provider,
+        { value: [{ fieldKey: "f_photos", message: "notes.txt is not a supported type." }, { fieldKey: "f_other", message: "x" }] },
+        createElement(UploadField, props({ error: "Photos is required" })),
+      ),
+    );
+    expect(html).toMatch(/id="f_photos-error"[^>]*>[\s\S]*notes\.txt is not a supported type\./);
+    expect(html).not.toContain("Photos is required");
+    expect(html).toContain('aria-invalid="true"');
   });
 });
 ```
 
-`decode.test.ts`:
-
-```ts
-import { describe, expect, it } from "vitest";
-import { registry, storyVersion } from "../domain/testing/versions";
-import { decodePagePost, parseAction } from "./decode";
-
-describe("decodePagePost", () => {
-  it("reads the page's answers, control fields and files, ignoring other pages' fields", async () => {
-    const form = new FormData();
-    form.set("_page", "page_contact");
-    form.set("_action", "next");
-    form.set("_rendered", "2026-10-10T11:59:00.000Z");
-    form.set("website-url", "");
-    form.set("f_name", "Ana Prueba");
-    form.set("f_baby", "yes_opt");
-    form.set("f_consent", "accepted");
-    const decoded = await decodePagePost(form, storyVersion(), registry);
-    expect(decoded).toMatchObject({
-      pageKey: "page_contact", action: { kind: "next" }, answers: { f_name: "Ana Prueba", f_baby: "yes_opt" },
-      raw: { f_name: "Ana Prueba", f_baby: "yes_opt" }, renderedAt: new Date("2026-10-10T11:59:00.000Z"), honeypot: "", submitToken: null,
-    });
-    expect(decoded?.answers).not.toHaveProperty("f_consent");
-  });
-
-  it("collects posted files of the page's upload fields with their names", async () => {
-    const form = new FormData();
-    form.set("_page", "page_baby");
-    form.set("_action", "next");
-    form.append("f_photos", new File([new Uint8Array([1, 2])], "a.jpg"));
-    form.append("f_photos", new File([], ""));
-    const decoded = await decodePagePost(form, storyVersion(), registry);
-    expect(decoded?.incoming.map((f) => [f.fieldKey, f.name, f.bytes.length])).toEqual([["f_photos", "a.jpg", 2], ["f_photos", "", 0]]);
-  });
-
-  it("refuses an unknown page or action", async () => {
-    const form = new FormData();
-    form.set("_page", "page_nope");
-    form.set("_action", "next");
-    expect(await decodePagePost(form, storyVersion(), registry)).toBeNull();
-    expect(parseAction("language:fr")).toBeNull();
-    expect(parseAction("remove:00000000-0000-4000-8000-000000000001")).toEqual({ kind: "remove", fileId: "00000000-0000-4000-8000-000000000001" });
-    expect(parseAction("language:es")).toEqual({ kind: "language", locale: "es" });
-  });
-});
-```
+`decode.test.ts`, over `storyVersion()` and its registry:
+- "reads the page's answers, control fields and files, ignoring other pages' fields and Next's own fields": a form with `$ACTION_REF_1: ""`, `_page: page_contact`, `_action: next`, `_rendered: 2026-10-10T11:59:00.000Z`, `website-url: ""`, `f_name: Ana Prueba`, `f_baby: yes_opt`, `f_consent: accepted` decodes to a post matching `{ pageKey: "page_contact", action: { kind: "next" }, answers: { f_name: "Ana Prueba", f_baby: "yes_opt" }, raw: { f_name: "Ana Prueba", f_baby: "yes_opt" }, renderedAt: new Date("2026-10-10T11:59:00.000Z"), honeypot: "", submitToken: null }`, without `f_consent` in its answers.
+- "collects posted files of the page's upload fields with their names": `_page: page_baby`, `_action: next` and two `f_photos` entries, `new File([new Uint8Array([1, 2])], "a.jpg")` and `new File([], "")` → `incoming` as `[fieldKey, name, length]` is `[["f_photos", "a.jpg", 2], ["f_photos", "", 0]]`.
+- "refuses an unknown page or action": `_page: page_nope` decodes to null; `parseAction("language:fr")` is null; `parseAction("remove:00000000-0000-4000-8000-000000000001")` is `{ kind: "remove", fileId: "00000000-0000-4000-8000-000000000001" }`; `parseAction("language:es")` is `{ kind: "language", locale: "es" }`.
 
 - [ ] **Step 2: Run** `pnpm test src/modules/submissions/presentation`: fails.
 
-- [ ] **Step 3: Implement.** `fields/types.ts`:
-
-```ts
-import type { ReactElement } from "react";
-import type { Field, ValidationCode } from "@/shared/domain/form-model";
-import type { Languages, Locale } from "@/shared/domain/localized-text";
-
-export type FormValues = Readonly<Record<string, string | string[]>>;
-export interface FieldInput {
-  get(name: string): string | null;
-  getAll(name: string): string[];
-}
-export interface Decoded {
-  value: unknown;
-  issue: ValidationCode | null;
-}
-export interface FileRowView {
-  id: string;
-  kind: "image" | "video";
-  label: string;
-  size: string;
-}
-export interface FieldProps {
-  field: Field;
-  locale: Locale;
-  languages: Languages;
-  slug: string;
-  label: string;
-  help: string | null;
-  required: boolean;
-  values: FormValues;
-  error: string | null;
-  files: readonly FileRowView[];
-}
-/** One field type's renderer capability; registered in fields/index.ts for every type. */
-export interface FieldRenderer {
-  decode(input: FieldInput, field: Field): Decoded;
-  encode(value: unknown, field: Field): FormValues;
-  Component(props: FieldProps): ReactElement | null;
-}
-
-export function ids(key: string): { control: string; help: string; error: string; legend: string } {
-  return { control: `f-${key}`, help: `${key}-help`, error: `${key}-error`, legend: `${key}-legend` };
-}
-
-export const one = (values: FormValues, name: string): string => {
-  const v = values[name];
-  return typeof v === "string" ? v : Array.isArray(v) ? (v[0] ?? "") : "";
-};
-export const many = (values: FormValues, name: string): string[] => {
-  const v = values[name];
-  return v === undefined ? [] : Array.isArray(v) ? v : [v];
-};
-```
-
-`fields/FieldShell.tsx`:
+- [ ] **Step 3: Implement** `fields/types.ts` exactly as in Interfaces (`ids(key)` is `{ control: "f-<key>", help: "<key>-help", error: "<key>-error", legend: "<key>-legend" }`; `one` and `many` read a value or a list from `FormValues`), and the shells in `fields/FieldShell.tsx`:
 
 ```tsx
-import type { ReactNode } from "react";
-import { RichText } from "@/shared/presentation/RichText";
-import { styles } from "../styles";
-import { ids, type FieldProps } from "./types";
-
 /** `aria-describedby` for a control: help, fixed hints, then the error when there is one. */
 export function describedBy(props: FieldProps, extra: readonly string[] = []): string {
   const id = ids(props.field.key);
@@ -8488,44 +3825,9 @@ export function GroupShell({ props, legend, children }: { props: FieldProps; leg
 }
 ```
 
-`src/modules/submissions/presentation/styles.ts` (with an empty `renderer.module.css` beside it until Task 25):
-
-```ts
-/// <reference types="next" />
-import styles from "./renderer.module.css";
-
-/** The renderer's class names. */
-export { styles };
-```
-
-`fields/text.tsx`:
+`styles.ts` is `/// <reference types="next" />` and `export { default as styles } from "./renderer.module.css"` (the renderer's class names). The one input every text type shares, in `fields/text.tsx`, is the pattern the other inputs follow:
 
 ```tsx
-import { FieldShell, describedBy } from "./FieldShell";
-import { ids, one, type FieldProps, type FieldRenderer } from "./types";
-import { styles } from "../styles";
-import { t } from "../copy";
-import { formatNumber } from "../format";
-import { resolveText, type LocalizedText } from "@/shared/domain/localized-text";
-
-const text = (input: { get(n: string): string | null }, key: string) => {
-  const v = input.get(key);
-  return { value: v === null ? undefined : v, issue: null };
-};
-const encodeText = (value: unknown, field: { key: string }) => (typeof value === "string" ? { [field.key]: value } : {});
-const placeholder = (props: FieldProps) => {
-  const p = (props.field.settings as { placeholder?: LocalizedText }).placeholder;
-  return p ? resolveText(p, props.locale, props.languages) || undefined : undefined;
-};
-
-/** `autocomplete` only where the label makes the purpose clear; renderer.md, "Field rendering". */
-function inferAutocomplete(label: string): string {
-  const l = label.toLowerCase();
-  if (/\b(full name|name and surname|nombre y apellido|nombre completo|your name|tu nombre)\b/.test(l)) return "name";
-  if (/\b(organization|organisation|organización|empresa)\b/.test(l)) return "organization";
-  return "off";
-}
-
 function Input(props: FieldProps & { type: string; inputMode?: "email" | "tel" | "text"; autoComplete: string }) {
   const id = ids(props.field.key);
   return (
@@ -8547,71 +3849,12 @@ function Input(props: FieldProps & { type: string; inputMode?: "email" | "tel" |
     </FieldShell>
   );
 }
-
-export const shortText: FieldRenderer = {
-  decode: (input, field) => text(input, field.key),
-  encode: encodeText,
-  Component: (props) => <Input {...props} type="text" autoComplete={inferAutocomplete(props.label)} />,
-};
-
-export const email: FieldRenderer = {
-  decode: (input, field) => text(input, field.key),
-  encode: encodeText,
-  Component: (props) => <Input {...props} type="email" inputMode="email" autoComplete="email" />,
-};
-
-export const phone: FieldRenderer = {
-  decode: (input, field) => text(input, field.key),
-  encode: encodeText,
-  Component: (props) => <Input {...props} type="tel" inputMode="tel" autoComplete="tel" />,
-};
-
-export const longText: FieldRenderer = {
-  decode: (input, field) => text(input, field.key),
-  encode: encodeText,
-  Component: (props) => {
-    const id = ids(props.field.key);
-    const rows = (props.field.settings as { rows?: number }).rows ?? 4;
-    const max = props.field.validation.find((r) => r.rule === "max_length");
-    const value = one(props.values, props.field.key);
-    const counterId = `${props.field.key}-count`;
-    return (
-      <FieldShell props={props}>
-        <textarea
-          id={id.control}
-          name={props.field.key}
-          rows={rows}
-          className={styles.textarea}
-          defaultValue={value}
-          placeholder={placeholder(props)}
-          required={props.required}
-          aria-required={props.required || undefined}
-          aria-invalid={props.error ? true : undefined}
-          aria-describedby={describedBy(props, max ? [counterId] : []) || undefined}
-          data-autogrow=""
-        />
-        {max && "value" in max ? (
-          <p id={counterId} className={styles.counter} data-counter-for={props.field.key} data-max={String(max.value)} data-template={t(props.locale, "char_count")}>
-            {t(props.locale, "char_count", { n: formatNumber([...value].length, props.locale), max: formatNumber(max.value, props.locale) })}
-          </p>
-        ) : null}
-      </FieldShell>
-    );
-  },
-};
 ```
 
-(The counter counts code points here and graphemes on the server; the server's count is the one that validates. Keep the import order as Prettier and ESLint want it.)
+The decoders, which turn posted strings into answers and decode issues:
 
-`fields/number.tsx`:
-
-```tsx
-import { resolveText, type LocalizedText } from "@/shared/domain/localized-text";
-import { styles } from "../styles";
-import { FieldShell, describedBy } from "./FieldShell";
-import { ids, one, type FieldRenderer } from "./types";
-
-/** Postel: "2,5" and "2.5" both read as 2.5; empty is no answer. */
+```ts
+// number.tsx: Postel, "2,5" and "2.5" both read as 2.5; empty is no answer.
 function parseNumber(raw: string): { value: number | undefined; ok: boolean } {
   const s = raw.trim().replace(/\s/g, "");
   if (s === "") return { value: undefined, ok: true };
@@ -8619,478 +3862,29 @@ function parseNumber(raw: string): { value: number | undefined; ok: boolean } {
   if (!/^-?\d+(\.\d+)?$/.test(normalized)) return { value: undefined, ok: false };
   return { value: Number(normalized), ok: true };
 }
+decode: (input, field) => {
+  const { value, ok } = parseNumber(input.get(field.key) ?? "");
+  return ok ? { value, issue: null } : { value: undefined, issue: "not_a_number" };
+},
 
-export const numberField: FieldRenderer = {
-  decode: (input, field) => {
-    const { value, ok } = parseNumber(input.get(field.key) ?? "");
-    return ok ? { value, issue: null } : { value: undefined, issue: "not_a_number" };
-  },
-  encode: (value, field) => (typeof value === "number" ? { [field.key]: String(value) } : {}),
-  Component: (props) => {
-    const id = ids(props.field.key);
-    const settings = props.field.settings as { integerOnly?: boolean; unit?: LocalizedText };
-    const unit = settings.unit ? resolveText(settings.unit, props.locale, props.languages) : "";
-    const unitId = `${props.field.key}-unit`;
-    return (
-      <FieldShell props={props}>
-        <span className={styles.withUnit}>
-          <input
-            id={id.control}
-            name={props.field.key}
-            type="text"
-            inputMode={settings.integerOnly ? "numeric" : "decimal"}
-            autoComplete="off"
-            className={styles.input}
-            defaultValue={one(props.values, props.field.key)}
-            required={props.required}
-            aria-required={props.required || undefined}
-            aria-invalid={props.error ? true : undefined}
-            aria-describedby={describedBy(props, unit ? [unitId] : []) || undefined}
-          />
-          {unit ? <span id={unitId} className={styles.unit}>{unit}</span> : null}
-        </span>
-      </FieldShell>
-    );
-  },
-};
-```
+// date.tsx
+decode: (input, field) => {
+  const [d, m, y] = ["day", "month", "year"].map((p) => (input.get(`${field.key}.${p}`) ?? "").trim());
+  if (d === "" && m === "" && y === "") return { value: undefined, issue: null };
+  if (!/^\d{1,2}$/.test(d ?? "") || !/^\d{1,2}$/.test(m ?? "") || !/^\d{4}$/.test(y ?? "")) {
+    return { value: undefined, issue: "date_invalid" };
+  }
+  return { value: `${y ?? ""}-${(m ?? "").padStart(2, "0")}-${(d ?? "").padStart(2, "0")}`, issue: null };
+},
 
-`fields/date.tsx`:
-
-```tsx
-import type { Locale } from "@/shared/domain/localized-text";
-import { t } from "../copy";
-import { styles } from "../styles";
-import { GroupShell } from "./FieldShell";
-import { one, type FieldRenderer } from "./types";
-
-const PARTS = { en: ["month", "day", "year"], es: ["day", "month", "year"] } as const satisfies Record<Locale, readonly string[]>;
-
-export const dateField: FieldRenderer = {
-  decode: (input, field) => {
-    const [d, m, y] = ["day", "month", "year"].map((p) => (input.get(`${field.key}.${p}`) ?? "").trim());
-    if (d === "" && m === "" && y === "") return { value: undefined, issue: null };
-    if (!/^\d{1,2}$/.test(d ?? "") || !/^\d{1,2}$/.test(m ?? "") || !/^\d{4}$/.test(y ?? "")) {
-      return { value: undefined, issue: "date_invalid" };
-    }
-    return { value: `${y ?? ""}-${(m ?? "").padStart(2, "0")}-${(d ?? "").padStart(2, "0")}`, issue: null };
-  },
-  encode: (value, field) => {
-    const match = typeof value === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null;
-    if (!match) return {};
-    return { [`${field.key}.year`]: match[1] ?? "", [`${field.key}.month`]: String(Number(match[2])), [`${field.key}.day`]: String(Number(match[3])) };
-  },
-  Component: (props) => (
-    <GroupShell props={props}>
-      <div className={styles.dateRow}>
-        {PARTS[props.locale].map((part) => {
-          const name = `${props.field.key}.${part}`;
-          const key = part === "day" ? "date_day" : part === "month" ? "date_month" : "date_year";
-          return (
-            <label key={part} className={part === "year" ? styles.dateYear : styles.datePart}>
-              <span className={styles.subLabel}>{t(props.locale, key)}</span>
-              <input
-                name={name}
-                id={`f-${props.field.key}-${part}`}
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                maxLength={part === "year" ? 4 : 2}
-                className={styles.input}
-                defaultValue={one(props.values, name)}
-                required={props.required}
-                aria-required={props.required || undefined}
-                aria-invalid={props.error ? true : undefined}
-              />
-            </label>
-          );
-        })}
-      </div>
-    </GroupShell>
-  ),
-};
-```
-
-(The conformance test's `<label for="f-f_probe"|<legend` alternative is met by the legend. The first sub-input gets focus from the error summary link `#f-<key>-<first part>`; `ErrorSummary` in Task 25 links group fields to their first control.)
-
-`fields/choice.tsx`:
-
-```tsx
-import { effectiveDisplay, type Option } from "@/shared/domain/form-model";
-import { resolveText } from "@/shared/domain/localized-text";
-import { t } from "../copy";
-import { styles } from "../styles";
-import { FieldShell, GroupShell, describedBy } from "./FieldShell";
-import { ids, many, one, type FieldProps, type FieldRenderer } from "./types";
-
-const options = (props: FieldProps) => (props.field.settings as { options: Option[] }).options;
-
-function Radios(props: FieldProps) {
-  const current = one(props.values, props.field.key);
-  return (
-    <GroupShell props={props}>
-      <div className={styles.options} role="radiogroup" aria-required={props.required || undefined}>
-        {options(props).map((o, i) => (
-          <label key={o.key} className={styles.option}>
-            <input
-              type="radio"
-              name={props.field.key}
-              value={o.key}
-              id={i === 0 ? ids(props.field.key).control : undefined}
-              defaultChecked={current === o.key}
-              required={props.required}
-            />
-            <span>{resolveText(o.label, props.locale, props.languages)}</span>
-          </label>
-        ))}
-      </div>
-    </GroupShell>
-  );
-}
-
-function Dropdown(props: FieldProps) {
-  const current = one(props.values, props.field.key);
-  return (
-    <FieldShell props={props}>
-      <select
-        id={ids(props.field.key).control}
-        name={props.field.key}
-        className={styles.select}
-        defaultValue={current}
-        required={props.required}
-        aria-required={props.required || undefined}
-        aria-invalid={props.error ? true : undefined}
-        aria-describedby={describedBy(props) || undefined}
-      >
-        <option value="" disabled>
-          {t(props.locale, "choose_one")}
-        </option>
-        {options(props).map((o) => (
-          <option key={o.key} value={o.key}>
-            {resolveText(o.label, props.locale, props.languages)}
-          </option>
-        ))}
-      </select>
-    </FieldShell>
-  );
-}
-
-export const singleChoice: FieldRenderer = {
-  decode: (input, field) => ({ value: input.get(field.key) ?? undefined, issue: null }),
-  encode: (value, field) => (typeof value === "string" ? { [field.key]: value } : {}),
-  Component: (props) =>
-    effectiveDisplay(props.field.settings as { options: Option[]; display: "radio" | "dropdown" }) === "dropdown" ? (
-      <Dropdown {...props} />
-    ) : (
-      <Radios {...props} />
-    ),
-};
-
-export const multipleChoice: FieldRenderer = {
-  decode: (input, field) => {
-    const values = input.getAll(field.key);
-    return { value: values.length === 0 ? undefined : values, issue: null };
-  },
-  encode: (value, field) => (Array.isArray(value) ? { [field.key]: value.map(String) } : {}),
-  Component: (props) => {
-    const chosen = new Set(many(props.values, props.field.key));
-    return (
-      <GroupShell props={props}>
-        <div className={styles.options}>
-          {options(props).map((o, i) => (
-            <label key={o.key} className={styles.option}>
-              <input type="checkbox" name={props.field.key} value={o.key} id={i === 0 ? ids(props.field.key).control : undefined} defaultChecked={chosen.has(o.key)} />
-              <span>{resolveText(o.label, props.locale, props.languages)}</span>
-            </label>
-          ))}
-        </div>
-      </GroupShell>
-    );
-  },
-};
-```
-
-(Min and max selected show in help automatically, as renderer.md asks: `pageFieldViews` in Task 25 appends those sentences to the help it passes in.)
-
-`fields/checkbox.tsx`:
-
-```tsx
-import { styles } from "../styles";
-import { ErrorSlot, Help, describedBy } from "./FieldShell";
-import { ids, one, type FieldRenderer } from "./types";
-
-export const checkboxField: FieldRenderer = {
-  decode: (input, field) => ({ value: input.get(field.key) === "on", issue: null }),
-  encode: (value, field) => (value === true ? { [field.key]: "on" } : {}),
-  Component: (props) => {
-    const id = ids(props.field.key);
-    return (
-      <div className={styles.field} data-field={props.field.key}>
-        {props.help ? <div id={id.help}><Help props={props} /></div> : null}
-        <label className={styles.option} htmlFor={id.control}>
-          <input
-            id={id.control}
-            type="checkbox"
-            name={props.field.key}
-            defaultChecked={one(props.values, props.field.key) === "on"}
-            required={props.required}
-            aria-required={props.required || undefined}
-            aria-invalid={props.error ? true : undefined}
-            aria-describedby={describedBy(props) || undefined}
-          />
-          <span>
-            {props.label}
-            {props.required ? <span aria-hidden="true" className={styles.star}> *</span> : null}
-          </span>
-        </label>
-        <ErrorSlot props={props} />
-      </div>
-    );
-  },
-};
-```
-
-`fields/consent.tsx`:
-
-```tsx
-import { consentTextVersion } from "@/shared/domain/form-model";
-import { resolveText, type LocalizedText } from "@/shared/domain/localized-text";
-import { t } from "../copy";
-import { styles } from "../styles";
-import { GroupShell } from "./FieldShell";
-import { ids, one, type FieldRenderer } from "./types";
-
-const textOf = (settings: unknown) => (settings as { text: LocalizedText }).text;
-
-/** Consent text is plain text (form-definition.md names four rich-text places, consent is not one). */
-function Paragraphs({ text }: { text: string }) {
-  return (
-    <>
-      {text.split(/\n{2,}/).map((p, i) => (
-        <span key={i} className={styles.consentParagraph}>
-          {p}
-        </span>
-      ))}
-    </>
-  );
-}
-
-export const consentField: FieldRenderer = {
-  decode: (input, field) =>
-    input.get(field.key) === "accepted"
-      ? { value: { accepted: true, textVersion: consentTextVersion(textOf(field.settings)) }, issue: null }
-      : { value: undefined, issue: null },
-  encode: (value, field) =>
-    typeof value === "object" && value !== null && (value as { accepted?: unknown }).accepted === true ? { [field.key]: "accepted" } : {},
-  Component: (props) => {
-    const id = ids(props.field.key);
-    return (
-      <div className={styles.consent}>
-        <GroupShell props={props} legend={<Paragraphs text={resolveText(textOf(props.field.settings), props.locale, props.languages)} />}>
-          <label className={styles.option} htmlFor={id.control}>
-            <input
-              id={id.control}
-              type="checkbox"
-              name={props.field.key}
-              value="accepted"
-              defaultChecked={one(props.values, props.field.key) === "accepted"}
-              required
-              aria-required
-              aria-invalid={props.error ? true : undefined}
-            />
-            <span>{t(props.locale, "consent_checkbox")}</span>
-          </label>
-        </GroupShell>
-      </div>
-    );
-  },
-};
-```
-
-A refused post re-renders the box checked only if the submitter had checked it; it is never pre-checked on first render.
-
-`fields/section.tsx`:
-
-```tsx
-import { resolveText, type LocalizedText } from "@/shared/domain/localized-text";
-import { RichText } from "@/shared/presentation/RichText";
-import { styles } from "../styles";
-import type { FieldRenderer } from "./types";
-
-export const sectionField: FieldRenderer = {
-  decode: () => ({ value: undefined, issue: null }),
-  encode: () => ({}),
-  Component: (props) => {
-    const s = props.field.settings as { title: LocalizedText; description?: LocalizedText };
-    const description = s.description ? resolveText(s.description, props.locale, props.languages) : "";
-    return (
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>{resolveText(s.title, props.locale, props.languages)}</h2>
-        {description ? <RichText source={description} className={styles.help} /> : null}
-      </section>
-    );
-  },
-};
-```
-
-`fields/file-upload.tsx`:
-
-```tsx
-import type { UploadLimits } from "@/shared/domain/form-model";
-import { catalog, t } from "../copy";
-import { acceptAttribute, formatMegabytes, limitsKey } from "../format";
-import { filesCount } from "../messages";
-import { UploadField } from "../client/UploadField";
-import { styles } from "../styles";
-import { Help } from "./FieldShell";
-import { ids, type FieldRenderer } from "./types";
-
-/**
- * The native file input, enhanced by the UploadField client component. Its
- * server-rendered markup works without script: files go with the page post
- * and each staged file has a Remove button. renderer.md, "File upload".
- */
-export const fileUploadField: FieldRenderer = {
-  decode: () => ({ value: undefined, issue: null }),
-  encode: () => ({}),
-  Component: (props) => {
-    const id = ids(props.field.key);
-    const limits = props.field.settings as UploadLimits;
-    const noticeId = `${props.field.key}-notice`;
-    const limitsId = `${props.field.key}-limits`;
-    const countId = `${props.field.key}-count`;
-    const describedBy = [limits.kinds.includes("video") ? noticeId : null, props.help ? id.help : null, limitsId, countId, props.error ? id.error : null]
-      .filter(Boolean)
-      .join(" ");
-    return (
-      <div className={styles.field} data-field={props.field.key}>
-        {limits.kinds.includes("video") ? (
-          <p id={noticeId} className={styles.notice}>
-            {t(props.locale, "video_notice")}
-          </p>
-        ) : null}
-        <label htmlFor={id.control} className={styles.label}>
-          {props.label}
-          {props.required ? <span aria-hidden="true" className={styles.star}> *</span> : null}
-        </label>
-        {props.help ? <div id={id.help}><Help props={props} /></div> : null}
-        <p id={limitsId} className={styles.hint}>
-          {t(props.locale, limitsKey(limits.kinds), { size: formatMegabytes(limits.maxSizeMb, props.locale) })}
-        </p>
-        <UploadField
-          slug={props.slug}
-          fieldKey={props.field.key}
-          inputId={id.control}
-          errorId={id.error}
-          countId={countId}
-          describedBy={describedBy}
-          accept={acceptAttribute(limits.kinds)}
-          required={props.required}
-          maxFiles={limits.maxFiles}
-          error={props.error}
-          initial={[...props.files]}
-          initialCount={filesCount(props.files.length, limits.maxFiles, props.locale)}
-          text={{
-            chooseFiles: t(props.locale, "choose_files"),
-            uploading: t(props.locale, "uploading"),
-            uploaded: t(props.locale, "uploaded"),
-            remove: t(props.locale, "remove"),
-            retry: t(props.locale, "retry"),
-            removed: t(props.locale, "removed"),
-            count: t(props.locale, "files_count"),
-            countOne: t(props.locale, "files_count_one"),
-            // Used when the network fails before any answer; "{file}" is filled by the client.
-            failed: catalog["upload failed"][props.locale],
-          }}
-          locale={props.locale}
-        />
-      </div>
-    );
-  },
-};
-```
-
-`fields/index.ts`:
-
-```ts
-import type { FieldTypeId } from "@/shared/domain/form-model";
-import { checkboxField } from "./checkbox";
-import { multipleChoice, singleChoice } from "./choice";
-import { consentField } from "./consent";
-import { dateField } from "./date";
-import { fileUploadField } from "./file-upload";
-import { numberField } from "./number";
-import { sectionField } from "./section";
-import { email, longText, phone, shortText } from "./text";
-import type { FieldRenderer } from "./types";
-
-/**
- * The renderer side of every field type. A type missing here fails both the
- * type check (`satisfies`) and the renderer conformance test.
- */
-export const fieldRenderers = {
-  short_text: shortText,
-  long_text: longText,
-  email,
-  phone,
-  number: numberField,
-  date: dateField,
-  single_choice: singleChoice,
-  multiple_choice: multipleChoice,
-  checkbox: checkboxField,
-  consent: consentField,
-  file_upload: fileUploadField,
-  section: sectionField,
-} as const satisfies Record<FieldTypeId, FieldRenderer>;
-
-export type { FieldProps, FieldRenderer, FileRowView, FormValues } from "./types";
-export { ids } from "./types";
-```
-
-`decode.ts`:
-
-```ts
-import type { Field, FieldTypeRegistry, ValidationIssue, Version } from "@/shared/domain/form-model";
-import type { IncomingFile, PageAction, RawValues } from "../application";
-import { HONEYPOT_FIELD } from "../application";
-import { fieldRenderers } from "./fields";
-import type { Decoded, FieldInput } from "./fields/types";
-
-export interface DecodedPost {
-  pageKey: string;
-  action: PageAction;
-  answers: Record<string, unknown>;
-  decodeIssues: ValidationIssue[];
-  raw: RawValues;
-  incoming: IncomingFile[];
-  renderedAt: Date | null;
-  honeypot: string;
-  submitToken: string | null;
-}
-
+// decode.ts
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
 export function parseAction(value: string | null): PageAction | null {
   if (value === "next" || value === "back" || value === "submit") return { kind: value };
   if (value === "language:en" || value === "language:es") return { kind: "language", locale: value.slice(9) as "en" | "es" };
   if (value?.startsWith("remove:") && UUID.test(value.slice(7))) return { kind: "remove", fileId: value.slice(7) };
   return null;
 }
-
-const str = (v: FormDataEntryValue | null): string | null => (typeof v === "string" ? v : null);
-
-export function formInput(form: FormData): FieldInput {
-  return {
-    get: (name) => str(form.get(name)),
-    getAll: (name) => form.getAll(name).filter((v): v is string => typeof v === "string"),
-  };
-}
-
-export function decodeField(form: FormData, field: Field): Decoded {
-  return fieldRenderers[field.type].decode(formInput(form), field);
-}
-
-/** Parses a page post: the page's fields only, through each type's decoder. */
 export async function decodePagePost(form: FormData, version: Version, registry: FieldTypeRegistry): Promise<DecodedPost | null> {
   const pageKey = str(form.get("_page"));
   const action = parseAction(str(form.get("_action")));
@@ -9100,7 +3894,7 @@ export async function decodePagePost(form: FormData, version: Version, registry:
   const decodeIssues: ValidationIssue[] = [];
   const raw: RawValues = {};
   const incoming: IncomingFile[] = [];
-  const keys = new Set(page.fields.map((f) => f.key));
+  const keys = new Set<string>(page.fields.map((f) => f.key));
   for (const [name, value] of form.entries()) {
     const owner = name.split(".")[0] ?? "";
     if (typeof value !== "string" || !keys.has(owner)) continue;
@@ -9112,8 +3906,7 @@ export async function decodePagePost(form: FormData, version: Version, registry:
     if (!def.isInput) continue;
     if (def.uploadLimits) {
       for (const entry of form.getAll(field.key)) {
-        if (typeof entry === "string") continue;
-        incoming.push({ fieldKey: field.key, name: entry.name, bytes: new Uint8Array(await entry.arrayBuffer()) });
+        if (typeof entry !== "string") incoming.push({ fieldKey: field.key, name: entry.name, bytes: new Uint8Array(await entry.arrayBuffer()) });
       }
       continue;
     }
@@ -9125,12 +3918,7 @@ export async function decodePagePost(form: FormData, version: Version, registry:
   const renderedAt = rendered === null ? null : new Date(rendered);
   const token = str(form.get("_token"));
   return {
-    pageKey: page.key,
-    action,
-    answers,
-    decodeIssues,
-    raw,
-    incoming,
+    pageKey: page.key, action, answers, decodeIssues, raw, incoming,
     renderedAt: renderedAt && !Number.isNaN(renderedAt.getTime()) ? renderedAt : null,
     honeypot: str(form.get(HONEYPOT_FIELD)) ?? "",
     submitToken: token && UUID.test(token) ? token : null,
@@ -9138,71 +3926,82 @@ export async function decodePagePost(form: FormData, version: Version, registry:
 }
 ```
 
-(A checkbox's decoder reads absent as `false`; a page post that never rendered that checkbox cannot reach this code, since only the page's own fields are decoded.)
+(`str` is the string-or-null reader over `FormData` entries; `formInput` wraps `FormData` as a `FieldInput`; `decodeField` runs one field's decoder over `formInput(form)`.)
+
+The other renderers, each a `FieldRenderer` with the attributes the tests check:
+  - `text.tsx`: `shortText` (`type="text"`, `autoComplete` from the label: `name` for full-name labels in either language, `organization` for organization labels, else `off`), `email` (`type="email"`, `inputMode="email"`, `autocomplete="email"`), `phone` (`type="tel"`, `inputMode="tel"`, `autocomplete="tel"`), `longText` (a `<textarea rows data-autogrow>` with the same aria attributes; with a `max_length` rule a counter `<p id="<key>-count" data-counter-for data-max data-template>` showing `char_count`, linked in `aria-describedby`; the server's grapheme count is the one that validates). The text decoders return the string or undefined; the encoders write a string answer under the key. Placeholders resolve from the settings in the locale.
+  - `number.tsx`: the decoder above; encodes a number as its string. The input is `type="text"` with `inputMode` `numeric` for integer-only and `decimal` otherwise, `autocomplete="off"`, the unit in `<span id="<key>-unit">` after it and linked.
+  - `date.tsx`: three `type="text" inputMode="numeric"` inputs named `<key>.day`, `<key>.month`, `<key>.year` (`maxLength` 2, 2, 4, ids `f-<key>-<part>`, labelled with `date_day`, `date_month`, `date_year`) in the locale's order (en: month, day, year; es: day, month, year) inside `GroupShell`, with the decoder above. The encoder splits an ISO date back into the three parts.
+  - `choice.tsx`: `singleChoice` renders radios in a `GroupShell` (the first radio carries the control id) unless `effectiveDisplay(settings)` is `dropdown`, then a `<select>` in a `FieldShell` with a disabled `choose_one` placeholder option; `multipleChoice` renders checkboxes in a `GroupShell`, decoding the list of checked keys (none is no answer). Selection limits reach the help through `pageFieldViews` (Task 25).
+  - `checkbox.tsx`: one checkbox inside its own `<label>` with the star, help before it and the error slot after; decodes `on` as true and absence as false (only the page's own fields are decoded, so absent means unchecked).
+  - `consent.tsx`: consent text is plain text (form-definition.md; Task 1 corrected builder.md): the `legend` of a `GroupShell` holds the resolved text split on blank lines into one `<span className={styles.consentParagraph}>` per paragraph, React escaping it, never parsed as markup; then a checkbox `value="accepted"`, always `required`, labelled `consent_checkbox`, checked only when the posted values say so. Decoder: `accepted` gives `{ accepted: true, textVersion: consentTextVersion(text) }`.
+  - `section.tsx`: `<section>` with an `<h2>` title and the description through `RichText`; no value.
+  - `file-upload.tsx`: the video notice `<p id="<key>-notice">` (when video is accepted) before the label, the label with the star, help, the limits hint `<p id="<key>-limits">` (`limitsKey` with `formatMegabytes`), then `UploadField` with `describedBy` = notice, help, limits, count and error ids, `accept` from `acceptAttribute`, `maxBytes = maxSizeMb MB`, `initialCount` from `filesCount`, and the chrome strings; `text.failed`, `text.tooLarge` and `text.wrongType` are the catalog rows `upload failed`, `file too large` and `file wrong type` in the page language with `{size}` and `{kinds}` filled and `{file}` left for the client. No value is decoded: files travel as `incoming`.
+  - `fields/index.ts`: `fieldRenderers = { short_text, long_text, email, phone, number, date, single_choice, multiple_choice, checkbox, consent, file_upload, section } as const satisfies Record<FieldTypeId, FieldRenderer>` (a missing type fails both the type check and the conformance test), re-exporting the types and `ids`.
+  - `page-form-state.ts` exactly as in Interfaces; `client/refused-files.ts` creates the context, default `[]`.
+  - `client/UploadField.tsx` (no-script markup only in this task; comment: rendered on the server it is the no-script control): a dropzone `<div>` holding the native `<input type="file">` (`id`, `name` = field key, `multiple` when `maxFiles > 1`, `accept`, `aria-required`, `aria-invalid` when it shows an error, `aria-describedby`), the count `<p id={countId} aria-live="polite">` showing `initialCount`, a `<ul>` with one row per initial file (its label and size, and a `<button type="submit" name="_action" value="remove:<id>" aria-describedby="<id>-name">` showing `text.remove`), a polite announcement `<p>`, and the error slot `<p id={errorId} aria-live="assertive">` holding this field's messages from `RefusedFilesContext` (one per line) or else `props.error`.
+  - `decode.ts`: the code above; Next's `$` fields and the control fields fall out of `raw` because only the page's field keys are kept, and a refused file's name stays in `incoming` for the message only.
 
 - [ ] **Step 4: Run** `pnpm test src/modules/submissions/presentation && pnpm lint && pnpm typecheck && pnpm format:check`. The conformance test must fail if any entry is removed from `fieldRenderers`: delete `section` locally, see both `typecheck` and the test fail, restore it.
-- [ ] **Step 5: Commit** `feat(submissions): a renderer for every field type, form decoding and the renderer conformance suite`
+- [ ] **Step 5: Commit** `feat(submissions): a renderer for every field type, the no-script upload field, form decoding and the renderer conformance suite`
 
 ---
 
-### Task 25: Renderer screens, layout styles and the page weight check
+### Task 25: Renderer screens, the page form, layout styles and the page weight check
 
 **Files:**
-- Create: `src/modules/submissions/presentation/PublicShell.tsx`, `FormPage.tsx`, `ErrorSummary.tsx`, `Progress.tsx`, `Screens.tsx`, `error-page.ts`, `field-views.ts`, `screens.test.ts`, `page-weight.test.ts`
-- Modify: `src/modules/submissions/presentation/renderer.module.css` (the whole stylesheet), `src/modules/submissions/application/index.ts` (export `withFileAnswers`)
+- Create: `src/modules/submissions/presentation/PublicShell.tsx`, `FormPage.tsx`, `Progress.tsx`, `Screens.tsx`, `field-views.ts`, `screens.test.ts`, `page-weight.test.ts`
+- Create: `src/modules/submissions/presentation/client/PageEnhancer.tsx`, `client/NavButtons.tsx`, `client/ErrorSummary.tsx`, `client/summary.ts`, `client/summary.test.ts` (markup and merging; Task 26 adds the behavior)
+- Modify: `src/modules/submissions/presentation/renderer.module.css` (the whole stylesheet)
 
 **Interfaces:**
-- Consumes: `ViewResult`, `PageView` (Task 18); `fieldRenderers` (Task 24); Task 23 copy and messages; `HONEYPOT_FIELD`.
+- Consumes: `ViewResult`, `PageView`, `withFileAnswers`, `HONEYPOT_FIELD` (Task 18); `fieldRenderers`, `PageFormAction`, `PageFormState`, `EMPTY_PAGE_FORM_STATE`, `RefusedFilesContext` (Task 24); Task 23 copy and messages.
 - Produces:
 
 ```ts
 // field-views.ts (framework-free)
+export interface SummaryItem { fieldKey: string; href: string; message: string }
 export function pageFieldViews(view: { version: FormVersion; page: PageView; slug: string }, registry: FieldTypeRegistry):
   { field: Field; props: FieldProps }[];          // visible fields of the current page, with labels, help, values, errors, files
-export function summaryItems(view: { version: FormVersion; page: PageView }, registry: FieldTypeRegistry): { href: string; message: string }[];
+export function summaryItems(view: { version: FormVersion; page: PageView }, registry: FieldTypeRegistry): SummaryItem[];
 export function pageTitle(view: Extract<ViewResult, { screen: "page" }>): { h1: string; documentTitle: string; subtitle: string | null };
 // Screens.tsx
-export function RendererScreen(props: { view: Exclude<ViewResult, { screen: "not_found" }>; slug: string; contact: string; registry: FieldTypeRegistry }): ReactElement;
+export function RendererScreen(props: { view: Exclude<ViewResult, { screen: "not_found" }>; slug: string; contact: string; registry: FieldTypeRegistry; formAction: PageFormAction }): ReactElement;
 export function NotFoundScreen(): ReactElement;
 export function viewLocale(view: ViewResult): Locale;   // page and confirmation locale; "es" otherwise
-// error-page.ts
-export function errorPageHtml(input: { slug: string | null; retentionMonths: number | null; contact: string }): string;
+// client/summary.ts (no React)
+export function summaryEntries(items: readonly SummaryItem[], refused: readonly RefusedFileMessage[]): { href: string; message: string }[];
+export function summaryHeading(count: number, locale: Locale, headings: { one: string; other: string }): string;
+// client/ErrorSummary.tsx ('use client')
+export function ErrorSummary(props: { items: readonly SummaryItem[]; locale: Locale; headings: { one: string; other: string } }): ReactElement | null;
+// client/PageEnhancer.tsx ('use client'): the page form itself, and (Task 26) its enhancement
+export interface PageEnhancerProps {
+  action: PageFormAction; permalink: string; slug: string; pageKey: string; locale: Locale;
+  navigated: boolean;                                   // a page change, so focus goes to the heading
+  text: { submitting: string; uploadsPending: string; offline: string; submitFailed: string };
+  children: ReactNode;
+}
+export function PageEnhancer(props: PageEnhancerProps): ReactElement;
+// client/NavButtons.tsx ('use client')
+export function NavButtons(props: { back: string | null; primary: { value: "next" | "submit"; label: string }; submitting: string; uploadsPending: string }): ReactElement;
 ```
+
+Decision (the page form): the form is rendered by `PageEnhancer` with `useActionState(action, EMPTY_PAGE_FORM_STATE, permalink)`, so without script the browser posts to the page's own URL and Next answers a refused post with this page (the state carries the refused files' messages, which `RefusedFilesContext` hands to `UploadField` and `ErrorSummary`), and a successful post with a 303. The client never receives the copy tables: every string arrives as a prop, already localized.
 
 Layout per renderer.md "Layout" and design.md: one column, 640 px maximum, 16 px gutters to 480 px and 24 px above, 44 px targets, inputs full width, navigation buttons full width on phones and side by side from 480 px, body 17 px, inputs at least 16 px, focus ring 2 px rose with 2 px offset, no motion under `prefers-reduced-motion`. Every value comes from `design-system/tokens.json` and names its token.
 
-Page structure, top to bottom: the default submit button (hidden, first in tree order, so Enter in a single-line field means Next, or Submit on the last page); the skip link "Skip to form"; the header with the wordmark text (`wordmark`), the language switch on bilingual forms (one button naming the other language in that language, posting the page form with `_action=language:<lang>`), and the progress text and bar on multi-page forms; `<main>` with the `<h1>`; the error summary above the first field when the page holds a refused post; the required legend once when any visible field is required; the fields; the honeypot; the navigation row (Back unless first, then Next or Submit); and the privacy footer on every screen with a form.
+Page structure, top to bottom: the default submit button (hidden, first in tree order, `form="page-form"`, so Enter in a single-line field means Next, or Submit on the last page); the skip link "Skip to form"; the header with the wordmark text (`wordmark`), the language switch on bilingual forms (one button naming the other language in that language, `form="page-form" name="_action" value="language:<lang>" lang="<lang>"`), and the progress text and bar on multi-page forms; `<main id="content">` with the `<h1>`; the page form holding the error summary above the first field when the page holds a refused post, the required legend once when any visible field is required, the fields, the hidden `_page`, `_rendered` (page 1 without a record only) and `_token` (last page) inputs, the honeypot, the navigation row (Back unless first, then Next or Submit) and the status line; and the privacy footer on every screen with a form.
 
-- [ ] **Step 1: Failing tests.** `screens.test.ts`:
+- [ ] **Step 1: Failing tests.** `screens.test.ts`. Helpers, described once: `noop: PageFormAction` returns its state; `screen(view, slug = "story-form")` is `renderToStaticMarkup(createElement(RendererScreen, { view, slug, contact: "privacy@example.com", registry, formAction: noop }))`; `pageHtml(acceptLanguage = "en")` publishes the story form, takes `viewForm` with no cookie and returns `{ html, deps, view }`.
 
 ```ts
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { seedPublished } from "@/modules/definitions/application/testing/fakes";
-import { parseDraft } from "@/shared/domain/form-model";
-import { makeSubmissionsDeps, publishStory } from "../application/testing/fakes";
-import { viewForm } from "../application/view-form";
-import { registry, storyVersion } from "../domain/testing/versions";
-import { NotFoundScreen, RendererScreen } from "./Screens";
-import { errorPageHtml } from "./error-page";
-
-async function pageHtml(acceptLanguage = "en") {
-  const deps = makeSubmissionsDeps();
-  await publishStory(deps);
-  const view = await viewForm(deps, { slug: "story-form", state: { kind: "none" }, acceptLanguage, expired: false });
-  if (view.screen === "not_found") throw new Error("not found");
-  return { html: renderToStaticMarkup(createElement(RendererScreen, { view, slug: "story-form", contact: "privacy@example.com", registry })), deps, view };
-}
-
 describe("RendererScreen", () => {
   it("renders page 1 as a real form with skip link, one h1, progress, legend, fields, honeypot and Next", async () => {
     const { html } = await pageHtml();
     expect(html.match(/<h1/g)).toHaveLength(1);
     expect(html).toContain('href="#content"');
     expect(html).toContain("Skip to form");
-    expect(html).toMatch(/<form[^>]*id="page-form"[^>]*method="post"[^>]*action="\/f\/story-form\/answers"/);
-    expect(html).toContain('enctype="multipart/form-data"');
+    expect(html).toMatch(/<form[^>]*id="page-form"/);
     expect(html).toContain("Page 1 of 2");
     expect(html).toContain('role="progressbar"');
     expect(html).toContain("Fields marked with * are required");
@@ -9214,696 +4013,90 @@ describe("RendererScreen", () => {
     expect(html).toContain("This form is run by Effluz. Answers are stored in the United States and deleted after 12 months.");
     expect(html).toContain('href="mailto:privacy@example.com"');
   });
-
-  it("puts the hidden default action first, so Enter means Next", async () => {
-    const { html } = await pageHtml();
-    expect(html.indexOf('value="next"')).toBeLessThan(html.indexOf('value="language:es"'));
-  });
-
-  it("offers the other language, named in that language", async () => {
-    const { html } = await pageHtml();
-    expect(html).toMatch(/<button[^>]*form="page-form"[^>]*name="_action"[^>]*value="language:es"[^>]*lang="es"[^>]*>Español</);
-  });
-
-  it("shows the error summary with links and a count, and the messages under the fields", async () => {
-    const { deps } = await pageHtml();
-    const now = deps.clock.now();
-    const formId = [...deps.definitions.store.forms.keys()][0] ?? "";
-    const versionId = [...deps.definitions.store.versions.keys()][0] ?? "";
-    await deps.inProgress.insert(await deps.uow.begin(), {
-      id: "00000000-0000-4000-8000-0000000000aa", formId, versionId, locale: "en", pageKey: "page_contact",
-      answers: {}, files: {}, submitToken: "00000000-0000-4000-8000-0000000000bb", startedAt: now, expiresAt: new Date(now.getTime() + 1e7), createdAt: now, updatedAt: now,
-      pending: { pageKey: "page_contact", raw: { f_email: "nope" }, issues: [{ code: "required", field: "f_name" }, { code: "email_syntax", field: "f_email" }], fileIssues: [] },
-    });
-    const view = await viewForm(deps, { slug: "story-form", state: { kind: "record", id: "00000000-0000-4000-8000-0000000000aa" }, acceptLanguage: "en", expired: false });
-    if (view.screen === "not_found") throw new Error("nf");
-    const html = renderToStaticMarkup(createElement(RendererScreen, { view, slug: "story-form", contact: "privacy@example.com", registry }));
-    expect(html).toContain("Please fix 2 problems before continuing");
-    expect(html).toMatch(/<div[^>]*role="alert"[^>]*data-error-summary/);
-    expect(html).toContain('href="#f-f_name"');
-    expect(html).toContain("Name is required");
-    expect(html).toContain('value="nope"');
-    expect(html.indexOf("Please fix 2 problems")).toBeLessThan(html.indexOf('id="f-f_name"'));
-  });
-
-  it("renders the confirmation, the closed screen in both languages, and not found", async () => {
-    const { deps } = await pageHtml();
-    const done = await viewForm(deps, { slug: "story-form", state: { kind: "decoy", reference: "ST-1234" }, acceptLanguage: "es", expired: false });
-    if (done.screen === "not_found") throw new Error("nf");
-    const confirmation = renderToStaticMarkup(createElement(RendererScreen, { view: done, slug: "story-form", contact: "privacy@example.com", registry }));
-    expect(confirmation).toContain("Gracias.");
-    expect(confirmation).toContain("Tu referencia: ");
-    expect(confirmation).toContain("ST-1234");
-    expect(confirmation).toContain("Puedes cerrar esta página.");
-    expect(confirmation).not.toContain("Llenar otro formulario");
-    const formId = [...deps.definitions.store.forms.keys()][0] ?? "";
-    const stored = deps.definitions.store.forms.get(formId);
-    if (stored) deps.definitions.store.forms.set(formId, { ...stored, status: "closed" });
-    const closed = await viewForm(deps, { slug: "story-form", state: { kind: "none" }, acceptLanguage: "es", expired: false });
-    if (closed.screen === "not_found") throw new Error("nf");
-    const closedHtml = renderToStaticMarkup(createElement(RendererScreen, { view: closed, slug: "story-form", contact: "privacy@example.com", registry }));
-    expect(closedHtml).toContain("Este formulario está cerrado");
-    expect(closedHtml).toMatch(/<span lang="en"[^>]*>This form is closed/);
-    expect(closedHtml).not.toContain("<form");
-    const notFound = renderToStaticMarkup(createElement(NotFoundScreen));
-    expect(notFound).toContain("No encontramos este formulario");
-    expect(notFound).not.toContain("Effluz. Answers are stored");
-  });
-
-  it("writes a static error page with a Try again link", () => {
-    const html = errorPageHtml({ slug: "story-form", retentionMonths: 12, contact: "privacy@example.com" });
-    expect(html).toContain("Algo salió mal");
-    expect(html).toContain('href="/f/story-form"');
-    expect(html).toContain("deleted after 12 months");
-  });
-
-  it("shows a multiple choice field's selection limits in its help", async () => {
-    const deps = makeSubmissionsDeps();
-    const parsed = parseDraft(
-      {
-        languages: "en", title: { en: "Probe" }, confirmation: { screen: { en: "Thanks" } },
-        pages: [{ key: "page_one", fields: [{
-          key: "f_pick", type: "multiple_choice", label: { en: "Probe" }, validation: [{ rule: "min_selected", value: 2 }],
-          settings: { options: [{ key: "opt_a", label: { en: "A" } }, { key: "opt_b", label: { en: "B" } }, { key: "opt_c", label: { en: "C" } }] },
-        }] }],
-      },
-      registry,
-    );
-    if (!parsed.ok) throw new Error("fixture");
-    await seedPublished(deps.definitions, { slug: "probe-form", document: parsed.version });
-    const view = await viewForm(deps, { slug: "probe-form", state: { kind: "none" }, acceptLanguage: "en", expired: false });
-    if (view.screen === "not_found") throw new Error("nf");
-    const html = renderToStaticMarkup(createElement(RendererScreen, { view, slug: "probe-form", contact: "privacy@example.com", registry }));
-    expect(html).toContain("Select at least 2 options for Probe");
-  });
-
-  it("gives the opening date in each language's own format", async () => {
-    const deps = makeSubmissionsDeps();
-    await seedPublished(deps.definitions, { slug: "later-form", document: storyVersion(), settings: { opensAt: "2026-12-01T17:00:00.000Z", timezone: "America/Panama" } });
-    const view = await viewForm(deps, { slug: "later-form", state: { kind: "none" }, acceptLanguage: "en", expired: false });
-    if (view.screen === "not_found") throw new Error("nf");
-    const html = renderToStaticMarkup(createElement(RendererScreen, { view, slug: "later-form", contact: "privacy@example.com", registry }));
-    expect(html).toContain("Abre el 1 de diciembre de 2026");
-    expect(html).toContain("It opens on December 1, 2026");
-  });
 });
 ```
 
-`page-weight.test.ts`:
+More `RendererScreen` cases:
+- "puts the hidden default action first, so Enter means Next": in `pageHtml()`, `value="next"` comes before `value="language:es"`.
+- "offers the other language, named in that language": `pageHtml()` matches `/<button[^>]*form="page-form"[^>]*name="_action"[^>]*value="language:es"[^>]*lang="es"[^>]*>Español</`.
+- "shows the error summary with links and a count, and the messages under the fields": a stored record on the story form (`id …0000aa`, `locale: "en"`, `pageKey: "page_contact"`, token `…0000bb`, expiring later) with `pending: { pageKey: "page_contact", raw: { f_email: "nope" }, issues: [{ code: "required", field: asKey("f_name") }, { code: "email_syntax", field: asKey("f_email") }] }`, viewed through its cookie, renders `Please fix 2 problems before continuing`, matches `/<div[^>]*role="alert"[^>]*data-error-summary/`, links `href="#f-f_name"`, holds `Name is required` and `value="nope"`, and the heading comes before `id="f-f_name"`.
+- "renders the confirmation, the closed screen in both languages, and not found": a `decoy` cookie `ST-1234` with `acceptLanguage: "es"` renders `Gracias.`, `Tu referencia: `, `ST-1234` and `Puedes cerrar esta página.` but not `Llenar otro formulario`; with the form closed, the closed screen renders `Este formulario está cerrado`, matches `/<span lang="en"[^>]*>This form is closed/` and has no `<form`; `NotFoundScreen` renders `No encontramos este formulario` and not `Effluz. Answers are stored`.
+- "shows a multiple choice field's selection limits in its help": an English form `probe-form` (seeded with `seedPublished`) whose one field `f_pick` is `multiple_choice` with options `opt_a`, `opt_b`, `opt_c` and `min_selected` 2 renders `Select at least 2 options for Probe`.
+- "gives the opening date in each language's own format": `later-form` with `storyVersion()`, `opensAt: "2026-12-01T17:00:00.000Z"`, `timezone: "America/Panama"` renders `Abre el 1 de diciembre de 2026` and `It opens on December 1, 2026`.
+
+`client/summary.test.ts` (the `ErrorSummary` case renders inside the context a refused post's answer provides; the end-to-end path through `useActionState` is covered in Tasks 29 and 30):
 
 ```ts
-import { gzipSync } from "node:zlib";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { seedPublished } from "@/modules/definitions/application/testing/fakes";
-import { buildDefaultRegistry, parseDraft } from "@/shared/domain/form-model";
-import { referenceFormDraft } from "../../../../tests/fixtures/reference-form";
-import { makeSubmissionsDeps } from "../application/testing/fakes";
-import { viewForm } from "../application/view-form";
-import { newInProgress } from "../domain/in-progress";
-import { RendererScreen } from "./Screens";
-
-describe("page weight", () => {
-  it("keeps every page of the reference form well under 30 KB compressed", async () => {
-    const deps = makeSubmissionsDeps();
-    const parsed = parseDraft(referenceFormDraft, buildDefaultRegistry());
-    if (!parsed.ok) throw new Error("fixture");
-    const { formId, versionId } = await seedPublished(deps.definitions, { slug: "historia-prematuro-2026", document: parsed.version });
-    for (const page of parsed.version.pages) {
-      const now = deps.clock.now();
-      const id = `00000000-0000-4000-8000-${String(parsed.version.pages.indexOf(page)).padStart(12, "0")}`;
-      await deps.inProgress.insert(await deps.uow.begin(), { ...newInProgress({ id, formId, versionId, locale: "es", pageKey: page.key, submitToken: id, startedAt: now, now }) });
-      const view = await viewForm(deps, { slug: "historia-prematuro-2026", state: { kind: "record", id }, acceptLanguage: "es", expired: false });
-      if (view.screen === "not_found") throw new Error("nf");
-      const html = renderToStaticMarkup(createElement(RendererScreen, { view, slug: "historia-prematuro-2026", contact: "privacy@example.com", registry: deps.registry }));
-      // Our markup alone; the e2e budget test measures the full response, framework payload included.
-      expect(gzipSync(html).length, page.key).toBeLessThan(15 * 1024);
-    }
+describe("ErrorSummary", () => {
+  it("lists a refused post's files, counted in the heading, linked to the field", () => {
+    const html = renderToStaticMarkup(
+      createElement(RefusedFilesContext.Provider, { value: [{ fieldKey: "f_photos", message: "notes.txt is not a supported type." }] },
+        createElement(ErrorSummary, { items: [], locale: "en", headings: { one: "Please fix 1 problem before continuing", other: "Please fix {count} problems before continuing" } })),
+    );
+    expect(html).toMatch(/<div[^>]*role="alert"[^>]*data-error-summary/);
+    expect(html).toContain("Please fix 1 problem before continuing");
+    expect(html).toContain('<a href="#f-f_photos">notes.txt is not a supported type.</a>');
   });
 });
 ```
+
+and the cases:
+- `summaryEntries`, "replaces a field's stored entry with its refused files, in field order": items `f_name` (`#f-f_name`, `Name is required`) and `f_photos` (`#f-f_photos`, `Photos is required`) with refused `f_photos` messages `a.txt is not a supported type.` and `b.jpg is larger than 10 MB` give `[{ href: "#f-f_name", message: "Name is required" }, { href: "#f-f_photos", message: "a.txt is not a supported type." }, { href: "#f-f_photos", message: "b.jpg is larger than 10 MB" }]`; no items with one refused `f_photos` message `x` give `[{ href: "#f-f_photos", message: "x" }]`.
+- `summaryHeading`, "picks the heading by the language's plural rule": headings `{ one: "Corrige 1 problema para continuar", other: "Corrige {count} problemas para continuar" }` give the first for 1 and `Corrige 3 problemas para continuar` for 3 in `es`.
+
+`page-weight.test.ts` (it reads `tests/fixtures/reference-form`, allowed for tests by ADR 0026), "keeps every page of the reference form well under 30 KB compressed": seed the parsed `referenceFormDraft` as `historia-prematuro-2026`; for each page, store a record on that page (ids `00000000-0000-4000-8000-<page index, 12 digits>`, `locale: "es"`), view it through its cookie, render `RendererScreen` with a pass-through `formAction`, and expect `gzipSync(html).length` below 15 KB (our markup alone; the e2e budget test measures the full response, framework payload included).
 
 - [ ] **Step 2: Run** `pnpm test src/modules/submissions/presentation`: fails.
 
-- [ ] **Step 3: Implement.** `field-views.ts`:
+- [ ] **Step 3: Implement.**
+  - `field-views.ts`: `pageFieldViews` takes the visible fields of the current page (`evaluateVisibility` over `withFileAnswers(answers, files)`); per field: the label in the locale; the error is `issueMessage` of the pending issue for that field; the values are the pending raw values of that field (names equal to the key or starting with `<key>.`) when pending exists, else the renderer's `encode` of the stored answer; files become `FileRowView`s labelled `file_row` with `formatBytes`; the help is the staff help plus, for `min_selected` and `max_selected` rules, the `choice_min` and `choice_max` messages, joined by blank lines; `required` is `isInput && (required || alwaysRequired)`. `summaryItems` lists fields with an error, `href` the first control (`#f-<key>`, or `#f-<key>-month` in English and `#f-<key>-day` in Spanish for dates). `pageTitle`: on the first page the h1 is the form title and the page title becomes the subtitle when it differs; later pages use the page title for the h1 and `<form title>: <page title>` for the document title.
+  - `Progress.tsx`: nothing below two pages; else the `progress` text in `<p id="progress-text" aria-live="polite">` and a `role="progressbar"` labelled by it with `aria-valuemin`, `aria-valuemax`, `aria-valuenow` and a fill of `n / total`.
+  - `PublicShell.tsx`: `Both` renders a chrome row in the page language and then, in `<span lang="<other>">`, the other language (per-language variables allowed, for dates); `PrivacyFooter` fills `privacy_footer` with the retention and a `mailto:` link for the contact, in one language or both; `PublicShell` lays out the default action, skip link, header (wordmark, language switch only when `languages === "bilingual"`), progress, `<main id="content" tabIndex={-1}>` and footer.
+  - `FormPage.tsx`: the structure above. `PageEnhancer` receives the action, `permalink` `/f/<slug>`, the page key, `navigated` (`hasRecord && pending === null`), the locale and the four strings; it wraps the summary, legend, fields, hidden inputs, honeypot (`<div className={styles.honeypot} aria-hidden="true">` with a `<label for="website-url">` of `honeypot_label` and `<input id="website-url" name="website-url" type="text" tabIndex={-1} autoComplete="off" defaultValue="">`) and `NavButtons`. `ErrorSummary` receives `summaryItems` and the two heading strings (`error_summary_heading_one`, `error_summary_heading`).
+  - `Screens.tsx`: `viewLocale`; closed, not open (the date through `formatInstant` per language in the form's time zone) and expired (with a Start again link to `/f/<slug>/restart`) share a `Message` screen in both languages with the privacy footer in both; `NotFoundScreen` has no footer; the confirmation shows the first block of the confirmation text as the h1 (plain text), the remaining blocks through `RichBlocks`, `confirmation_reference` with the reference in a `<code>`, `confirmation_close`, and `fill_another` linking to restart only when `allowAnotherResponse`.
+  - `client/summary.ts`: `summaryEntries` keeps item order and swaps each field's stored entry for its refused-file messages (a field with only refused files gets them at the end); `summaryHeading` uses `headings.one` when `new Intl.PluralRules(locale).select(count) === "one"`, else fills `{count}`.
+  - `client/ErrorSummary.tsx`: reads `RefusedFilesContext`; with no entries renders nothing; else `<div role="alert" data-error-summary>` with `<h2 id="error-summary-heading" tabIndex={-1}>` and a list of links.
+  - `client/PageEnhancer.tsx` (this task: markup only): `const [state, formAction] = useActionState(props.action, EMPTY_PAGE_FORM_STATE, props.permalink)`; renders `<form id="page-form" action={formAction} noValidate className={styles.form} data-slug data-page data-navigated={navigated ? "" : undefined}>` with the children inside `RefusedFilesContext.Provider value={state.refusedFiles}`, followed inside the form by the status line `<p role="status" data-status className={styles.status}>`, empty until Task 26.
+  - `client/NavButtons.tsx` (this task: markup only): `<div className={styles.navigation}>` with Back (`type="submit" name="_action" value="back"`, secondary) unless `back` is null, and the primary (`value` next or submit, `data-primary`).
+  - `renderer.module.css`: the classes below, each value commented with its token from `design-system/tokens.json`; run `pnpm format` once so Prettier lays it out one declaration per line.
 
-```ts
-import { evaluateVisibility, type Field, type FieldTypeRegistry } from "@/shared/domain/form-model";
-import { resolveText } from "@/shared/domain/localized-text";
-import type { FormVersion } from "@/modules/definitions/application";
-import { withFileAnswers, type PageView, type ViewResult } from "../application";
-import { t } from "./copy";
-import { formatBytes } from "./format";
-import { fieldRenderers, type FieldProps, type FormValues } from "./fields";
-import { fileIssueMessage, issueMessage } from "./messages";
-
-type PageScreen = { version: FormVersion; page: PageView; slug: string };
-
-/** The visible fields of the current page with everything their component shows. */
-export function pageFieldViews(view: PageScreen, registry: FieldTypeRegistry): { field: Field; props: FieldProps }[] {
-  const doc = view.version.document;
-  const { locale } = view.page;
-  const page = doc.pages.find((p) => p.key === view.page.pageKey);
-  if (!page) return [];
-  const answers = withFileAnswers(view.page.answers, view.page.files);
-  const visible = evaluateVisibility(doc, answers, registry).fields;
-  const pending = view.page.pending;
-  return page.fields
-    .filter((field) => visible.get(field.key) === true)
-    .map((field) => {
-      const def = registry.get(field.type);
-      const label = resolveText(field.label, locale, doc.languages);
-      const issue = pending?.issues.find((i) => i.field === field.key);
-      const fileIssue = pending?.fileIssues.find((i) => i.fieldKey === field.key);
-      const limits = def.uploadLimits?.(field.settings);
-      // A refused file names the file, which says more than "required" on the same field.
-      const error =
-        fileIssue && limits
-          ? fileIssueMessage(fileIssue, limits, locale)
-          : issue
-            ? issueMessage(issue, label, locale)
-            : null;
-      const values: FormValues = pending ? pick(pending.raw, field.key) : fieldRenderers[field.type].encode(view.page.answers[field.key], field);
-      const files = (view.page.files[field.key] ?? []).map((f, i) => {
-        const size = formatBytes(f.size, locale);
-        return { id: f.id, kind: f.kind, size, label: t(locale, "file_row", { n: String(i + 1), size }) };
-      });
-      // Selection limits show in help automatically; renderer.md, "Field rendering".
-      const limitsHelp = field.validation.flatMap((rule) =>
-        rule.rule === "min_selected" || rule.rule === "max_selected"
-          ? [issueMessage({ code: rule.rule === "min_selected" ? "choice_min" : "choice_max", field: field.key, params: { n: rule.value } }, label, locale)]
-          : [],
-      );
-      const staffHelp = field.help ? resolveText(field.help, locale, doc.languages) : "";
-      const help = [staffHelp, ...limitsHelp].filter((h) => h !== "").join("\n\n");
-      return {
-        field,
-        props: {
-          field, locale, languages: doc.languages, slug: view.slug, label,
-          help: help === "" ? null : help,
-          required: def.isInput && (field.required || def.alwaysRequired === true),
-          values, error, files,
-        },
-      };
-    });
-}
-
-function pick(raw: Readonly<Record<string, string | string[]>>, key: string): FormValues {
-  return Object.fromEntries(Object.entries(raw).filter(([name]) => name === key || name.startsWith(`${key}.`)));
-}
-
-/** Error summary entries, in field order, each linking to its field's first control. */
-export function summaryItems(view: PageScreen, registry: FieldTypeRegistry): { href: string; message: string }[] {
-  return pageFieldViews(view, registry)
-    .filter(({ props }) => props.error !== null)
-    .map(({ field, props }) => ({
-      href: field.type === "date" ? `#f-${field.key}-${props.locale === "en" ? "month" : "day"}` : `#f-${field.key}`,
-      message: props.error ?? "",
-    }));
-}
-
-export function pageTitle(view: Extract<ViewResult, { screen: "page" }>): { h1: string; documentTitle: string; subtitle: string | null } {
-  const doc = view.version.document;
-  const { locale } = view.page;
-  const formTitle = resolveText(doc.title, locale, doc.languages);
-  const page = doc.pages.find((p) => p.key === view.page.pageKey);
-  const pageTitleText = page ? resolveText(page.title, locale, doc.languages) : "";
-  if (view.page.isFirst) {
-    return { h1: formTitle, documentTitle: formTitle, subtitle: pageTitleText && pageTitleText !== formTitle ? pageTitleText : null };
-  }
-  const h1 = pageTitleText || formTitle;
-  return { h1, documentTitle: pageTitleText ? `${formTitle}: ${pageTitleText}` : formTitle, subtitle: null };
-}
-```
-
-`withFileAnswers` must be exported from the submissions application entry: add `export { withFileAnswers } from "../domain/in-progress";` to `index.ts` (presentation may import only its own module's application and domain, which it can reach directly; using the entry keeps one path).
-
-`Progress.tsx`:
-
-```tsx
-import type { Locale } from "@/shared/domain/localized-text";
-import { t } from "./copy";
-import { styles } from "./styles";
-
-export function Progress({ n, total, locale }: { n: number; total: number; locale: Locale }) {
-  if (total < 2) return null;
-  const text = t(locale, "progress", { n: String(n), total: String(total) });
-  return (
-    <div className={styles.progress}>
-      <p id="progress-text" className={styles.progressText} aria-live="polite">
-        {text}
-      </p>
-      <div role="progressbar" aria-labelledby="progress-text" aria-valuemin={1} aria-valuemax={total} aria-valuenow={n} className={styles.progressTrack}>
-        <span className={styles.progressFill} style={{ width: `${String(Math.round((n / total) * 100))}%` }} />
-      </div>
-    </div>
-  );
-}
-```
-
-`ErrorSummary.tsx`:
-
-```tsx
-import type { Locale } from "@/shared/domain/localized-text";
-import { errorSummaryHeading } from "./messages";
-import { styles } from "./styles";
-
-/** Above the first field after a refused post; focus moves here with script (PageEnhancer). */
-export function ErrorSummary({ items, locale }: { items: { href: string; message: string }[]; locale: Locale }) {
-  if (items.length === 0) return null;
-  return (
-    <div role="alert" className={styles.summary} data-error-summary="">
-      <h2 id="error-summary-heading" tabIndex={-1} className={styles.summaryHeading}>
-        {errorSummaryHeading(items.length, locale)}
-      </h2>
-      <ul className={styles.summaryList}>
-        {items.map((item) => (
-          <li key={item.href}>
-            <a href={item.href}>{item.message}</a>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-```
-
-`PublicShell.tsx`:
-
-```tsx
-import type { ReactNode } from "react";
-import type { Languages, Locale } from "@/shared/domain/localized-text";
-import { fill } from "@/shared/presentation/copy";
-import { chrome, t, type ChromeKey } from "./copy";
-import { styles } from "./styles";
-
-/**
- * Both languages, the page language first, for screens where nobody chose one.
- * `vars` fills both lines; `varsFor` gives each language its own values (dates).
- */
-export function Both({ k, lang, vars = {}, varsFor }: {
-  k: ChromeKey; lang: Locale; vars?: Record<string, string>; varsFor?: Record<Locale, Record<string, string>>;
-}) {
-  const other: Locale = lang === "es" ? "en" : "es";
-  return (
-    <>
-      {fill(chrome[k][lang], varsFor?.[lang] ?? vars)}
-      <span lang={other} className={styles.secondLanguage}>
-        {fill(chrome[k][other], varsFor?.[other] ?? vars)}
-      </span>
-    </>
-  );
-}
-
-export function PrivacyFooter({ locale, both, retention, contact }: { locale: Locale; both: boolean; retention: number; contact: string }) {
-  const parts = (lang: Locale) => {
-    const [before = "", after = ""] = fill(chrome.privacy_footer[lang], { retention: String(retention) }).split("{contact}");
-    return (
-      <>
-        {before}
-        <a href={`mailto:${contact}`}>{contact}</a>
-        {after}
-      </>
-    );
-  };
-  const other: Locale = locale === "es" ? "en" : "es";
-  return (
-    <footer className={styles.footer}>
-      <p>{parts(locale)}</p>
-      {both ? <p lang={other}>{parts(other)}</p> : null}
-    </footer>
-  );
-}
-
-export function PublicShell(props: {
-  locale: Locale;
-  languages: Languages | null;
-  defaultAction?: ReactNode;
-  progress?: ReactNode;
-  footer: ReactNode;
-  children: ReactNode;
-}) {
-  const other: Locale = props.locale === "es" ? "en" : "es";
-  return (
-    <div className={styles.page}>
-      {props.defaultAction}
-      <a href="#content" className={styles.skip}>
-        {t(props.locale, "skip_link")}
-      </a>
-      <header className={styles.header}>
-        <span className={styles.wordmark}>{t(props.locale, "wordmark")}</span>
-        {props.languages === "bilingual" ? (
-          <div role="group" aria-label={t(props.locale, "language_switch_label")} className={styles.languages}>
-            <button type="submit" form="page-form" name="_action" value={`language:${other}`} lang={other} className={styles.tertiary}>
-              {t(other, other === "en" ? "switch_to_en" : "switch_to_es")}
-            </button>
-          </div>
-        ) : null}
-      </header>
-      {props.progress}
-      <main id="content" tabIndex={-1} className={styles.main}>{props.children}</main>
-      {props.footer}
-    </div>
-  );
-}
-```
-
-(The language switch appears only on form pages; `Screens.tsx` passes `languages: null` elsewhere.)
-
-`FormPage.tsx`:
-
-```tsx
-import type { FieldTypeRegistry } from "@/shared/domain/form-model";
-import { resolveText } from "@/shared/domain/localized-text";
-import { RichText } from "@/shared/presentation/RichText";
-import type { ViewResult } from "../application";
-import { HONEYPOT_FIELD } from "../application";
-import { PageEnhancer } from "./client/PageEnhancer";
-import { t } from "./copy";
-import { ErrorSummary } from "./ErrorSummary";
-import { fieldRenderers } from "./fields";
-import { pageFieldViews, pageTitle, summaryItems } from "./field-views";
-import { Progress } from "./Progress";
-import { PrivacyFooter, PublicShell } from "./PublicShell";
-import { styles } from "./styles";
-
-type PageScreen = Extract<ViewResult, { screen: "page" }>;
-
-export function FormPage({ view, slug, contact, registry }: { view: PageScreen; slug: string; contact: string; registry: FieldTypeRegistry }) {
-  const { page, version, form } = view;
-  const doc = version.document;
-  const { locale } = page;
-  const current = doc.pages.find((p) => p.key === page.pageKey);
-  const fields = pageFieldViews({ version, page, slug }, registry);
-  const items = summaryItems({ version, page, slug }, registry);
-  const title = pageTitle(view);
-  const description = current?.description ? resolveText(current.description, locale, doc.languages) : "";
-  const primary = page.isLast ? "submit" : "next";
-  return (
-    <PublicShell
-      locale={locale}
-      languages={doc.languages}
-      progress={<Progress n={page.position.n} total={page.position.total} locale={locale} />}
-      footer={<PrivacyFooter locale={locale} both={false} retention={form.settings.retentionMonths} contact={contact} />}
-      defaultAction={
-        <button type="submit" form="page-form" name="_action" value={primary} tabIndex={-1} aria-hidden="true" className={styles.defaultAction}>
-          {t(locale, primary)}
-        </button>
-      }
-    >
-      <h1 className={styles.title} tabIndex={-1} data-page-heading="">
-        {title.h1}
-      </h1>
-      {title.subtitle ? <p className={styles.subtitle}>{title.subtitle}</p> : null}
-      {description ? <RichText source={description} className={styles.description} /> : null}
-      <form
-        id="page-form"
-        method="post"
-        action={`/f/${encodeURIComponent(slug)}/answers`}
-        encType="multipart/form-data"
-        noValidate
-        className={styles.form}
-        data-slug={slug}
-        data-page={page.pageKey}
-        data-navigated={page.hasRecord && page.pending === null ? "" : undefined}
-      >
-        <ErrorSummary items={items} locale={locale} />
-        {fields.some((f) => f.props.required) ? <p className={styles.legend}>{t(locale, "required_legend")}</p> : null}
-        {fields.map(({ field, props }) => {
-          const Component = fieldRenderers[field.type].Component;
-          return <Component key={field.key} {...props} />;
-        })}
-        <input type="hidden" name="_page" value={page.pageKey} />
-        {page.hasRecord ? null : <input type="hidden" name="_rendered" value={page.renderedAt.toISOString()} />}
-        {page.isLast && page.submitToken ? <input type="hidden" name="_token" value={page.submitToken} /> : null}
-        <div className={styles.honeypot} aria-hidden="true">
-          <label htmlFor="website-url">{t(locale, "honeypot_label")}</label>
-          <input id="website-url" name={HONEYPOT_FIELD} type="text" tabIndex={-1} autoComplete="off" defaultValue="" />
-        </div>
-        <div className={styles.navigation}>
-          {page.isFirst ? null : (
-            <button type="submit" name="_action" value="back" className={styles.secondary}>
-              {t(locale, "back")}
-            </button>
-          )}
-          <button type="submit" name="_action" value={primary} className={styles.primary} data-primary="">
-            {t(locale, primary)}
-          </button>
-        </div>
-        <p className={styles.status} role="status" data-status="" />
-      </form>
-      <PageEnhancer
-        slug={slug}
-        locale={locale}
-        text={{
-          submitting: t(locale, "submitting"),
-          uploadsPending: t(locale, "uploads_pending"),
-          offline: t(locale, "offline"),
-          submitFailed: t(locale, "submit_failed"),
-        }}
-      />
-    </PublicShell>
-  );
-}
-```
-
-`Screens.tsx`:
-
-```tsx
-import type { FieldTypeRegistry } from "@/shared/domain/form-model";
-import { resolveText, type Locale } from "@/shared/domain/localized-text";
-import { parseRichText, richTextToPlain } from "@/shared/domain/rich-text";
-import { RichBlocks } from "@/shared/presentation/RichText";
-import type { ViewResult } from "../application";
-import { t } from "./copy";
-import { formatInstant } from "./format";
-import { FormPage } from "./FormPage";
-import { Both, PrivacyFooter, PublicShell } from "./PublicShell";
-import { styles } from "./styles";
-
-export function viewLocale(view: ViewResult): Locale {
-  if (view.screen === "page") return view.page.locale;
-  if (view.screen === "confirmation") return view.locale;
-  return "es";
-}
-
-/** One heading, one sentence, the privacy footer: closed, not open yet and expired. */
-function Message({ title, body, retention, contact, action, varsFor }: {
-  title: "closed_title" | "not_open_title" | "expired_title";
-  body: "closed_body" | "not_open_body" | "expired_body";
-  retention: number; contact: string; action?: { href: string }; varsFor?: Record<Locale, Record<string, string>>;
-}) {
-  return (
-    <PublicShell locale="es" languages={null} footer={<PrivacyFooter locale="es" both retention={retention} contact={contact} />}>
-      <h1 className={styles.title}><Both k={title} lang="es" /></h1>
-      <p><Both k={body} lang="es" {...(varsFor ? { varsFor } : {})} /></p>
-      {action ? <a href={action.href} className={styles.primaryLink}><Both k="start_again" lang="es" /></a> : null}
-    </PublicShell>
-  );
-}
-
-export function NotFoundScreen() {
-  return (
-    <PublicShell locale="es" languages={null} footer={null}>
-      <h1 className={styles.title}><Both k="not_found_title" lang="es" /></h1>
-      <p><Both k="not_found_body" lang="es" /></p>
-    </PublicShell>
-  );
-}
-
-export function RendererScreen({ view, slug, contact, registry }: {
-  view: Exclude<ViewResult, { screen: "not_found" }>; slug: string; contact: string; registry: FieldTypeRegistry;
-}) {
-  const retention = view.form.settings.retentionMonths;
-  switch (view.screen) {
-    case "page":
-      return <FormPage view={view} slug={slug} contact={contact} registry={registry} />;
-    case "closed":
-      return <Message title="closed_title" body="closed_body" retention={retention} contact={contact} />;
-    case "not_open": {
-      const zone = view.form.settings.timezone;
-      const varsFor = { en: { date: formatInstant(view.opensAt, "en", zone) }, es: { date: formatInstant(view.opensAt, "es", zone) } };
-      return <Message title="not_open_title" body="not_open_body" retention={retention} contact={contact} varsFor={varsFor} />;
-    }
-    case "expired":
-      return <Message title="expired_title" body="expired_body" retention={retention} contact={contact} action={{ href: `/f/${encodeURIComponent(slug)}/restart` }} />;
-    case "confirmation": {
-      const { locale, version } = view;
-      const doc = version.document;
-      // The first block of the confirmation text is the heading; any further blocks follow it.
-      const [head, ...rest] = parseRichText(resolveText(doc.confirmation.screen, locale, doc.languages));
-      return (
-        <PublicShell locale={locale} languages={null} footer={<PrivacyFooter locale={locale} both={false} retention={retention} contact={contact} />}>
-          <h1 className={styles.title}>{head ? richTextToPlain([head]) : ""}</h1>
-          {rest.length > 0 ? <RichBlocks blocks={rest} className={styles.description} /> : null}
-          <p className={styles.reference}>
-            {t(locale, "confirmation_reference", { ref: "" })}
-            <code className={styles.referenceCode}>{view.reference}</code>
-          </p>
-          <p>{t(locale, "confirmation_close")}</p>
-          {view.form.settings.allowAnotherResponse ? (
-            <a href={`/f/${encodeURIComponent(slug)}/restart`} className={styles.secondaryLink}>{t(locale, "fill_another")}</a>
-          ) : null}
-        </PublicShell>
-      );
-    }
-  }
-}
-```
-
-`error-page.ts`:
-
-```ts
-import { escapeHtml } from "@/shared/presentation/rich-text-html";
-import { chrome } from "./copy";
-
-// Values from design-system/tokens.json: surface.page.public, color.text.default, surface.card,
-// border.default, action.primary.bg/fg, focus.ring, font.family.sans, size.contentWidthPublic.
-const STYLE = [
-  "body{margin:0;background:#FFF3EF;color:#372549;font:17px/1.6 Poppins,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}",
-  "main{box-sizing:border-box;max-width:640px;margin:48px auto;padding:24px 16px}",
-  "h1{font-size:28px;line-height:1.2;margin:0 0 16px}",
-  "span{display:block;color:#774C60}",
-  "a.button{display:inline-flex;align-items:center;min-height:48px;padding:0 16px;border-radius:12px;background:#372549;color:#FFF3EF;text-decoration:none;font-weight:500}",
-  "a:focus-visible{outline:2px solid #B75D69;outline-offset:2px}",
-  "footer{font-size:15px;color:#774C60;max-width:640px;margin:0 auto;padding:0 16px 48px}",
-].join("");
-
-const both = (k: keyof typeof chrome) => `${escapeHtml(chrome[k].es)}<span lang="en">${escapeHtml(chrome[k].en)}</span>`;
-
-/** The static failure page a route handler answers with (HTTP 500 or 413); no React tree behind it. */
-export function errorPageHtml(input: { slug: string | null; retentionMonths: number | null; contact: string }): string {
-  const retry = input.slug === null ? "" : `<p><a class="button" href="/f/${encodeURIComponent(input.slug)}">${both("try_again")}</a></p>`;
-  const footer =
-    input.retentionMonths === null
-      ? ""
-      : `<footer>${escapeHtml(chrome.privacy_footer.es.replace("{retention}", String(input.retentionMonths)).replace("{contact}", input.contact))}<span lang="en">${escapeHtml(chrome.privacy_footer.en.replace("{retention}", String(input.retentionMonths)).replace("{contact}", input.contact))}</span></footer>`;
-  return [
-    '<!doctype html><html lang="es"><head><meta charset="utf-8">',
-    '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    '<meta name="robots" content="noindex">',
-    `<title>${escapeHtml(chrome.error_title.es)} / ${escapeHtml(chrome.error_title.en)}</title>`,
-    `<style>${STYLE}</style></head><body><main>`,
-    `<h1>${both("error_title")}</h1><p>${both("error_body")}</p>${retry}</main>${footer}</body></html>`,
-  ].join("");
-}
-```
-
-`renderer.module.css` (complete; every value names its token):
-
-```css
-/* Public renderer. Values from design-system/tokens.json; see specs/design.md. */
-.page { min-height: 100vh; background: #fff3ef /* surface.page.public */; color: #372549 /* color.text.default */;
-  font-family: Poppins, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif /* font.family.sans */;
-  font-size: 17px /* font.size.public.body */; line-height: 1.6 /* font.lineHeight.body */; }
-.skip { position: absolute; left: 16px /* space.4 */; top: -100px; padding: 12px 16px /* space.3 space.4 */;
-  background: #ffffff /* surface.card */; border-radius: 12px /* radius.md */; }
-.skip:focus { top: 8px /* space.2 */; }
-.header, .progress, .main, .footer { box-sizing: border-box; max-width: 640px /* size.contentWidthPublic */; margin: 0 auto;
-  padding-left: 16px /* space.4 */; padding-right: 16px /* space.4 */; }
-.header { display: flex; justify-content: space-between; align-items: center; min-height: 64px /* space.8 */; }
-.wordmark { font-weight: 600 /* font.weight.semibold */; font-size: 24px /* size.iconDefault: wordmark height */; line-height: 1; }
-.languages { display: flex; }
-.progress { padding-top: 8px /* space.2 */; }
-.progressText { margin: 0 0 8px /* space.2 */; color: #774c60 /* color.text.muted */; font-size: 15px /* font.size.public.small */; }
-.progressTrack { height: 4px; background: #eff0f5 /* surface.subtle */; border-radius: 999px /* radius.full */; overflow: hidden; }
-.progressFill { display: block; height: 100%; background: #372549 /* action.primary.bg */; border-radius: 999px /* radius.full */;
-  transition: width 160ms cubic-bezier(0.2, 0, 0, 1) /* motion: progress */; }
-.main { padding-top: 24px /* space.5 */; padding-bottom: 48px /* space.7 */; }
-.title { font-size: 28px /* font.size.public.display */; line-height: 1.2 /* font.lineHeight.tight */; font-weight: 600; margin: 0 0 16px /* space.4 */; }
-.title:focus { outline: none; }
-.subtitle, .sectionTitle { font-size: 22px /* font.size.public.heading */; line-height: 1.3 /* font.lineHeight.heading */; font-weight: 600; margin: 0 0 16px; }
-.description, .help { margin: 0 0 16px; }
-.help { font-size: 15px /* font.size.public.small */; line-height: 1.5 /* font.lineHeight.small */; color: #774c60 /* color.text.muted */; }
-.form { display: flex; flex-direction: column; gap: 24px /* space.5: between fields */; }
-.legend, .hint, .counter { margin: 0; font-size: 15px /* font.size.public.small */; color: #774c60 /* color.text.muted */; }
-.field, .group { display: flex; flex-direction: column; gap: 8px /* space.2 */; border: 0; padding: 0; margin: 0; min-width: 0; }
-.label { font-size: 16px /* font.size.public.label */; font-weight: 500 /* font.weight.medium */; line-height: 1.4 /* font.lineHeight.label */; padding: 0; }
-.star { color: #9b1c1c /* color.text.error: reinforcement only; the legend says it in words */; }
-.input, .textarea, .select { box-sizing: border-box; width: 100%; min-height: 48px /* input height, public */; padding: 12px /* space.3 */;
-  font: inherit; font-size: 17px /* at least font.size.public.inputMin */; color: inherit; background: #ffffff /* surface.card */;
-  border: 1px solid #774c60 /* border.input */; border-radius: 12px /* radius.md */; }
-.textarea { resize: vertical; }
-.input:focus, .textarea:focus, .select:focus { border: 2px solid #372549 /* border.inputFocus */; padding: 11px; }
-.input:focus-visible, .textarea:focus-visible, .select:focus-visible, .primary:focus-visible, .secondary:focus-visible,
-.tertiary:focus-visible, .primaryLink:focus-visible, .secondaryLink:focus-visible, .option input:focus-visible, a:focus-visible {
-  outline: 2px solid #b75d69 /* color.focus.ring */; outline-offset: 2px; }
-.input[aria-invalid="true"], .textarea[aria-invalid="true"], .select[aria-invalid="true"] { border-color: #9b1c1c /* border.error */; }
-.error { margin: 0; min-height: 0; color: #9b1c1c /* color.text.error */; font-size: 15px; display: flex; gap: 8px; align-items: flex-start; }
-.error:empty { display: none; }
-.errorIcon { flex: none; margin-top: 4px; }
-.withUnit { display: flex; gap: 8px /* space.2 */; align-items: center; }
-.unit { color: #774c60 /* color.text.muted */; }
-.dateRow { display: flex; gap: 12px /* space.3 */; }
-.datePart { width: 5.5rem; display: flex; flex-direction: column; gap: 4px /* space.1 */; }
-.dateYear { width: 7rem; display: flex; flex-direction: column; gap: 4px; }
-.subLabel { font-size: 15px /* font.size.public.small */; }
-.options { display: flex; flex-direction: column; gap: 8px /* space.2 */; }
-.option { display: flex; align-items: center; gap: 12px /* space.3 */; min-height: 44px /* size.touchTarget */; padding: 8px 12px;
-  background: #ffffff /* surface.card */; border: 1px solid #eff0f5 /* border.default */; border-radius: 12px /* radius.md */; cursor: pointer; }
-.option input { width: 24px; height: 24px; flex: none; accent-color: #372549 /* action.primary.bg */; }
-.consent .group { padding: 16px /* space.4 */; background: #ffffff /* surface.card */; border: 1px solid #774c60 /* border.input */; border-radius: 12px; }
-.consentParagraph { display: block; font-weight: 400; margin-bottom: 8px; }
-.section { padding: 16px /* space.4 */; background: #ffffff; border: 1px solid #eff0f5 /* border.default */; border-radius: 12px; }
-.notice { margin: 0; padding: 16px; background: #fff4d6 /* surface.warning */; color: #7a4b00 /* color.text.warning */; border-radius: 12px; }
-.dropzone { display: flex; flex-direction: column; gap: 12px; padding: 24px /* space.5 */; border: 2px dashed #774c60 /* border.input */; border-radius: 12px; }
-.dropzone[data-drag] { border-color: #372549 /* border.inputFocus */; }
-.fileRows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.fileRow { display: grid; grid-template-columns: 56px 1fr auto; gap: 12px; align-items: center; }
-.thumb { width: 56px; height: 56px; border-radius: 8px /* radius.sm */; object-fit: cover; background: #eff0f5 /* surface.subtle */; }
-.fileName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fileBar { height: 4px; background: #eff0f5; border-radius: 999px; overflow: hidden; }
-.fileBar > span { display: block; height: 100%; background: #372549; }
-.summary { padding: 16px; background: #fbecec /* surface.error */; color: #9b1c1c /* color.text.error */; border-radius: 12px; }
-.summaryHeading { font-size: 22px; margin: 0 0 8px; }
-.summaryHeading:focus { outline: 2px solid #b75d69 /* color.focus.ring */; outline-offset: 2px; }
-.summaryList { margin: 0; padding-left: 24px; }
-.summaryList a { color: #9b1c1c; }
-.navigation { display: flex; flex-direction: column; gap: 12px /* space.3 */; }
-@media (min-width: 480px) /* breakpoint.sm */ { .navigation { flex-direction: row; justify-content: space-between; }
-  .header, .progress, .main, .footer { padding-left: 24px /* space.5 */; padding-right: 24px; } }
-.primary, .secondary, .primaryLink, .secondaryLink { display: inline-flex; justify-content: center; align-items: center; gap: 8px;
-  min-height: 48px /* button height, public */; padding: 0 16px /* space.4 */; border-radius: 12px; font: inherit; font-size: 16px /* font.size.public.button */;
-  font-weight: 500; line-height: 1; cursor: pointer; text-decoration: none; }
-.primary, .primaryLink { background: #372549 /* action.primary.bg */; color: #fff3ef /* action.primary.fg */; border: 0; }
-.primary:hover, .primaryLink:hover { background: #6c344e /* action.primary.hoverBg */; }
-.secondary, .secondaryLink { background: #ffffff /* action.secondary.bg */; color: #372549; border: 1px solid #372549 /* action.secondary.border */; }
-.secondary:hover, .secondaryLink:hover { background: #eff0f5 /* action.secondary.hoverBg */; }
-.primary:disabled, .secondary:disabled { background: #eff0f5 /* action.disabledBg */; color: #774c60 /* action.disabledFg */; cursor: not-allowed; }
-.tertiary { min-height: 44px /* size.touchTarget */; padding: 0 12px; background: none; border: 0; color: #372549; font: inherit; text-decoration: underline; cursor: pointer; }
-.tertiary:hover { color: #b75d69 /* action.tertiary.hoverFg */; }
-.status:empty { display: none; }
-.status { margin: 0; color: #9b1c1c; }
-.banner { padding: 16px; background: #eff0f5 /* surface.subtle (info) */; border-radius: 12px; margin-bottom: 16px; }
-.reference { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
-.referenceCode { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace /* font.family.mono */; padding: 4px 8px; background: #ffffff; border: 1px solid #eff0f5; border-radius: 8px; user-select: all; }
-.inlineRich p { margin: 0; }
-.secondLanguage { display: block; font-weight: 400; color: #774c60 /* color.text.muted */; }
-.footer { padding-top: 24px; padding-bottom: 48px; font-size: 15px; color: #774c60; }
-.footer a { color: inherit; }
-.honeypot { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
-.defaultAction { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
-.spinner { width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 999px; animation: spin 800ms linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .progressFill { transition: none; } .spinner { animation: none; } }
-```
-
-Run `pnpm format` once after pasting so Prettier lays the CSS out one declaration per line.
+    | Classes | Rules (token) |
+    |---|---|
+    | `.page` | `min-height: 100vh`; background `surface.page.public` (#fff3ef); color `color.text.default` (#372549); `font.family.sans`; 17 px `font.size.public.body`; line height 1.6 `font.lineHeight.body` |
+    | `.skip`, `.skip:focus` | off-screen (`top: -100px`) until focused (`top: 8px` `space.2`); padding `space.3 space.4`; `surface.card`; radius 12 px `radius.md` |
+    | `.header`, `.progress`, `.main`, `.footer` | `max-width: 640px` `size.contentWidthPublic`, centered, side padding 16 px `space.4`, 24 px `space.5` from 480 px `breakpoint.sm` |
+    | `.header`, `.wordmark`, `.languages` | flex row, space between, `min-height: 64px` `space.8`; wordmark 24 px, `font.weight.semibold` |
+    | `.progressText`, `.progressTrack`, `.progressFill` | text 15 px `font.size.public.small` in `color.text.muted` (#774c60); 4 px track `surface.subtle` (#eff0f5), `radius.full`; fill `action.primary.bg`, `transition: width 160ms cubic-bezier(0.2, 0, 0, 1)` |
+    | `.main`, `.title`, `.subtitle`, `.sectionTitle`, `.description`, `.help` | main padding 24 / 48 px (`space.5`, `space.7`); title 28 px `font.size.public.display`, 1.2 `font.lineHeight.tight`, semibold, no focus outline; subtitle and section title 22 px `font.size.public.heading`, 1.3; help 15 px, 1.5 `font.lineHeight.small`, muted |
+    | `.form`, `.field`, `.group`, `.label`, `.star`, `.legend`, `.hint`, `.counter` | form column with 24 px gap `space.5`; field and group columns with 8 px gap `space.2`, fieldset reset; label 16 px `font.size.public.label`, `font.weight.medium`, 1.4; star `color.text.error` (#9b1c1c, reinforcement only); legend, hint, counter 15 px muted |
+    | `.input`, `.textarea`, `.select` | full width, `min-height: 48px` (public input height), padding 12 px `space.3`, 17 px (at least `font.size.public.inputMin`), `surface.card`, 1 px `border.input` (#774c60), `radius.md`; focus 2 px `border.inputFocus` (#372549) with 11 px padding; `aria-invalid="true"` border `border.error` |
+    | focus ring | every control, button and link `:focus-visible`: `outline: 2px solid` `color.focus.ring` (#b75d69), `outline-offset: 2px` |
+    | `.error`, `.errorIcon` | `color.text.error`, 15 px, flex with 8 px gap; `:empty` hidden; icon `margin-top: 4px` |
+    | `.withUnit`, `.unit`, `.dateRow`, `.datePart`, `.dateYear`, `.subLabel` | unit row 8 px gap, unit muted; date row 12 px gap; parts 5.5 rem, year 7 rem; sub-labels 15 px |
+    | `.options`, `.option` | column, 8 px gap; option `min-height: 44px` `size.touchTarget`, padding 8 / 12 px, `surface.card`, 1 px `border.default` (#eff0f5), `radius.md`; its input 24 px with `accent-color` `action.primary.bg` |
+    | `.consent .group`, `.consentParagraph`, `.section`, `.notice` | consent box padding 16 px, card, 1 px `border.input`; paragraphs block, weight 400, 8 px below; section padding 16 px, `border.default`; notice padding 16 px on `surface.warning` (#fff4d6) in `color.text.warning` (#7a4b00) |
+    | `.dropzone`, `.fileRows`, `.fileRow`, `.thumb`, `.fileName`, `.fileBar` | dropzone padding 24 px, 2 px dashed `border.input` (`[data-drag]`: `border.inputFocus`); rows list reset, 8 px gap; row grid `56px 1fr auto`; thumb 56 px, `radius.sm` (8 px), `surface.subtle`; name ellipsis; bar 4 px `surface.subtle` with an `action.primary.bg` fill |
+    | `.summary`, `.summaryHeading`, `.summaryList` | padding 16 px on `surface.error` (#fbecec) in `color.text.error`; heading 22 px with the focus ring when focused; list indent 24 px, links in the error color |
+    | `.navigation` | column with 12 px gap `space.3`; row, space between, from 480 px |
+    | `.primary`, `.primaryLink`, `.secondary`, `.secondaryLink`, `.tertiary` | 48 px high (public button), padding 0 16 px, `radius.md`, 16 px `font.size.public.button`, medium; primary `action.primary.bg` / `action.primary.fg` (#fff3ef), hover `action.primary.hoverBg` (#6c344e); secondary `action.secondary.bg` with 1 px `action.secondary.border`, hover `action.secondary.hoverBg`; disabled `action.disabledBg` / `action.disabledFg`; tertiary 44 px, underlined, hover `action.tertiary.hoverFg` |
+    | `.status`, `.banner`, `.reference`, `.referenceCode`, `.secondLanguage`, `.footer` | status error color, hidden when empty; banner padding 16 px on `surface.subtle`; reference flex wrap; code in `font.family.mono`, card, `border.default`, `user-select: all`; second language block, muted; footer 15 px muted, padding 24 / 48 px |
+    | `.honeypot`, `.defaultAction`, `.visuallyHidden` | off-screen (`left: -10000px`, 1 px, overflow hidden); visually hidden with `clip: rect(0 0 0 0)` |
+    | `.spinner`, motion | 16 px ring, `border-right-color: transparent`, 800 ms spin; `@media (prefers-reduced-motion: reduce)` removes the progress transition and the spin |
 
 - [ ] **Step 4: Run** `pnpm test src/modules/submissions && pnpm lint && pnpm typecheck && pnpm format:check`.
-- [ ] **Step 5: Commit** `feat(submissions): renderer screens, error summary, progress, privacy footer and layout styles`
+- [ ] **Step 5: Commit** `feat(submissions): renderer screens, the page form, error summary, progress, privacy footer and layout styles`
 
 ---
 
-### Task 26: The enhancement layer: early uploads, blur checks, focus, offline and submit states
+### Task 26: The enhancement layer: early uploads, pre-checks, blur checks, focus, offline and submit states
 
 **Files:**
-- Create: `src/modules/submissions/presentation/client/bus.ts`, `upload-queue.ts`, `UploadField.tsx`, `PageEnhancer.tsx`, `form-dom.ts`
-- Test: `client/upload-queue.test.ts`, `client/bus.test.ts`, `client/UploadField.test.ts`
+- Create: `src/modules/submissions/presentation/client/bus.ts`, `upload-queue.ts`, `page-state.ts`, `form-dom.ts`
+- Modify: `client/UploadField.tsx`, `client/PageEnhancer.tsx`, `client/NavButtons.tsx` (the behavior; their props stay as Tasks 24 and 25 defined them)
+- Test: `client/upload-queue.test.ts`, `client/bus.test.ts`, `client/page-state.test.ts`
 
 **Interfaces:**
-- Consumes: the upload, remove and check routes' JSON (Task 28): `POST /f/<slug>/files` answers `{ ok: true, file: { id, kind, size }, label, count }` or `{ ok: false, message }`; `DELETE /f/<slug>/files/<id>` answers 204; `POST /f/<slug>/check` answers `{ message: string | null }`.
+- Consumes: the upload, remove and check routes' JSON (Task 28): `POST /f/<slug>/files` answers `{ ok: true, file: { id, kind, size }, label, count }` or `{ ok: false, message }`; `DELETE /f/<slug>/files/<id>` answers 204; `POST /f/<slug>/check` answers `{ message: string | null }`. The bound Server Action of the page (Task 28) through `PageEnhancerProps.action`.
 - Produces:
 
 ```ts
@@ -9920,28 +4113,34 @@ export type QueueAction =
   | { type: "retry"; localId: string } | { type: "remove"; localId: string };
 export function queueReducer(rows: readonly Row[], action: QueueAction): Row[];
 export function middleEllipsis(name: string, max?: number): string;
-// UploadField.tsx ('use client')
-export interface UploadFieldProps {
-  slug: string; fieldKey: string; inputId: string; errorId: string; countId: string; describedBy: string; accept: string;
-  required: boolean; maxFiles: number; error: string | null; initial: FileRowView[]; initialCount: string;
-  text: { chooseFiles: string; uploading: string; uploaded: string; remove: string; retry: string; removed: string; count: string; countOne: string; failed: string };
-  locale: Locale;
+export function precheckFile(file: { size: number; type: string }, limits: { maxBytes: number; kinds: readonly ("image" | "video")[] }): "file_too_large" | "file_wrong_type" | null;
+// page-state.ts
+export type SubmitPhase = "idle" | "submitting" | "waiting_uploads" | "waiting_online" | "failed";
+export interface PageState {
+  phase: SubmitPhase; online: boolean; resend: string | null;     // the submitter value to send again when back online
+  checks: Readonly<Record<string, number>>;                       // latest blur check id per field
+  focus: "summary" | "heading" | null;
 }
-export function UploadField(props: UploadFieldProps): ReactElement;
-// PageEnhancer.tsx ('use client')
-export function PageEnhancer(props: { slug: string; locale: Locale; text: { submitting: string; uploadsPending: string; offline: string; submitFailed: string } }): ReactElement | null;
+export type PageEvent =
+  | { type: "loaded"; hasSummary: boolean; navigated: boolean }
+  | { type: "submit"; action: string; uploadsInFlight: number }
+  | { type: "refused" } | { type: "failed" } | { type: "uploads_settled" }
+  | { type: "offline" } | { type: "online" }
+  | { type: "check"; key: string };                                // a blur check is sent with the new id
+export const initialPageState: PageState;
+export function pageReducer(state: PageState, event: PageEvent): PageState;
+export function checkIsCurrent(state: PageState, key: string, id: number): boolean;   // latest check wins
+export function navButtonsState(input: { pending: boolean; pendingAction: string | null; uploadsInFlight: number }): { disabled: boolean; primaryDisabled: boolean; submitting: boolean };
 // form-dom.ts (browser helpers, no React)
 export function fieldFormData(form: HTMLFormElement, key: string): FormData;   // the inputs named key or key.* plus _field
+export const fill: (text: string, vars: Record<string, string>) => string;
 ```
 
-The client never ships the validation rules or the copy tables: messages come back from the server already localized, and chrome strings arrive as props. Without script the server markup of `UploadField` (the same component, rendered on the server) works on its own: the native multiple file input posts with the page and each staged file has a Remove submit button.
+The client never ships the validation rules or the copy tables: messages come back from the server already localized, and chrome strings arrive as props. Without script nothing in this task runs: the server markup of Tasks 24 and 25 works on its own.
 
 - [ ] **Step 1: Failing tests.** `upload-queue.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { middleEllipsis, queueReducer, type Row } from "./upload-queue";
-
 const row = (localId: string): Row => ({ localId, id: null, name: `${localId}.jpg`, size: "12 kB", kind: "image", thumb: null, state: { status: "uploading", percent: 0 } });
 
 describe("queueReducer", () => {
@@ -9957,9 +4156,24 @@ describe("queueReducer", () => {
     expect(rows.map((r) => r.localId)).toEqual(["b"]);
   });
 
+  it("adds a pre-checked refusal as a failed row that never uploads", () => {
+    const refused: Row = { ...row("c"), state: { status: "failed", message: "c.jpg is larger than 10 MB" } };
+    expect(queueReducer([], { type: "add", rows: [refused] })[0]?.state).toEqual({ status: "failed", message: "c.jpg is larger than 10 MB" });
+  });
+
   it("truncates long names in the middle", () => {
     expect(middleEllipsis("IMG_20261010_123456789_HDR_final.jpeg", 20)).toBe("IMG_20261…final.jpeg");
     expect(middleEllipsis("short.jpg", 20)).toBe("short.jpg");
+  });
+});
+
+describe("precheckFile", () => {
+  const limits = { maxBytes: 10 * 1024 * 1024, kinds: ["image"] as const };
+  it("refuses by declared size and kind before uploading, and lets an unknown type through to the server", () => {
+    expect(precheckFile({ size: 11 * 1024 * 1024, type: "image/jpeg" }, limits)).toBe("file_too_large");
+    expect(precheckFile({ size: 1024, type: "video/mp4" }, limits)).toBe("file_wrong_type");
+    expect(precheckFile({ size: 1024, type: "image/heic" }, limits)).toBeNull();
+    expect(precheckFile({ size: 1024, type: "" }, limits)).toBeNull();
   });
 });
 ```
@@ -9967,9 +4181,6 @@ describe("queueReducer", () => {
 `bus.test.ts`:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { inFlight, onUploadsChange, uploadFinished, uploadStarted } from "./bus";
-
 describe("upload bus", () => {
   it("counts uploads in flight and tells listeners", () => {
     const seen: number[] = [];
@@ -9985,517 +4196,75 @@ describe("upload bus", () => {
 });
 ```
 
-`UploadField.test.ts` (the server rendering, which is the no-script page):
+`page-state.test.ts`:
 
 ```ts
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { UploadField } from "./UploadField";
+const run = (events: PageEvent[], from: PageState = initialPageState) => events.reduce(pageReducer, from);
 
-describe("UploadField without script", () => {
-  it("renders the native input, the count and a Remove submit button per staged file", () => {
-    const html = renderToStaticMarkup(
-      createElement(UploadField, {
-        slug: "story-form", fieldKey: "f_photos", inputId: "f-f_photos", errorId: "f_photos-error", countId: "f_photos-count",
-        describedBy: "f_photos-limits f_photos-count", accept: "image/jpeg", required: true, maxFiles: 3, error: null,
-        initial: [{ id: "00000000-0000-4000-8000-000000000001", kind: "image", label: "File 1, 12 kB", size: "12 kB" }],
-        initialCount: "1 of 3 files",
-        text: { chooseFiles: "Choose files", uploading: "Uploading {percent}%", uploaded: "Uploaded", remove: "Remove", retry: "Retry", removed: "{file} removed", count: "{count} of {max} files", countOne: "{count} of 1 file", failed: "" },
-        locale: "en",
-      }),
-    );
-    expect(html).toMatch(/<input[^>]*type="file"[^>]*multiple[^>]*name="f_photos"|<input[^>]*name="f_photos"[^>]*type="file"/);
-    expect(html).toContain('aria-describedby="f_photos-limits f_photos-count"');
-    expect(html).toContain("1 of 3 files");
-    expect(html).toContain("File 1, 12 kB");
-    expect(html).toMatch(/<button[^>]*type="submit"[^>]*name="_action"[^>]*value="remove:00000000-0000-4000-8000-000000000001"/);
-    expect(html).toContain('id="f_photos-error"');
+describe("focus target", () => {
+  it("is the summary after a refused post, the heading after a page change, and nothing on a fresh page 1", () => {
+    expect(run([{ type: "loaded", hasSummary: true, navigated: true }]).focus).toBe("summary");
+    expect(run([{ type: "loaded", hasSummary: false, navigated: true }]).focus).toBe("heading");
+    expect(run([{ type: "loaded", hasSummary: false, navigated: false }]).focus).toBeNull();
+    expect(run([{ type: "loaded", hasSummary: false, navigated: false }, { type: "submit", action: "next", uploadsInFlight: 0 }, { type: "refused" }]).focus).toBe("summary");
+  });
+});
+
+describe("blur queue", () => {
+  it("applies only the latest check of a field", () => {
+    const state = run([{ type: "check", key: "f_email" }, { type: "check", key: "f_email" }, { type: "check", key: "f_name" }]);
+    expect(checkIsCurrent(state, "f_email", 1)).toBe(false);
+    expect(checkIsCurrent(state, "f_email", 2)).toBe(true);
+    expect(checkIsCurrent(state, "f_name", 1)).toBe(true);
+  });
+});
+
+describe("offline state", () => {
+  it("waits for the connection and sends the same action again when it returns", () => {
+    const waiting = run([{ type: "offline" }, { type: "submit", action: "next", uploadsInFlight: 0 }]);
+    expect(waiting).toMatchObject({ phase: "waiting_online", online: false, resend: "next" });
+    expect(run([{ type: "online" }], waiting)).toMatchObject({ phase: "submitting", online: true, resend: "next" });
+  });
+});
+
+describe("submitting state", () => {
+  it("submits once, waits for uploads, and re-enables with the failure message", () => {
+    const submitting = run([{ type: "submit", action: "submit", uploadsInFlight: 0 }]);
+    expect(submitting.phase).toBe("submitting");
+    expect(run([{ type: "submit", action: "submit", uploadsInFlight: 0 }], submitting)).toBe(submitting);
+    expect(run([{ type: "failed" }], submitting).phase).toBe("failed");
+    const waiting = run([{ type: "submit", action: "next", uploadsInFlight: 2 }]);
+    expect(waiting.phase).toBe("waiting_uploads");
+    expect(run([{ type: "uploads_settled" }], waiting).phase).toBe("idle");
+    expect(run([{ type: "submit", action: "back", uploadsInFlight: 2 }]).phase).toBe("submitting");
+  });
+
+  it("disables every button while submitting, shows Submitting only for Submit, and holds the primary for uploads", () => {
+    expect(navButtonsState({ pending: true, pendingAction: "submit", uploadsInFlight: 0 })).toEqual({ disabled: true, primaryDisabled: true, submitting: true });
+    expect(navButtonsState({ pending: true, pendingAction: "next", uploadsInFlight: 0 })).toEqual({ disabled: true, primaryDisabled: true, submitting: false });
+    expect(navButtonsState({ pending: false, pendingAction: null, uploadsInFlight: 1 })).toEqual({ disabled: false, primaryDisabled: true, submitting: false });
   });
 });
 ```
 
 - [ ] **Step 2: Run** `pnpm test src/modules/submissions/presentation/client`: fails.
 
-- [ ] **Step 3: Implement.** `bus.ts`:
-
-```ts
-/** Uploads in flight on this page, so Next and Submit can wait for them (renderer.md, "File upload"). */
-let count = 0;
-const listeners = new Set<(n: number) => void>();
-const emit = () => {
-  for (const l of listeners) l(count);
-};
-export function uploadStarted(): void {
-  count += 1;
-  emit();
-}
-export function uploadFinished(): void {
-  count = Math.max(0, count - 1);
-  emit();
-}
-export function inFlight(): number {
-  return count;
-}
-export function onUploadsChange(listener: (n: number) => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-```
-
-`upload-queue.ts`:
-
-```ts
-export type RowState = { status: "uploading"; percent: number } | { status: "uploaded" } | { status: "failed"; message: string };
-export interface Row {
-  localId: string;
-  id: string | null;
-  name: string;
-  size: string;
-  kind: "image" | "video";
-  thumb: string | null;
-  state: RowState;
-}
-export type QueueAction =
-  | { type: "add"; rows: Row[] }
-  | { type: "progress"; localId: string; percent: number }
-  | { type: "done"; localId: string; id: string; label: string }
-  | { type: "fail"; localId: string; message: string }
-  | { type: "retry"; localId: string }
-  | { type: "remove"; localId: string };
-
-export function queueReducer(rows: readonly Row[], action: QueueAction): Row[] {
-  const patch = (localId: string, change: (r: Row) => Row) => rows.map((r) => (r.localId === localId ? change(r) : r));
-  switch (action.type) {
-    case "add":
-      return [...rows, ...action.rows];
-    case "progress":
-      return patch(action.localId, (r) => ({ ...r, state: { status: "uploading", percent: action.percent } }));
-    case "done":
-      return patch(action.localId, (r) => ({ ...r, id: action.id, state: { status: "uploaded" } }));
-    case "fail":
-      return patch(action.localId, (r) => ({ ...r, state: { status: "failed", message: action.message } }));
-    case "retry":
-      return patch(action.localId, (r) => ({ ...r, state: { status: "uploading", percent: 0 } }));
-    case "remove":
-      return rows.filter((r) => r.localId !== action.localId);
-  }
-}
-
-export function middleEllipsis(name: string, max = 32): string {
-  if (name.length <= max) return name;
-  const keep = max - 1;
-  const head = Math.ceil(keep / 2);
-  return `${name.slice(0, head)}…${name.slice(name.length - (keep - head))}`;
-}
-```
-
-`form-dom.ts`:
-
-```ts
-/** The FormData of one field's inputs, plus `_field`, for the blur check. */
-export function fieldFormData(form: HTMLFormElement, key: string): FormData {
-  const all = new FormData(form);
-  const out = new FormData();
-  out.set("_field", key);
-  for (const [name, value] of all.entries()) {
-    if (typeof value === "string" && (name === key || name.startsWith(`${key}.`))) out.append(name, value);
-  }
-  return out;
-}
-
-export const fill = (text: string, vars: Record<string, string>): string =>
-  text.replace(/\{(\w+)\}/g, (whole, k: string) => vars[k] ?? whole);
-```
-
-`UploadField.tsx`:
-
-```tsx
-"use client";
-
-import { useEffect, useReducer, useRef, useState } from "react";
-import type { Locale } from "@/shared/domain/localized-text";
-import type { FileRowView } from "../fields/types";
-import { styles } from "../styles";
-import { uploadFinished, uploadStarted } from "./bus";
-import { fill } from "./form-dom";
-import { middleEllipsis, queueReducer, type Row } from "./upload-queue";
-
-export interface UploadFieldProps {
-  slug: string;
-  fieldKey: string;
-  inputId: string;
-  errorId: string;
-  countId: string;
-  describedBy: string;
-  accept: string;
-  required: boolean;
-  maxFiles: number;
-  error: string | null;
-  initial: FileRowView[];
-  initialCount: string;
-  text: { chooseFiles: string; uploading: string; uploaded: string; remove: string; retry: string; removed: string; count: string; countOne: string; failed: string };
-  locale: Locale;
-}
-
-interface UploadAnswer {
-  ok: boolean;
-  file?: { id: string };
-  label?: string;
-  message?: string;
-}
-
-/**
- * The file field. Rendered on the server it is the no-script control: the
- * native input posts with the page and staged files have Remove submit
- * buttons. With script, each chosen file uploads at once with its own
- * progress row, and the input is cleared so the page post does not resend it.
- */
-export function UploadField(props: UploadFieldProps) {
-  const initialRows: Row[] = props.initial.map((f) => ({ localId: f.id, id: f.id, name: f.label, size: f.size, kind: f.kind, thumb: null, state: { status: "uploaded" } }));
-  const [rows, dispatch] = useReducer(queueReducer, initialRows);
-  const [enhanced, setEnhanced] = useState(false);
-  const [announcement, setAnnouncement] = useState("");
-  const pending = useRef(new Map<string, File>());
-  useEffect(() => {
-    setEnhanced(true);
-  }, []);
-
-  const uploaded = rows.filter((r) => r.state.status === "uploaded").length;
-  const countText = fill(props.maxFiles === 1 ? props.text.countOne : props.text.count, { count: String(uploaded), max: String(props.maxFiles) });
-
-  function send(row: Row, file: File) {
-    uploadStarted();
-    const body = new FormData();
-    body.set("field", props.fieldKey);
-    body.set("_locale", props.locale);
-    body.set("file", file, file.name);
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", `/f/${encodeURIComponent(props.slug)}/files`);
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) dispatch({ type: "progress", localId: row.localId, percent: Math.round((e.loaded / e.total) * 100) });
-    };
-    xhr.onload = () => {
-      uploadFinished();
-      let answer: UploadAnswer = { ok: false };
-      try {
-        answer = JSON.parse(xhr.responseText) as UploadAnswer;
-      } catch {
-        // Not JSON: a proxy error page. Treated as a failed upload.
-      }
-      if (answer.ok && answer.file) {
-        pending.current.delete(row.localId);
-        dispatch({ type: "done", localId: row.localId, id: answer.file.id, label: answer.label ?? row.name });
-        setAnnouncement(props.text.uploaded);
-      } else {
-        dispatch({ type: "fail", localId: row.localId, message: fill(answer.message ?? props.text.failed, { file: middleEllipsis(row.name) }) });
-      }
-    };
-    xhr.onerror = () => {
-      uploadFinished();
-      dispatch({ type: "fail", localId: row.localId, message: fill(props.text.failed, { file: middleEllipsis(row.name) }) });
-    };
-    xhr.send(body);
-  }
-
-  function choose(files: FileList | null) {
-    if (!files) return;
-    const added: Row[] = [...files].map((file, i) => ({
-      localId: `${String(Date.now())}-${String(i)}`,
-      id: null,
-      name: file.name,
-      size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
-      kind: file.type.startsWith("video/") ? "video" : "image",
-      thumb: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
-      state: { status: "uploading", percent: 0 },
-    }));
-    dispatch({ type: "add", rows: added });
-    added.forEach((row, i) => {
-      const file = files[i];
-      if (file) {
-        pending.current.set(row.localId, file);
-        send(row, file);
-      }
-    });
-  }
-
-  async function remove(row: Row) {
-    if (row.id !== null) {
-      const res = await fetch(`/f/${encodeURIComponent(props.slug)}/files/${row.id}`, { method: "DELETE" });
-      if (!res.ok && res.status !== 404) return;
-    }
-    pending.current.delete(row.localId);
-    if (row.thumb) URL.revokeObjectURL(row.thumb);
-    dispatch({ type: "remove", localId: row.localId });
-    setAnnouncement(fill(props.text.removed, { file: middleEllipsis(row.name) }));
-  }
-
-  return (
-    <div className={styles.dropzone}
-      onDragOver={(e) => { e.preventDefault(); e.currentTarget.setAttribute("data-drag", ""); }}
-      onDragLeave={(e) => { e.currentTarget.removeAttribute("data-drag"); }}
-      onDrop={(e) => { e.preventDefault(); e.currentTarget.removeAttribute("data-drag"); choose(e.dataTransfer.files); }}
-    >
-      <input
-        id={props.inputId}
-        name={props.fieldKey}
-        type="file"
-        multiple={props.maxFiles > 1}
-        accept={props.accept}
-        aria-required={props.required || undefined}
-        aria-invalid={props.error ? true : undefined}
-        aria-describedby={props.describedBy}
-        onChange={(e) => {
-          choose(e.currentTarget.files);
-          e.currentTarget.value = "";
-        }}
-      />
-      <p id={props.countId} className={styles.hint} aria-live="polite">
-        {enhanced ? countText : props.initialCount}
-      </p>
-      <ul className={styles.fileRows}>
-        {rows.map((row) => (
-          <li key={row.localId} className={styles.fileRow}>
-            {row.thumb ? <img src={row.thumb} alt="" className={styles.thumb} /> : <span className={styles.thumb} aria-hidden="true" />}
-            <span>
-              <span className={styles.fileName} id={`${row.localId}-name`}>{middleEllipsis(row.name)}</span>
-              <span className={styles.hint}> {row.size} </span>
-              {row.state.status === "uploading" ? (
-                <>
-                  <span className={styles.fileBar}><span style={{ width: `${String(row.state.percent)}%` }} /></span>
-                  <span aria-live="polite">{fill(props.text.uploading, { percent: String(row.state.percent) })}</span>
-                </>
-              ) : row.state.status === "uploaded" ? (
-                <span>{props.text.uploaded}</span>
-              ) : (
-                <span className={styles.error}>{row.state.message}</span>
-              )}
-            </span>
-            <span>
-              {row.state.status === "failed" ? (
-                <button type="button" className={styles.tertiary} onClick={() => {
-                  const file = pending.current.get(row.localId);
-                  if (file) { dispatch({ type: "retry", localId: row.localId }); send(row, file); }
-                }}>
-                  {props.text.retry}
-                </button>
-              ) : null}
-              {enhanced ? (
-                <button type="button" className={styles.tertiary} aria-describedby={`${row.localId}-name`} onClick={() => void remove(row)}>
-                  {props.text.remove}
-                </button>
-              ) : (
-                <button type="submit" name="_action" value={`remove:${row.id ?? ""}`} className={styles.tertiary} aria-describedby={`${row.localId}-name`}>
-                  {props.text.remove}
-                </button>
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p className={styles.visuallyHidden} aria-live="polite">{announcement}</p>
-      <p id={props.errorId} className={styles.error} aria-live="assertive">{props.error}</p>
-    </div>
-  );
-}
-```
-
-Add `.visuallyHidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }` to `renderer.module.css`. The upload route's JSON carries `label` (the server's `file_row` text) and, on refusal, `message`; `text.failed` is the catalog's "upload failed" row in the page language, filled with the file name here when the network fails before any answer.
-
-`PageEnhancer.tsx`:
-
-```tsx
-"use client";
-
-import { useEffect, useState } from "react";
-import type { Locale } from "@/shared/domain/localized-text";
-import { styles } from "../styles";
-import { inFlight, onUploadsChange } from "./bus";
-import { fieldFormData, fill } from "./form-dom";
-
-interface Props {
-  slug: string;
-  locale: Locale;
-  text: { submitting: string; uploadsPending: string; offline: string; submitFailed: string };
-}
-
-/**
- * Progressive enhancement of the server-rendered page form: focus after a
- * refused post or a page change, blur checks answered by the server, the
- * character counter, session-storage drafts, waiting for uploads, the
- * offline banner, and the Submitting state. Removing it never blocks
- * completion. renderer.md, "Validation and errors" and "Navigation and state".
- */
-export function PageEnhancer({ slug, locale, text }: Props) {
-  const [offline, setOffline] = useState(false);
-
-  useEffect(() => {
-    const form = document.getElementById("page-form");
-    if (!(form instanceof HTMLFormElement)) return;
-    const page = form.dataset["page"] ?? "";
-    const storageKey = `effluz:${slug}:${page}`;
-    const status = form.querySelector<HTMLElement>("[data-status]");
-    const touched = new Set<string>();
-
-    // Focus: the error summary after a refused post, else the heading after a page change.
-    const summary = document.getElementById("error-summary-heading");
-    if (summary) summary.focus();
-    else if (form.dataset["navigated"] !== undefined) document.querySelector<HTMLElement>("[data-page-heading]")?.focus();
-
-    // Restore a draft of this page's unsent edits, but never over a refused post's values.
-    try {
-      const saved = sessionStorage.getItem(storageKey);
-      if (saved && !summary) {
-        for (const [name, value] of Object.entries(JSON.parse(saved) as Record<string, string>)) {
-          const el = form.elements.namedItem(name);
-          if (el instanceof HTMLInputElement && el.type !== "file" && el.type !== "radio" && el.type !== "checkbox" && el.value === "") el.value = value;
-          if (el instanceof HTMLTextAreaElement && el.value === "") el.value = value;
-        }
-      }
-    } catch {
-      // Storage blocked: drafts are a convenience only.
-    }
-
-    const keyOf = (target: EventTarget | null) =>
-      target instanceof Element ? (target.closest<HTMLElement>("[data-field]")?.dataset["field"] ?? null) : null;
-
-    async function check(key: string) {
-      if (!(form instanceof HTMLFormElement)) return;
-      const body = fieldFormData(form, key);
-      body.set("_locale", locale);
-      try {
-        const res = await fetch(`/f/${encodeURIComponent(slug)}/check`, { method: "POST", body });
-        if (!res.ok) return;
-        const { message } = (await res.json()) as { message: string | null };
-        const slot = document.getElementById(`${key}-error`);
-        if (slot) slot.textContent = message ?? "";
-        for (const control of form.querySelectorAll<HTMLElement>(`[name="${key}"], [name^="${key}."]`)) {
-          if (message) control.setAttribute("aria-invalid", "true");
-          else control.removeAttribute("aria-invalid");
-        }
-      } catch {
-        // Offline: the server checks again on Next.
-      }
-    }
-
-    const onFocusOut = (e: FocusEvent) => {
-      const key = keyOf(e.target);
-      if (key && touched.has(key)) void check(key);
-    };
-    const onInput = (e: Event) => {
-      const key = keyOf(e.target);
-      if (!key) return;
-      touched.add(key);
-      if (document.getElementById(`${key}-error`)?.textContent) void check(key);
-      const t = e.target;
-      if (t instanceof HTMLTextAreaElement) {
-        if (t.dataset["autogrow"] !== undefined) {
-          t.style.height = "auto";
-          t.style.height = `${String(t.scrollHeight)}px`;
-        }
-        const counter = form.querySelector<HTMLElement>(`[data-counter-for="${key}"]`);
-        if (counter) {
-          const max = Number(counter.dataset["max"]);
-          const n = [...t.value].length;
-          counter.textContent = fill(counter.dataset["template"] ?? "", { n: String(n), max: String(max) });
-          counter.setAttribute("aria-live", n >= 0.9 * max ? "polite" : "off");
-        }
-      }
-      try {
-        const draft: Record<string, string> = {};
-        for (const [name, value] of new FormData(form).entries()) if (typeof value === "string" && !name.startsWith("_")) draft[name] = value;
-        sessionStorage.setItem(storageKey, JSON.stringify(draft));
-      } catch {
-        // Storage full or blocked.
-      }
-    };
-
-    const buttons = () => form.querySelectorAll<HTMLButtonElement>('button[name="_action"]');
-    const primary = form.querySelector<HTMLButtonElement>("[data-primary]");
-    const setUploadsState = (n: number) => {
-      if (primary) primary.disabled = n > 0;
-      if (status) status.textContent = n > 0 ? text.uploadsPending : "";
-    };
-    const offUploads = onUploadsChange(setUploadsState);
-
-    const onSubmit = (e: SubmitEvent) => {
-      const submitter = e.submitter instanceof HTMLButtonElement ? e.submitter : null;
-      const action = submitter?.value ?? "next";
-      if ((action === "next" || action === "submit") && inFlight() > 0) {
-        e.preventDefault();
-        if (status) status.textContent = text.uploadsPending;
-        return;
-      }
-      if (!navigator.onLine) {
-        e.preventDefault();
-        setOffline(true);
-        window.addEventListener("online", () => { setOffline(false); form.requestSubmit(submitter ?? undefined); }, { once: true });
-        return;
-      }
-      if (action !== "submit") {
-        try { sessionStorage.removeItem(storageKey); } catch { /* blocked */ }
-        return;
-      }
-      // Submit: one click only, "Submitting…", and a clear message if the network fails.
-      e.preventDefault();
-      if (form.dataset["submitting"] !== undefined) return;
-      form.dataset["submitting"] = "";
-      for (const b of buttons()) b.disabled = true;
-      if (submitter) {
-        const spinner = document.createElement("span");
-        spinner.className = styles.spinner ?? "";
-        spinner.setAttribute("aria-hidden", "true");
-        submitter.replaceChildren(spinner, document.createTextNode(` ${text.submitting}`));
-      }
-      const body = new FormData(form);
-      body.set("_action", "submit");
-      fetch(form.action, { method: "POST", body, redirect: "follow" })
-        .then((res) => {
-          try { sessionStorage.removeItem(storageKey); } catch { /* blocked */ }
-          window.location.assign(res.url);
-        })
-        .catch(() => {
-          delete form.dataset["submitting"];
-          for (const b of buttons()) b.disabled = false;
-          if (submitter) submitter.textContent = submitter.dataset["label"] ?? submitter.textContent;
-          if (status) status.textContent = text.submitFailed;
-        });
-    };
-
-    for (const b of buttons()) b.dataset["label"] = b.textContent ?? "";
-    const onOffline = () => setOffline(true);
-    const onOnline = () => setOffline(false);
-    form.addEventListener("focusout", onFocusOut);
-    form.addEventListener("input", onInput);
-    form.addEventListener("change", onInput);
-    form.addEventListener("submit", onSubmit);
-    window.addEventListener("offline", onOffline);
-    window.addEventListener("online", onOnline);
-    return () => {
-      offUploads();
-      form.removeEventListener("focusout", onFocusOut);
-      form.removeEventListener("input", onInput);
-      form.removeEventListener("change", onInput);
-      form.removeEventListener("submit", onSubmit);
-      window.removeEventListener("offline", onOffline);
-      window.removeEventListener("online", onOnline);
-    };
-  }, [slug, locale, text]);
-
-  return offline ? (
-    <div className={styles.banner} role="status">
-      {text.offline}
-    </div>
-  ) : null;
-}
-```
-
-No string is ever parsed as HTML on the client: the Submitting state is built with DOM calls.
+- [ ] **Step 3: Implement.**
+  - `bus.ts` (comment: uploads in flight on this page, so Next and Submit can wait for them; `renderer.md`, "File upload"): a module counter (never below 0) and a listener set notified on every change.
+  - `upload-queue.ts`: the reducer as the tests show (`add` appends, the others patch one row by `localId`, `remove` filters); `middleEllipsis(name, max = 32)` keeps `ceil((max - 1) / 2)` leading and the rest trailing characters around `…`; `precheckFile` refuses `size > maxBytes`, and a declared type starting `image/` or `video/` whose kind is not accepted; an empty or other declared type passes, since the server decides by content (advisory only).
+  - `page-state.ts`: the reducer as the tests show. `loaded` sets the focus target (summary when the page shows one, else heading when `navigated`, else none). `submit` is ignored while `submitting`; Next or Submit with uploads in flight is `waiting_uploads`; offline is `waiting_online` keeping the action in `resend`; otherwise `submitting`. `refused` is `idle` with focus on the summary; `failed` is `failed`; `uploads_settled` returns `waiting_uploads` to `idle`; `online` sets `online` and turns `waiting_online` into `submitting`; `offline` clears it. `check` increments the field's id; `checkIsCurrent` compares. `navButtonsState`: everything disabled while pending; the primary also while uploads are in flight; `submitting` only when the pending action is `submit`.
+  - `form-dom.ts`: `fieldFormData` copies the string entries named `key` or `key.*` from the form and sets `_field`; `fill` replaces `{word}` placeholders.
+  - `UploadField` (comment: with script, each chosen file uploads at once with its own progress row, and the input is cleared so the page post does not resend it): after mount it is `enhanced`. Choosing files (the input's change, or a drop on the dropzone, which sets `data-drag` while dragging) runs `precheckFile` per file: a refusal adds a failed row with `text.tooLarge` or `text.wrongType` filled with the truncated name; others add an uploading row (an object-URL thumbnail for images) and start an `XMLHttpRequest` to `/f/<slug>/files` with `field`, `_locale` and `file`, reporting `upload.onprogress` percentages, calling `uploadStarted`/`uploadFinished`, and on load parsing the JSON (`done` with the server's `label` and an announcement of `text.uploaded`, or `fail` with the server's `message`, `{file}` filled), on error `fail` with `text.failed`. Retry resends the kept `File`. Remove with script is a `type="button"` that sends `DELETE /f/<slug>/files/<id>` (a 404 counts as gone), revokes the thumbnail, removes the row and announces `text.removed`; without script it stays the submit button of Task 24. The count shows uploaded rows with `text.count` or `text.countOne`.
+  - `PageEnhancer` (comment links `renderer.md`, "Validation and errors" and "Navigation and state"; removing it never blocks completion) keeps `useActionState` from Task 25 for the no-script path and adds, with `useReducer(pageReducer)`:
+    - on mount and on every new `pageKey`: `loaded` with whether `#error-summary-heading` exists; focus the summary heading or `[data-page-heading]` accordingly; restore this page's session-storage draft (`effluz:<slug>:<page>`) into empty text inputs and textareas unless a summary is shown;
+    - on `input`/`change` inside a `[data-field]`: mark the field touched, save the draft (string entries not starting with `_` or `$`), auto-grow `[data-autogrow]` textareas, update the `[data-counter-for]` counter from its template (polite live region from 90 % of the maximum), and re-check a field that already shows an error; on `focusout` of a touched field, `check`: post `fieldFormData` plus `_locale` to `/f/<slug>/check` and, when `checkIsCurrent`, write the message into `<key>-error` and set or clear `aria-invalid` on its controls (a failed request is ignored: the server checks again on Next);
+    - on `submit`: dispatch `submit` with the submitter's `_action` value and `inFlight()`; when the next phase is not `submitting`, `preventDefault`; when it is, `preventDefault` too and, in `startTransition`, call `props.action(currentState, new FormData(form, submitter))`, setting the returned state (refused: dispatch `refused`), dispatching `failed` on a rejection whose `digest` does not start with `NEXT_REDIRECT` (a redirect is Next's navigation and is rethrown), and clearing the draft before a non-refused send; React shows the form as pending for that transition, which `NavButtons` reads;
+    - `online`/`offline` window events, `onUploadsChange` (zero dispatches `uploads_settled`), and on `online` while waiting, `form.requestSubmit(<the button with value resend>)`;
+    - it renders the offline banner (`<div role="status" className={styles.banner}>` with `text.offline`) above the form while offline, and the status line `<p role="status" data-status>` with `text.uploadsPending` while `waiting_uploads`, `text.submitFailed` after `failed`, else empty. No string is ever parsed as HTML.
+  - `NavButtons`: `useFormStatus()` gives `pending` and the pending `FormData`; `navButtonsState` with its `_action` and the bus count decides `disabled` on every button and on the primary; while `submitting`, the Submit button shows an `aria-hidden` spinner and `submitting` text.
 
 - [ ] **Step 4: Run** `pnpm test src/modules/submissions/presentation && pnpm lint && pnpm typecheck && pnpm format:check && pnpm build`.
-- [ ] **Step 5: Commit** `feat(submissions): client enhancements for early uploads, blur checks, focus, offline and submit states`
+- [ ] **Step 5: Commit** `feat(submissions): client enhancements for early uploads, pre-checks, blur checks, focus, offline and submit states`
 
 ---
 
@@ -10503,7 +4272,7 @@ No string is ever parsed as HTML on the client: the Submitting state is built wi
 
 **Files:**
 - Create: `src/app/modules.ts`, `src/app/modules.test.ts`, `src/app/worker-handlers.ts`, `src/app/worker-handlers.test.ts`
-- Modify: `src/app/config.ts`, `src/app/config.test.ts`, `src/app/container.ts`, `src/app/container.test.ts`, `src/app/worker.ts`, `.env.example`, `specs/system/deployment.md` ("Local development": the new variables and their local defaults, one sentence)
+- Modify: `src/app/config.ts`, `src/app/config.test.ts`, `src/app/container.ts`, `src/app/container.test.ts`, `src/app/worker.ts`, `.env.example`, `specs/system/deployment.md` ("Local development")
 
 **Interfaces:**
 - Consumes: every adapter and use case above.
@@ -10526,7 +4295,7 @@ export function buildNotifications(config: AppConfig, pool: Pool, submissions: S
 Container gains: media: MediaDeps; submissions: SubmissionsDeps;
 // worker-handlers.ts
 export const RECURRING: RecurringJob[];   // jobs.cleanup and identity.cleanup, daily
-export function workerHandlers(input: { store: PgJobStore; pool: Pool; media: MediaDeps; notifications: NotificationsDeps; submissions: SubmissionsDeps }): Record<string, JobHandler>;
+export function workerHandlers(input: { store: Pick<PgJobStore, "pruneSucceeded">; pool: Pool; media: MediaDeps; notifications: NotificationsDeps; submissions: SubmissionsDeps }): Record<string, JobHandler>;
 ```
 
 New variables, all with defaults that let `.env.example` start the local stack: `MEDIA_PROVIDER` (`local` default, or `dropbox`), `MEDIA_DURABLE_DIR` (`./data/durable`), `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN` (required with `dropbox`), `DROPBOX_API_URL` (`https://api.dropboxapi.com`), `DROPBOX_CONTENT_URL` (`https://content.dropboxapi.com`), `EMAIL_PROVIDER` (`mailpit` default, or `smtp2go`), `SMTP2GO_API_KEY` (required with `smtp2go`), `SMTP2GO_API_URL` (`https://api.smtp2go.com/v3`), `MAILPIT_URL` (`http://127.0.0.1:8025`), `EMAIL_FROM` (`Effluz Forms <forms@forms.effluz.com>`), `EMAIL_REPLY_TO` (defaults to `PRIVACY_CONTACT_EMAIL`). Production refuses `MEDIA_PROVIDER=local` and `EMAIL_PROVIDER=mailpit`. Errors name variables, never values.
@@ -10557,26 +4326,42 @@ describe("media and email configuration", () => {
 });
 ```
 
-`src/app/worker-handlers.test.ts`:
+`src/app/worker-handlers.test.ts`, which also pins Review Focus 5:
 
 ```ts
-import type { Pool } from "pg";
-import { describe, expect, it } from "vitest";
-import { makeMediaDeps } from "@/modules/media/application/testing/fakes";
-import { makeNotificationsDeps } from "@/modules/notifications/application/testing/fakes";
-import { makeSubmissionsDeps } from "@/modules/submissions/application/testing/fakes";
-import type { PgJobStore } from "@/shared/infrastructure/jobs/pg-job-store";
-import { RECURRING, workerHandlers } from "./worker-handlers";
+const store = { pruneSucceeded: () => Promise.resolve(0) };
 
 describe("workerHandlers", () => {
   it("registers every job type of this release that has a handler", () => {
     const handlers = workerHandlers({
-      store: {} as PgJobStore, pool: {} as Pool, media: makeMediaDeps(), notifications: makeNotificationsDeps(), submissions: makeSubmissionsDeps(),
+      store, pool: {} as Pool, media: makeMediaDeps(), notifications: makeNotificationsDeps(), submissions: makeSubmissionsDeps(),
     });
     expect(Object.keys(handlers).sort()).toEqual([
       "email.staff_notification", "email.submitter_confirmation", "identity.cleanup", "jobs.cleanup", "media.delete", "media.upload",
     ]);
     expect(RECURRING).toEqual([{ type: "jobs.cleanup", period: "daily" }, { type: "identity.cleanup", period: "daily" }]);
+  });
+
+  it("jobs.cleanup removes an expired record and its staged files, and stores no submission", async () => {
+    const submissions = makeSubmissionsDeps();
+    await publishStory(submissions);
+    const none = await postContext(submissions, { slug: "story-form", state: { kind: "none" }, submitToken: null });
+    if (!none.ok) throw new Error("closed");
+    const first = await savePage(submissions, none, post({ answers: { f_name: "Ana Prueba", f_baby: "yes_opt" } }));
+    if (first.kind !== "show") throw new Error(first.kind);
+    const ctx = await postContext(submissions, { slug: "story-form", state: { kind: "record", id: first.recordId }, submitToken: null });
+    if (!ctx.ok) throw new Error("expired");
+    await uploadFile(submissions, ctx, { fieldKey: "f_photos", bytes: fakeImage(), renderedAt: null, acceptLanguage: "es" });
+    expect(submissions.media.staging.files.size).toBe(1);
+
+    const handlers = workerHandlers({ store, pool: {} as Pool, media: submissions.media, notifications: makeNotificationsDeps(), submissions });
+    const cleanup = handlers["jobs.cleanup"];
+    if (!cleanup) throw new Error("jobs.cleanup is not registered");
+    submissions.clock.advance(24 * 60 * 60 * 1000);
+    await cleanup({}, handlerContext({ clock: submissions.clock }));
+    expect(submissions.inProgress.rows.size).toBe(0);
+    expect(submissions.media.staging.files.size).toBe(0);
+    expect(submissions.submissions.rows.size).toBe(0);
   });
 });
 ```
@@ -10584,20 +4369,6 @@ describe("workerHandlers", () => {
 `src/app/modules.test.ts`:
 
 ```ts
-import type { Pool } from "pg";
-import { describe, expect, it } from "vitest";
-import { PgAuditLog } from "@/modules/identity/infrastructure/pg-audit-log";
-import { PgAuditLogReader } from "@/modules/identity/infrastructure/pg-audit-log-reader";
-import { DropboxStorage } from "@/modules/media/infrastructure/dropbox-storage";
-import { LocalDiskStorage } from "@/modules/media/infrastructure/local-disk-storage";
-import { MailpitEmailSender } from "@/modules/notifications/infrastructure/mailpit-email-sender";
-import { Smtp2goEmailSender } from "@/modules/notifications/infrastructure/smtp2go-email-sender";
-import { PgSubmissionStats } from "@/modules/submissions/infrastructure/pg-submission-stats";
-import { emailTemplates } from "@/shared/presentation/email";
-import { InMemoryJobQueue, FakeUnitOfWorkFactory, RecordingLogger } from "@/shared/application/testing/fakes";
-import { loadConfig } from "./config";
-import { buildDefinitions, buildMedia, buildNotifications, buildSubmissions } from "./modules";
-
 const env = {
   NODE_ENV: "test", PUBLIC_BASE_URL: "http://localhost:3000", DATABASE_URL: "postgres://u:p@localhost:5432/none",
   STAGING_DIR: "./data/staging", PRIVACY_CONTACT_EMAIL: "privacy@example.com", GOOGLE_CLIENT_ID: "id",
@@ -10628,243 +4399,92 @@ Extend `container.test.ts` with: `expect(c.submissions.definitions).toBe(c.defin
 
 - [ ] **Step 2: Run** `pnpm test src/app`: fails.
 
-- [ ] **Step 3: Implement.** `config.ts`: add to `envSchema`:
+- [ ] **Step 3: Implement.**
+  - `config.ts`, `envSchema` gains: `MEDIA_PROVIDER: z.enum(["local", "dropbox"]).default("local")`, `MEDIA_DURABLE_DIR: z.string().min(1).default("./data/durable")`, `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN` (each `z.string().min(1).optional()`), `DROPBOX_API_URL: z.url().default("https://api.dropboxapi.com")`, `DROPBOX_CONTENT_URL: z.url().default("https://content.dropboxapi.com")`, `EMAIL_PROVIDER: z.enum(["mailpit", "smtp2go"]).default("mailpit")`, `SMTP2GO_API_KEY: z.string().min(1).optional()`, `SMTP2GO_API_URL: z.url().default("https://api.smtp2go.com/v3")`, `MAILPIT_URL: z.url().default("http://127.0.0.1:8025")`, `EMAIL_FROM: z.string().min(3).default("Effluz Forms <forms@forms.effluz.com>")`, `EMAIL_REPLY_TO: z.email().optional()`. After the existing production checks, `loadConfig` throws `Invalid configuration: MEDIA_PROVIDER must be dropbox in production` and `Invalid configuration: EMAIL_PROVIDER must be smtp2go in production`, then `Invalid configuration: <missing names, comma-separated>` for the three Dropbox variables when `dropbox`, and `Invalid configuration: SMTP2GO_API_KEY` when `smtp2go` lacks it. The returned config gains `media` and `email` as in Interfaces (`replyTo` is `EMAIL_REPLY_TO ?? PRIVACY_CONTACT_EMAIL`).
+  - `.env.example`, appended after `STAGING_DIR` in the file's style:
 
-```ts
-  MEDIA_PROVIDER: z.enum(["local", "dropbox"]).default("local"),
-  MEDIA_DURABLE_DIR: z.string().min(1).default("./data/durable"),
-  DROPBOX_APP_KEY: z.string().min(1).optional(),
-  DROPBOX_APP_SECRET: z.string().min(1).optional(),
-  DROPBOX_REFRESH_TOKEN: z.string().min(1).optional(),
-  DROPBOX_API_URL: z.url().default("https://api.dropboxapi.com"),
-  DROPBOX_CONTENT_URL: z.url().default("https://content.dropboxapi.com"),
-  EMAIL_PROVIDER: z.enum(["mailpit", "smtp2go"]).default("mailpit"),
-  SMTP2GO_API_KEY: z.string().min(1).optional(),
-  SMTP2GO_API_URL: z.url().default("https://api.smtp2go.com/v3"),
-  MAILPIT_URL: z.url().default("http://127.0.0.1:8025"),
-  EMAIL_FROM: z.string().min(3).default("Effluz Forms <forms@forms.effluz.com>"),
-  EMAIL_REPLY_TO: z.email().optional(),
-```
+    ```bash
+    # Durable media storage: "local" (default; local disk, refused in production)
+    # or "dropbox".
+    MEDIA_PROVIDER=local
 
-and after the existing production checks in `loadConfig`:
+    # Durable directory when MEDIA_PROVIDER=local. Default: ./data/durable.
+    MEDIA_DURABLE_DIR=./data/durable
 
-```ts
-  if (e.NODE_ENV === "production" && e.MEDIA_PROVIDER === "local")
-    throw new Error("Invalid configuration: MEDIA_PROVIDER must be dropbox in production");
-  if (e.NODE_ENV === "production" && e.EMAIL_PROVIDER === "mailpit")
-    throw new Error("Invalid configuration: EMAIL_PROVIDER must be smtp2go in production");
-  const missing = (names: string[]) => names.filter((n) => !(e as Record<string, unknown>)[n]);
-  if (e.MEDIA_PROVIDER === "dropbox") {
-    const absent = missing(["DROPBOX_APP_KEY", "DROPBOX_APP_SECRET", "DROPBOX_REFRESH_TOKEN"]);
-    if (absent.length > 0) throw new Error(`Invalid configuration: ${absent.join(", ")}`);
-  }
-  if (e.EMAIL_PROVIDER === "smtp2go" && !e.SMTP2GO_API_KEY) throw new Error("Invalid configuration: SMTP2GO_API_KEY");
-  const replyTo = e.EMAIL_REPLY_TO ?? e.PRIVACY_CONTACT_EMAIL;
-```
+    # Dropbox App folder credentials, required when MEDIA_PROVIDER=dropbox.
+    # Keep them out of the repository and CI.
+    DROPBOX_APP_KEY=
+    DROPBOX_APP_SECRET=
+    DROPBOX_REFRESH_TOKEN=
 
-with the returned object gaining:
+    # Dropbox API hosts. Change only to point tests at a fake.
+    DROPBOX_API_URL=https://api.dropboxapi.com
+    DROPBOX_CONTENT_URL=https://content.dropboxapi.com
 
-```ts
-    media:
-      e.MEDIA_PROVIDER === "dropbox"
-        ? {
-            provider: "dropbox",
-            appKey: e.DROPBOX_APP_KEY ?? "",
-            appSecret: e.DROPBOX_APP_SECRET ?? "",
-            refreshToken: e.DROPBOX_REFRESH_TOKEN ?? "",
-            apiUrl: e.DROPBOX_API_URL,
-            contentUrl: e.DROPBOX_CONTENT_URL,
-          }
-        : { provider: "local", durableDir: e.MEDIA_DURABLE_DIR },
-    email:
-      e.EMAIL_PROVIDER === "smtp2go"
-        ? { provider: "smtp2go", apiKey: e.SMTP2GO_API_KEY ?? "", apiUrl: e.SMTP2GO_API_URL, from: e.EMAIL_FROM, replyTo }
-        : { provider: "mailpit", url: e.MAILPIT_URL, from: e.EMAIL_FROM, replyTo },
-```
+    # Email sending: "mailpit" (default; the local mail catcher, refused in
+    # production) or "smtp2go".
+    EMAIL_PROVIDER=mailpit
 
-and the matching `AppConfig` fields from Interfaces. `.env.example`: one commented entry per new variable, in the style of the file (what it is, allowed values, default; that production refuses `local` and `mailpit`; that keys stay out of the repository).
+    # SMTP2GO API key, required when EMAIL_PROVIDER=smtp2go. Keep it out of the
+    # repository and CI.
+    SMTP2GO_API_KEY=
 
-`modules.ts`:
+    # SMTP2GO API base. Default: https://api.smtp2go.com/v3.
+    SMTP2GO_API_URL=https://api.smtp2go.com/v3
 
-```ts
-import type { Pool } from "pg";
-import type { DefinitionsDeps } from "@/modules/definitions/application";
-import { PgDraftRepository } from "@/modules/definitions/infrastructure/pg-draft-repository";
-import { PgFormRepository } from "@/modules/definitions/infrastructure/pg-form-repository";
-import { PgVersionRepository } from "@/modules/definitions/infrastructure/pg-version-repository";
-import type { AuditLog, AuditLogReader } from "@/modules/identity/application";
-import type { MediaDeps } from "@/modules/media/application";
-import { DropboxStorage } from "@/modules/media/infrastructure/dropbox-storage";
-import { FileTypeSniffer } from "@/modules/media/infrastructure/file-type-sniffer";
-import { LocalDiskStorage } from "@/modules/media/infrastructure/local-disk-storage";
-import { PgMediaRepository } from "@/modules/media/infrastructure/pg-media-repository";
-import { SharpImageEncoder } from "@/modules/media/infrastructure/sharp-image-encoder";
-import type { NotificationsDeps } from "@/modules/notifications/application";
-import { MailpitEmailSender } from "@/modules/notifications/infrastructure/mailpit-email-sender";
-import { PgDeliveryLog } from "@/modules/notifications/infrastructure/pg-delivery-log";
-import { Smtp2goEmailSender } from "@/modules/notifications/infrastructure/smtp2go-email-sender";
-import { VersionCache, type SubmissionsDeps } from "@/modules/submissions/application";
-import { SubmissionMessageSource } from "@/modules/submissions/infrastructure/message-source";
-import { PgInProgressRepository } from "@/modules/submissions/infrastructure/pg-in-progress-repository";
-import { PgSubmissionRepository } from "@/modules/submissions/infrastructure/pg-submission-repository";
-import { PgSubmissionStats } from "@/modules/submissions/infrastructure/pg-submission-stats";
-import type { JobQueue } from "@/shared/application/ports/job-queue";
-import type { Logger } from "@/shared/application/ports/logger";
-import type { UnitOfWorkFactory } from "@/shared/application/ports/unit-of-work";
-import { buildDefaultRegistry } from "@/shared/domain/form-model";
-import { systemClock } from "@/shared/infrastructure/clock";
-import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
-import { emailTemplates } from "@/shared/presentation/email";
-import type { AppConfig } from "./config";
+    # Mailpit's web and API address in the dev Compose stack.
+    MAILPIT_URL=http://127.0.0.1:8025
 
-/** Module wiring shared by the web container and the worker. See specs/architecture.md, "Ports". */
-const registry = buildDefaultRegistry();
+    # Sender of every email, "Name <address>" or a bare address.
+    EMAIL_FROM=Effluz Forms <forms@forms.effluz.com>
 
-export function buildDefinitions(config: AppConfig, pool: Pool, uow: UnitOfWorkFactory, audit: AuditLog, auditReader: AuditLogReader): DefinitionsDeps {
-  return {
-    forms: new PgFormRepository(pool),
-    drafts: new PgDraftRepository(pool),
-    versions: new PgVersionRepository(pool),
-    stats: new PgSubmissionStats(pool),
-    audit,
-    auditReader,
-    uow,
-    clock: systemClock,
-    ids: systemIdGenerator,
-    registry,
-    allowedRecipientDomains: config.notificationAllowedDomains,
-    publicBaseUrl: config.publicBaseUrl,
-  };
-}
+    # Reply-To of every email. Default: PRIVACY_CONTACT_EMAIL.
+    EMAIL_REPLY_TO=
+    ```
+  - `specs/system/deployment.md`, "Local development", after "The variables and their defaults are documented in `.env.example` itself.", add: "Media goes to `MEDIA_DURABLE_DIR` on local disk and email to Mailpit (`MAILPIT_URL`, web view at http://127.0.0.1:8025) unless `MEDIA_PROVIDER=dropbox` or `EMAIL_PROVIDER=smtp2go` is set with its credentials."
+  - `modules.ts` (comment: module wiring shared by the web container and the worker; `architecture.md`, "Ports"), one `buildDefaultRegistry()` per process:
+    - `buildDefinitions`: the three Postgres definitions repositories, `stats: new PgSubmissionStats(pool)`, the given audit log and reader, `uow`, `systemClock`, `systemIdGenerator`, the registry, `allowedRecipientDomains: config.notificationAllowedDomains`, `publicBaseUrl: config.publicBaseUrl`.
+    - `buildMedia`: `staging: new LocalDiskStorage(config.stagingDir)`; `durable`: `new DropboxStorage({ appKey, appSecret, refreshToken, apiUrl, contentUrl })` from `config.media` when `dropbox`, else `new LocalDiskStorage(config.media.durableDir)`; `FileTypeSniffer`, `SharpImageEncoder`, `PgMediaRepository(pool)`, the queue, `uow`, `systemIdGenerator`, `systemClock`.
+    - `buildSubmissions`: the given definitions and media, `PgInProgressRepository(pool)`, `PgSubmissionRepository(pool)`, the queue, `uow`, `systemClock`, `systemIdGenerator`, the registry, the logger, `new VersionCache()`, `random: Math.random`.
+    - `buildNotifications`: `sender` is `new Smtp2goEmailSender({ apiKey, apiUrl, from, replyTo })` or `new MailpitEmailSender({ url, from, replyTo })` from `config.email`; `renderer: emailTemplates`; `source: new SubmissionMessageSource({ submissions: submissions.submissions, definitions: submissions.definitions, versions: submissions.versions, registry, publicBaseUrl: config.publicBaseUrl, privacyContact: config.privacyContactEmail })`; `deliveries: new PgDeliveryLog(pool)`.
+  - `container.ts`: `buildDefinitions` comes from `./modules`; after the existing identity wiring:
 
-export function buildMedia(config: AppConfig, pool: Pool, uow: UnitOfWorkFactory, queue: JobQueue): MediaDeps {
-  const media = config.media;
-  return {
-    staging: new LocalDiskStorage(config.stagingDir),
-    durable:
-      media.provider === "dropbox"
-        ? new DropboxStorage({
-            appKey: media.appKey,
-            appSecret: media.appSecret,
-            refreshToken: media.refreshToken,
-            apiUrl: media.apiUrl,
-            contentUrl: media.contentUrl,
-          })
-        : new LocalDiskStorage(media.durableDir),
-    sniffer: new FileTypeSniffer(),
-    encoder: new SharpImageEncoder(),
-    media: new PgMediaRepository(pool),
-    queue,
-    uow,
-    ids: systemIdGenerator,
-    clock: systemClock,
-  };
-}
+    ```ts
+    const queue = overrides.queue ?? new PgJobQueue(systemIdGenerator, systemClock);
+    const definitions = overrides.definitions ?? buildDefinitions(config, pool, uow, identity.audit, auditReader);
+    const media = overrides.media ?? buildMedia(config, pool, uow, queue);
+    const submissions = overrides.submissions ?? buildSubmissions({ pool, uow, queue, definitions, media, logger });
+    ```
 
-export function buildSubmissions(input: {
-  pool: Pool; uow: UnitOfWorkFactory; queue: JobQueue; definitions: DefinitionsDeps; media: MediaDeps; logger: Logger;
-}): SubmissionsDeps {
-  return {
-    definitions: input.definitions,
-    media: input.media,
-    inProgress: new PgInProgressRepository(input.pool),
-    submissions: new PgSubmissionRepository(input.pool),
-    queue: input.queue,
-    uow: input.uow,
-    clock: systemClock,
-    ids: systemIdGenerator,
-    registry,
-    logger: input.logger,
-    versions: new VersionCache(),
-    random: Math.random,
-  };
-}
+    returned alongside the rest; `Container` gains `media` and `submissions`; the `NullSubmissionStats` import goes (the class stays for definitions' tests).
+  - `worker-handlers.ts`: `RECURRING` as tested; `workerHandlers` maps `jobs.cleanup` to `createCleanupHandler(input.store, [(ctx) => expireInProgress(input.submissions, { now: ctx.clock.now(), logger: ctx.logger }).then(() => undefined)])`, `identity.cleanup` to `createIdentityCleanupHandler(input.pool)`, `MEDIA_JOB_TYPES.upload` and `.delete` to the two media factories over `input.media`, and `EMAIL_JOB_TYPES.submitterConfirmation` and `.staffNotification` to the two email factories over `input.notifications`.
+  - `worker.ts`, `main()` after `store`: 
 
-export function buildNotifications(config: AppConfig, pool: Pool, submissions: SubmissionsDeps): NotificationsDeps {
-  const email = config.email;
-  return {
-    sender: email.provider === "smtp2go"
-      ? new Smtp2goEmailSender({ apiKey: email.apiKey, apiUrl: email.apiUrl, from: email.from, replyTo: email.replyTo })
-      : new MailpitEmailSender({ url: email.url, from: email.from, replyTo: email.replyTo }),
-    renderer: emailTemplates,
-    source: new SubmissionMessageSource({
-      submissions: submissions.submissions, definitions: submissions.definitions, versions: submissions.versions,
-      registry, publicBaseUrl: config.publicBaseUrl, privacyContact: config.privacyContactEmail,
-    }),
-    deliveries: new PgDeliveryLog(pool),
-  };
-}
-```
+    ```ts
+    const uow = new PgUnitOfWorkFactory(pool);
+    const queue = new PgJobQueue(systemIdGenerator, systemClock);
+    const definitions = buildDefinitions(config, pool, uow, new PgAuditLog(), new PgAuditLogReader(pool));
+    const media = buildMedia(config, pool, uow, queue);
+    const submissions = buildSubmissions({ pool, uow, queue, definitions, media, logger });
+    const notifications = buildNotifications(config, pool, submissions);
+    ```
 
-`container.ts`: replace `buildDefinitions` with the import from `./modules`; add `media` and `submissions`:
-
-```ts
-  const queue = overrides.queue ?? new PgJobQueue(systemIdGenerator, systemClock);
-  const definitions = overrides.definitions ?? buildDefinitions(config, pool, uow, identity.audit, auditReader);
-  const media = overrides.media ?? buildMedia(config, pool, uow, queue);
-  const submissions = overrides.submissions ?? buildSubmissions({ pool, uow, queue, definitions, media, logger });
-```
-
-and return them; `Container` gains `media: MediaDeps; submissions: SubmissionsDeps`. Remove the `NullSubmissionStats` import (the class stays for definitions' tests).
-
-`worker-handlers.ts`:
-
-```ts
-import type { Pool } from "pg";
-import { createIdentityCleanupHandler } from "@/modules/identity/infrastructure/jobs/cleanup";
-import { createMediaDeleteHandler, createMediaUploadHandler, MEDIA_JOB_TYPES, type MediaDeps } from "@/modules/media/application";
-import {
-  createStaffNotificationHandler,
-  createSubmitterConfirmationHandler,
-  EMAIL_JOB_TYPES,
-  type NotificationsDeps,
-} from "@/modules/notifications/application";
-import { expireInProgress, type SubmissionsDeps } from "@/modules/submissions/application";
-import type { JobHandler } from "@/shared/application/ports/job-queue";
-import { createCleanupHandler } from "@/shared/infrastructure/jobs/handlers/cleanup";
-import type { PgJobStore } from "@/shared/infrastructure/jobs/pg-job-store";
-import type { RecurringJob } from "@/shared/infrastructure/jobs/worker";
-
-/** The recurring jobs scheduled today; specs/system/jobs.md, "Recurring jobs". */
-export const RECURRING: RecurringJob[] = [
-  { type: "jobs.cleanup", period: "daily" },
-  { type: "identity.cleanup", period: "daily" },
-];
-
-/** Every handler the worker runs, by job type. */
-export function workerHandlers(input: {
-  store: PgJobStore; pool: Pool; media: MediaDeps; notifications: NotificationsDeps; submissions: SubmissionsDeps;
-}): Record<string, JobHandler> {
-  return {
-    "jobs.cleanup": createCleanupHandler(input.store, [
-      async (ctx) => {
-        await expireInProgress(input.submissions, { now: ctx.clock.now(), logger: ctx.logger });
-      },
-    ]),
-    "identity.cleanup": createIdentityCleanupHandler(input.pool),
-    [MEDIA_JOB_TYPES.upload]: createMediaUploadHandler(input.media),
-    [MEDIA_JOB_TYPES.delete]: createMediaDeleteHandler(input.media),
-    [EMAIL_JOB_TYPES.submitterConfirmation]: createSubmitterConfirmationHandler(input.notifications),
-    [EMAIL_JOB_TYPES.staffNotification]: createStaffNotificationHandler(input.notifications),
-  };
-}
-```
-
-`worker.ts`: after building `store` and the `uow`/`queue`, build `audit = new PgAuditLog()`, `auditReader = new PgAuditLogReader(pool)`, `definitions = buildDefinitions(...)`, `media = buildMedia(config, pool, uow, queue)`, `submissions = buildSubmissions({ pool, uow, queue, definitions, media, logger })`, `notifications = buildNotifications(config, pool, submissions)`; pass `handlers: workerHandlers({ store, pool, media, notifications, submissions })` and `recurring: RECURRING`. The worker still never imports Next.js: `src/shared/presentation/email/` is plain TypeScript.
+    and the `Worker` gets `{ store, queue, uow, clock: systemClock, logger }` and `handlers: workerHandlers({ store, pool, media, notifications, submissions })`, `recurring: RECURRING` in place of the inline handler and recurring literals. The worker still never imports Next.js: `src/shared/presentation/email/` is plain TypeScript.
 
 - [ ] **Step 4: Run** `pnpm test && pnpm lint && pnpm typecheck && pnpm format:check && pnpm build`; then `pnpm db:up && pnpm exec tsx --env-file=.env src/app/worker.ts` for ten seconds and see `worker started` and no error.
 - [ ] **Step 5: Commit** `feat(app): media and email configuration, module wiring, and the six job handlers in the worker`
 
 ---
 
-### Task 28: Public routes, root layouts, cookies and the renderer's Content-Security-Policy
+### Task 28: The page form's Server Action, public routes, root layouts, cookies and the renderer's Content-Security-Policy
 
 **Files:**
 - Create: `src/modules/submissions/presentation/cookies.ts`, `cookies.test.ts`, `http.ts`, `http.test.ts`, `csp.ts`, `csp.test.ts`, `error-copy.ts`
-- Modify: `src/modules/submissions/presentation/copy.test.ts`, `src/modules/submissions/application/index.ts`
-- Create: `src/app/f/[slug]/layout.tsx`, `page.tsx`, `view.ts`, `not-found.tsx`, `error.tsx`, `answers/route.ts`, `files/route.ts`, `files/[fileId]/route.ts`, `check/route.ts`, `restart/route.ts`, `_lib/respond.ts`, `routes.test.ts`
-- Create: `src/app/(home)/layout.tsx`; move `src/app/page.tsx` to `src/app/(home)/page.tsx`
-- Modify: `src/app/admin/layout.tsx` (becomes the staff root layout with `<html lang="en">` and `<body>`), delete `src/app/layout.tsx`, `src/proxy.ts`, `src/proxy.test.ts`
+- Modify: `src/modules/submissions/presentation/copy.test.ts`
+- Create: `src/app/f/[slug]/actions.ts`, `actions.test.ts`, `layout.tsx`, `page.tsx`, `view.ts`, `not-found.tsx`, `error.tsx`, `files/route.ts`, `files/[fileId]/route.ts`, `check/route.ts`, `restart/route.ts`, `_lib/respond.ts`, `routes.test.ts`
+- Create: `src/app/global-not-found.tsx`, `src/app/(home)/layout.tsx`; move `src/app/page.tsx` to `src/app/(home)/page.tsx`
+- Modify: `src/app/admin/layout.tsx` (becomes the staff root layout with `<html lang="en">` and `<body>`), delete `src/app/layout.tsx`, `src/proxy.ts`, `src/proxy.test.ts` (the matcher assertion and the renderer policy), `next.config.ts`
+- Test: `src/app/next-config.test.ts`
 
 **Interfaces:**
 - Consumes: Tasks 18 to 26.
@@ -10877,734 +4497,103 @@ export const FILL_COOKIE_MAX_AGE_SECONDS = 86_400;
 export function fillCookiePath(slug: string): string;                            // "/f/<slug>"
 export function encodeFillState(state: FillState): string | null;               // null for { kind: "none" }
 export function parseFillState(value: string | null): FillState;                // anything malformed is { kind: "none" }
-export function fillCookie(slug: string, state: FillState, secure: boolean): string;
+export function fillCookie(slug: string, state: FillState, secure: boolean): string;          // a Set-Cookie value
 export function clearedFillCookie(slug: string, secure: boolean): string;
+export function fillCookieOptions(slug: string, secure: boolean, maxAge: number): { path: string; httpOnly: true; sameSite: "lax"; secure: boolean; maxAge: number };
 export function readCookie(header: string | null, name: string): string | null;
 // http.ts
-export const PAGE_BODY_LIMIT: number;                                           // LIMITS.submissionSizeMb MB + 1 MB
 export const FILE_BODY_LIMIT: number;                                           // LIMITS.fileSizeMb MB + 64 KB
 export async function readFormData(request: Request, maxBytes: number): Promise<FormData | "too_large" | "malformed">;
 export function seeOther(location: string, cookies?: readonly string[]): Response;
 export function json(body: unknown, status?: number, cookies?: readonly string[]): Response;
-export function html(body: string, status: number): Response;
 export function plain(status: number): Response;
 // csp.ts
 export function rendererCsp(nonce: string, development: boolean): string;
 // src/app/f/[slug]/_lib/respond.ts
-export function outcomeResponse(slug: string, outcome: PostOutcome, secure: boolean): Response;
+export function outcomeLocation(slug: string, outcome: Exclude<PostOutcome, { kind: "refused" }>): string;   // "/f/<slug>" or "/f/<slug>?expired=1"
+export function outcomeFillState(outcome: Exclude<PostOutcome, { kind: "refused" }>): FillState | "clear" | "keep";
+// src/app/f/[slug]/actions.ts ("use server")
+export async function postPage(slug: string, previous: PageFormState, form: FormData): Promise<PageFormState>;
 // src/app/f/[slug]/view.ts
 export const loadView: (slug: string, expired: boolean) => Promise<{ view: ViewResult; container: Container }>;   // React cache(), shared by layout and page
 ```
 
-Decision (in-progress cookie): `effluz_fill`, `Path=/f/<slug>`, `HttpOnly`, `SameSite=Lax`, `Max-Age=86400`, `Secure` in production; values `<record id>`, `done.<submit token>`, `decoy.<reference>`; `SameSite=Lax` is the CSRF defence for the public posts. Decision (root layouts): `src/app/layout.tsx` gives way to three root layouts (`admin/`, `(home)/`, `f/[slug]/`) so the renderer's `<html lang>` follows the submitter's language; the renderer layout and page share one `viewForm` call through React's `cache`. Unmatched paths outside the three trees get Next's built-in 404, which nothing links to.
+Decision (in-progress cookie): `effluz_fill`, `Path=/f/<slug>`, `HttpOnly`, `SameSite=Lax`, `Max-Age=86400`, `Secure` in production; values `<record id>`, `done.<submit token>`, `decoy.<reference>`; `SameSite=Lax` and Next's `Origin` check on Server Actions are the CSRF defence for the public posts. Decision (answering the page form): the page form posts to the Server Action `postPage`, bound to the slug by the page. A `refused` outcome sets the record cookie, calls `refresh()` and returns `{ refusedFiles }` with each refused file's message built here (`fileIssueMessage` in the record's locale with the field's limits), so the page renders in the post's own answer (HTTP 200 without script); every other outcome sets or clears the cookie and calls `redirect(outcomeLocation(...))`, which Next answers with 303. No file name is written anywhere. Decision (root layouts): `src/app/layout.tsx` gives way to three root layouts (`admin/`, `(home)/`, `f/[slug]/`) so the renderer's `<html lang>` follows the submitter's language, plus `global-not-found.tsx` for paths outside them; the renderer layout and page share one `viewForm` call through React's `cache`.
 
-Every post answers 303 to `GET /f/<slug>` (Post/Redirect/Get). An unexpected error answers the static error page with 500; an oversized body the same page with 413; a malformed body a bare 400. Logs name the slug and the error class, never a value.
+**The route handler pattern** (the four route handlers below follow it; they are named "per the route handler pattern"): `const { slug } = await params; const container = getContainer();` the fill state is `parseFillState(readCookie(request.headers.get("cookie"), FILL_COOKIE))`; the context is `postContext(container.submissions, { slug, state, submitToken: null })`; a body is read with `readFormData(request, limit)`, `malformed` answering `plain(400)`; one use case is called and its result mapped to `json`, `plain` or `seeOther`, all with `Cache-Control: no-store`; the body runs in `try`/`catch`, an unexpected error logging `<route> failed` with `{ slug, error: <error class> }` (never a value) and answering `json({ ok: false, message: null }, 500)` for JSON routes or `plain(500)`.
 
-- [ ] **Step 1: Failing tests.** `cookies.test.ts`:
+- [ ] **Step 1: Failing tests.** Presentation cases (`ID = "00000000-0000-4000-8000-0000000000aa"`):
+- `cookies.test.ts`, "is scoped to the form, httpOnly, lax, a day long, secure in production": `fillCookie("story-form", { kind: "record", id: ID }, true)` is `` `effluz_fill=${ID}; Path=/f/story-form; HttpOnly; SameSite=Lax; Max-Age=86400; Secure` ``; `clearedFillCookie("story-form", false)` is `effluz_fill=; Path=/f/story-form; HttpOnly; SameSite=Lax; Max-Age=0`; `fillCookieOptions("story-form", false, 86_400)` equals `{ path: "/f/story-form", httpOnly: true, sameSite: "lax", secure: false, maxAge: 86_400 }`.
+- `cookies.test.ts`, "round-trips each state and reads anything else as none": `{ kind: "record", id: ID }`, `{ kind: "done", submitToken: ID }` and `{ kind: "decoy", reference: "HP-1234" }` survive `parseFillState(encodeFillState(state))`; `null`, `""`, `"nope"`, `"done.not-a-uuid"`, `"decoy.<script>"`, `"decoy.hp-1"` and `` `${ID};x` `` parse as `{ kind: "none" }`.
+- `http.test.ts` (requests to `http://localhost/f/x/files`, `duplex: "half"`): "parses a body within the limit" (a `FormData` with `a=1` under 1024 bytes reads back `a` as `1`); "refuses by Content-Length before reading, and by counting a body without one" (`content-length: 5000` with a 1024 limit is `too_large`; a 2048-byte stream without a length, `content-type: multipart/form-data; boundary=x`, is `too_large`); "calls an unparsable body malformed" (`garbage` as multipart is `malformed`); `seeOther`, "is an uncached 303 with each cookie as its own header" (`seeOther("/f/x", ["a=1", "b=2"])` has status 303, `location` `/f/x`, `getSetCookie()` `["a=1", "b=2"]`, `cache-control` `no-store`).
+- `csp.test.ts`, "allows only this origin's scripts carrying the nonce, and no framing": `rendererCsp("abc123", false)` contains `script-src 'self' 'nonce-abc123' 'strict-dynamic'`, `frame-ancestors 'none'`, `form-action 'self'` and `img-src 'self' blob: data:`, and no `unsafe-eval`; with `true` it contains `'unsafe-eval'`.
 
-```ts
-import { describe, expect, it } from "vitest";
-import { clearedFillCookie, encodeFillState, fillCookie, parseFillState } from "./cookies";
-
-const ID = "00000000-0000-4000-8000-0000000000aa";
-
-describe("the in-progress cookie", () => {
-  it("is scoped to the form, httpOnly, lax, a day long, secure in production", () => {
-    expect(fillCookie("story-form", { kind: "record", id: ID }, true)).toBe(
-      `effluz_fill=${ID}; Path=/f/story-form; HttpOnly; SameSite=Lax; Max-Age=86400; Secure`,
-    );
-    expect(clearedFillCookie("story-form", false)).toBe("effluz_fill=; Path=/f/story-form; HttpOnly; SameSite=Lax; Max-Age=0");
-  });
-
-  it("round-trips each state and reads anything else as none", () => {
-    for (const state of [{ kind: "record", id: ID }, { kind: "done", submitToken: ID }, { kind: "decoy", reference: "HP-1234" }] as const) {
-      expect(parseFillState(encodeFillState(state))).toEqual(state);
-    }
-    for (const junk of [null, "", "nope", "done.not-a-uuid", "decoy.<script>", "decoy.hp-1", `${ID};x`]) {
-      expect(parseFillState(junk)).toEqual({ kind: "none" });
-    }
-  });
-});
-```
-
-`http.test.ts`:
+`src/app/f/[slug]/actions.test.ts`, mocking Next the way the Settings action's test does: `next/headers` gives a cookie jar backed by a `Map` (`get` returns `{ name, value }` for a non-empty value, `set(name, value, options)` records both) and `headers()` with `accept-language: es`; `next/navigation`'s `redirect(url)` throws `Error("REDIRECT <url>")`; `next/cache`'s `refresh` is a `vi.fn()`; `getContainer` returns `buildContainer(config, { pool: {} as Pool, submissions: deps, definitions: deps.definitions, media: deps.media })` over `makeSubmissionsDeps()` with the story form published; the jar, the deps and the `refresh` mock are fresh before each test. `form(fields)` builds a `FormData` from strings and `File`s.
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { readFormData, seeOther } from "./http";
-
-const request = (body: BodyInit, headers: Record<string, string> = {}) =>
-  new Request("http://localhost/f/x/answers", { method: "POST", body, headers, duplex: "half" } as RequestInit);
-
-describe("readFormData", () => {
-  it("parses a body within the limit", async () => {
-    const form = new FormData();
-    form.set("a", "1");
-    const parsed = await readFormData(request(form), 1024);
-    expect(parsed instanceof FormData && parsed.get("a")).toBe("1");
-  });
-
-  it("refuses by Content-Length before reading, and by counting a body without one", async () => {
-    expect(await readFormData(request("x", { "content-length": "5000", "content-type": "text/plain" }), 1024)).toBe("too_large");
-    const big = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new Uint8Array(2048)); c.close(); } });
-    expect(await readFormData(request(big, { "content-type": "multipart/form-data; boundary=x" }), 1024)).toBe("too_large");
-  });
-
-  it("calls an unparsable body malformed", async () => {
-    expect(await readFormData(request("garbage", { "content-type": "multipart/form-data; boundary=x" }), 1024)).toBe("malformed");
-  });
-});
-
-describe("seeOther", () => {
-  it("is an uncached 303 with each cookie as its own header", () => {
-    const res = seeOther("/f/x", ["a=1", "b=2"]);
-    expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toBe("/f/x");
-    expect(res.headers.getSetCookie()).toEqual(["a=1", "b=2"]);
-    expect(res.headers.get("cache-control")).toBe("no-store");
-  });
-});
-```
-
-`csp.test.ts`:
-
-```ts
-import { describe, expect, it } from "vitest";
-import { rendererCsp } from "./csp";
-
-describe("rendererCsp", () => {
-  it("allows only this origin's scripts carrying the nonce, and no framing", () => {
-    const csp = rendererCsp("abc123", false);
-    expect(csp).toContain("script-src 'self' 'nonce-abc123' 'strict-dynamic'");
-    expect(csp).toContain("frame-ancestors 'none'");
-    expect(csp).toContain("form-action 'self'");
-    expect(csp).toContain("img-src 'self' blob: data:");
-    expect(csp).not.toContain("unsafe-eval");
-    expect(rendererCsp("abc123", true)).toContain("'unsafe-eval'");
-  });
-});
-```
-
-`src/app/f/[slug]/routes.test.ts`:
-
-```ts
-import type { Pool } from "pg";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@/app/container", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/app/container")>()),
-  getContainer: vi.fn(),
-}));
-
-import { loadConfig } from "@/app/config";
-import { buildContainer, getContainer } from "@/app/container";
-import { fakeImage } from "@/modules/media/application/testing/fakes";
-import { makeSubmissionsDeps, publishStory, type FakeSubmissionsDeps } from "@/modules/submissions/application/testing/fakes";
-import { CONSENT_TEXT } from "@/modules/submissions/domain/testing/versions";
-import { consentTextVersion } from "@/shared/domain/form-model";
-import { POST as answers } from "./answers/route";
-import { POST as check } from "./check/route";
-import { DELETE as removeFile } from "./files/[fileId]/route";
-import { POST as upload } from "./files/route";
-import { GET as restart } from "./restart/route";
-
-const config = loadConfig({
-  NODE_ENV: "test", PUBLIC_BASE_URL: "https://forms.example.com", DATABASE_URL: "postgres://u:p@localhost:5432/none",
-  STAGING_DIR: "./data/staging", PRIVACY_CONTACT_EMAIL: "privacy@example.com", GOOGLE_CLIENT_ID: "id",
-  GOOGLE_CLIENT_SECRET: "secret", GOOGLE_ALLOWED_HOSTED_DOMAIN: "effluz.com",
-});
-const params = { params: Promise.resolve({ slug: "story-form" }) };
-let deps: FakeSubmissionsDeps;
-
-beforeEach(async () => {
-  deps = makeSubmissionsDeps();
-  await publishStory(deps);
-  vi.mocked(getContainer).mockReturnValue(
-    buildContainer(config, { pool: {} as unknown as Pool, submissions: deps, definitions: deps.definitions, media: deps.media }),
-  );
-});
-
-function form(fields: Record<string, string | File | File[]>): FormData {
-  const f = new FormData();
-  for (const [k, v] of Object.entries(fields)) for (const item of Array.isArray(v) ? v : [v]) f.append(k, item);
-  return f;
-}
-const req = (path: string, body: FormData, cookie?: string) =>
-  new Request(`https://forms.example.com/f/story-form${path}`, { method: "POST", body, headers: cookie ? { cookie } : {} });
-const cookieOf = (res: Response) => res.headers.getSetCookie()[0]?.split(";")[0] ?? "";
-
-describe("POST /f/<slug>/answers", () => {
+describe("postPage", () => {
   it("creates the record on page 1 and redirects with the cookie", async () => {
-    const res = await answers(req("/answers", form({ _page: "page_contact", _action: "next", _rendered: deps.clock.now().toISOString(), "website-url": "", f_name: "Ana Prueba", f_baby: "no_opt" })), params);
-    expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toBe("/f/story-form");
-    expect(res.headers.getSetCookie()[0]).toMatch(/^effluz_fill=[0-9a-f-]{36}; Path=\/f\/story-form; HttpOnly; SameSite=Lax; Max-Age=86400$/);
+    await expect(postPage("story-form", EMPTY_PAGE_FORM_STATE, form({ _page: "page_contact", _action: "next", _rendered: deps.clock.now().toISOString(), "website-url": "", f_name: "Ana Prueba", f_baby: "no_opt" }))).rejects.toThrow("REDIRECT /f/story-form");
+    const cookie = jar.get("effluz_fill");
+    expect(cookie?.value).toMatch(/^[0-9a-f-]{36}$/);
+    expect(cookie?.options).toEqual({ path: "/f/story-form", httpOnly: true, sameSite: "lax", secure: false, maxAge: 86_400 });
     expect(deps.inProgress.rows.size).toBe(1);
   });
 
-  it("answers a malformed post with 400 and an oversized one with 413", async () => {
-    expect((await answers(req("/answers", form({ _page: "page_contact", _action: "jump" })), params)).status).toBe(400);
-    const big = new Request("https://forms.example.com/f/story-form/answers", { method: "POST", body: "x", headers: { "content-length": String(200 * 1024 * 1024), "content-type": "multipart/form-data; boundary=x" } });
-    const res = await answers(big, params);
-    expect(res.status).toBe(413);
-    expect(await res.text()).toContain("Algo salió mal");
-  });
-
-  it("sends an expired cookie to the expired screen and clears it", async () => {
-    const res = await answers(req("/answers", form({ _page: "page_contact", _action: "next" }), "effluz_fill=00000000-0000-4000-8000-0000000000aa"), params);
-    expect(res.headers.get("location")).toBe("/f/story-form?expired=1");
-    expect(res.headers.getSetCookie()[0]).toContain("Max-Age=0");
-  });
-
-  it("submits a one-page path end to end and sets the done cookie", async () => {
-    const first = await answers(req("/answers", form({ _page: "page_contact", _action: "next", _rendered: new Date(deps.clock.now().getTime() - 60_000).toISOString(), f_name: "Ana Prueba", f_baby: "no_opt" })), params);
-    const cookie = cookieOf(first);
-    const token = [...deps.inProgress.rows.values()][0]?.submitToken ?? "";
-    const done = await answers(req("/answers", form({ _page: "page_consent", _action: "submit", _token: token, f_consent: "accepted" }), cookie), params);
-    expect(done.headers.getSetCookie()[0]).toMatch(new RegExp(`^effluz_fill=done\\.${token}; `));
-    expect(deps.submissions.rows.size).toBe(1);
-    expect([...deps.submissions.rows.values()][0]?.consent?.textVersion).toBe(consentTextVersion(CONSENT_TEXT));
-  });
-});
-
-describe("early uploads, removal, blur checks and restart", () => {
-  async function onPhotos(): Promise<string> {
-    const first = await answers(req("/answers", form({ _page: "page_contact", _action: "next", f_name: "Ana Prueba", f_baby: "yes_opt" })), params);
-    return cookieOf(first);
-  }
-
-  it("uploads one file as JSON, refuses with a localized message, and removes", async () => {
-    const cookie = await onPhotos();
-    const ok = await upload(req("/files", form({ field: "f_photos", _locale: "es", file: new File([fakeImage()], "a.jpg") }), cookie), params);
-    expect(ok.status).toBe(200);
-    const body = (await ok.json()) as { ok: boolean; file: { id: string }; label: string };
-    expect(body).toMatchObject({ ok: true, label: "Archivo 1, 1 kB" });
-    const refused = await upload(req("/files", form({ field: "f_photos", _locale: "es", file: new File(["<html>"], "notes.jpg") }), cookie), params);
-    expect(refused.status).toBe(422);
-    expect(await refused.json()).toEqual({ ok: false, message: "notes.jpg no es un tipo permitido. Usa fotos JPEG, PNG, WebP o HEIC, o videos MP4 o MOV" });
-    const del = await removeFile(new Request(`https://forms.example.com/f/story-form/files/${body.file.id}`, { method: "DELETE", headers: { cookie } }), { params: Promise.resolve({ slug: "story-form", fileId: body.file.id }) });
-    expect(del.status).toBe(204);
-  });
-
-  it("checks one field with the server's rules", async () => {
-    const res = await check(req("/check", form({ _field: "f_email", _locale: "en", f_email: "nope" })), params);
-    expect(await res.json()).toEqual({ message: "Enter a valid email address, like name@example.com" });
-    const fine = await check(req("/check", form({ _field: "f_email", _locale: "en", f_email: "a@example.com" })), params);
-    expect(await fine.json()).toEqual({ message: null });
-  });
-
-  it("restarts by clearing the cookie", async () => {
-    const res = await restart(new Request("https://forms.example.com/f/story-form/restart"), params);
-    expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toBe("/f/story-form");
-    expect(res.headers.getSetCookie()[0]).toContain("Max-Age=0");
+  it("answers a refused page directly, naming the refused file, and redirects nowhere", async () => {
+    await postPage("story-form", EMPTY_PAGE_FORM_STATE, form({ _page: "page_contact", _action: "next", f_name: "Ana Prueba", f_baby: "yes_opt" })).catch(() => undefined);
+    const state = await postPage("story-form", EMPTY_PAGE_FORM_STATE, form({ _page: "page_baby", _action: "next", f_photos: new File(["hello"], "notes.txt") }));
+    expect(state).toEqual({ refusedFiles: [{ fieldKey: "f_photos", message: "notes.txt no es un tipo permitido. Usa fotos JPEG, PNG, WebP o HEIC, o videos MP4 o MOV" }] });
+    expect(vi.mocked(refresh)).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify([...deps.inProgress.rows.values()])).not.toContain("notes.txt");
   });
 });
 ```
 
-In `src/proxy.test.ts` add:
+and:
+- "sends an expired cookie to the expired screen and clears it": the jar holds `effluz_fill` = `00000000-0000-4000-8000-0000000000aa` (no such record); a `page_contact` Next rejects with `REDIRECT /f/story-form?expired=1` and the jar's cookie becomes `{ value: "", options: { maxAge: 0 } }`.
+- "submits a one-page path end to end and sets the done cookie": page 1 with `f_baby: no_opt` and `_rendered` a minute ago (its redirect caught), then `page_consent` Submit with the record's token and `f_consent: accepted` rejects with `REDIRECT /f/story-form`; the cookie is `done.<token>`; one submission is stored, its consent text version `consentTextVersion(CONSENT_TEXT)`.
+- "redirects a malformed post back to the page and stores nothing": `_action: "jump"` on `page_contact` rejects with `REDIRECT /f/story-form` and no record exists.
+
+`src/app/f/[slug]/routes.test.ts`, with the same container mock; `onPhotos()` saves page 1 with `{ f_name: "Ana Prueba", f_baby: "yes_opt" }` through `savePage` on `deps` and returns the cookie header `effluz_fill=<record id>`; `req(path, body, cookie?)` builds the POST to `https://forms.example.com/f/story-form<path>`:
+- "uploads one file as JSON, refuses with a localized message, and removes": `files` `POST` with `field: f_photos`, `_locale: es` and `new File([fakeImage()], "a.jpg")` answers 200 matching `{ ok: true, label: "Archivo 1, 1 kB" }`; `new File(["<html>"], "notes.jpg")` answers 422 with `{ ok: false, message: "notes.jpg no es un tipo permitido. Usa fotos JPEG, PNG, WebP o HEIC, o videos MP4 o MOV" }`; `DELETE /f/story-form/files/<id>` with the cookie answers 204.
+- "checks one field with the server's rules": `check` with `_field: f_email`, `_locale: en`, `f_email: nope` answers `{ message: "Enter a valid email address, like name@example.com" }`; with `a@example.com`, `{ message: null }`.
+- "restarts by clearing the cookie": `GET /f/story-form/restart` answers 303 to `/f/story-form` with a `Set-Cookie` holding `Max-Age=0`.
+
+In `src/proxy.test.ts`, the existing matcher assertion `expect(proxyConfig.matcher).toEqual(["/admin/:path*"])` becomes the second case below, and add (resetting the mocked `getContainer`'s calls in this describe's `beforeEach`):
 
 ```ts
 describe("the renderer's Content-Security-Policy", () => {
-  it("adds a per-request nonce policy to /f/ requests and leaves the session gate alone", async () => {
+  it("adds a per-request nonce policy to the page and to its form posts, and leaves the session gate alone", async () => {
     const res = await proxy(new NextRequest("https://forms.example.com/f/story-form"));
     const csp = res.headers.get("content-security-policy") ?? "";
     expect(csp).toMatch(/script-src 'self' 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic'/);
-    const again = await proxy(new NextRequest("https://forms.example.com/f/story-form"));
+    const again = await proxy(new NextRequest("https://forms.example.com/f/story-form", { method: "POST" }));
+    expect(again.headers.get("content-security-policy")).toMatch(/'nonce-/);
     expect(again.headers.get("content-security-policy")).not.toBe(csp);
     expect(vi.mocked(getContainer)).not.toHaveBeenCalled();
   });
 
-  it("matches /f paths as well as /admin", () => {
+  it("matches /f/<slug> as well as /admin", () => {
     expect(proxyConfig.matcher).toEqual(["/admin/:path*", "/f/:slug"]);
   });
 });
 ```
 
-(`getContainer` is mocked in that file; reset the mock's call history in this describe's `beforeEach` with `vi.mocked(getContainer).mockClear()`.)
-
-- [ ] **Step 2: Run** `pnpm test src/modules/submissions/presentation src/app/f src/proxy.test.ts`: fails.
-
-- [ ] **Step 3: Implement.** `cookies.ts`:
+`src/app/next-config.test.ts`:
 
 ```ts
-import type { FillState } from "../application";
-
-/** The renderer's one cookie; specs/system/security.md, "In-progress cookie". */
-export const FILL_COOKIE = "effluz_fill";
-export const FILL_COOKIE_MAX_AGE_SECONDS = 86_400;
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const REFERENCE = /^[A-Z0-9]{2,6}-\d{4,}$/;
-
-export function fillCookiePath(slug: string): string {
-  return `/f/${encodeURIComponent(slug)}`;
-}
-
-export function encodeFillState(state: FillState): string | null {
-  switch (state.kind) {
-    case "none":
-      return null;
-    case "record":
-      return state.id;
-    case "done":
-      return `done.${state.submitToken}`;
-    case "decoy":
-      return `decoy.${state.reference}`;
-  }
-}
-
-export function parseFillState(value: string | null): FillState {
-  if (value === null) return { kind: "none" };
-  if (UUID.test(value)) return { kind: "record", id: value };
-  if (value.startsWith("done.") && UUID.test(value.slice(5))) return { kind: "done", submitToken: value.slice(5) };
-  if (value.startsWith("decoy.") && REFERENCE.test(value.slice(6))) return { kind: "decoy", reference: value.slice(6) };
-  return { kind: "none" };
-}
-
-function build(slug: string, value: string, maxAge: number, secure: boolean): string {
-  const parts = [`${FILL_COOKIE}=${value}`, `Path=${fillCookiePath(slug)}`, "HttpOnly", "SameSite=Lax", `Max-Age=${String(maxAge)}`];
-  if (secure) parts.push("Secure");
-  return parts.join("; ");
-}
-
-export function fillCookie(slug: string, state: FillState, secure: boolean): string {
-  const value = encodeFillState(state);
-  return value === null ? clearedFillCookie(slug, secure) : build(slug, value, FILL_COOKIE_MAX_AGE_SECONDS, secure);
-}
-
-export function clearedFillCookie(slug: string, secure: boolean): string {
-  return build(slug, "", 0, secure);
-}
-
-export function readCookie(header: string | null, name: string): string | null {
-  if (!header) return null;
-  for (const part of header.split(";")) {
-    const eq = part.indexOf("=");
-    if (eq !== -1 && part.slice(0, eq).trim() === name) {
-      const value = part.slice(eq + 1).trim();
-      return value === "" ? null : value;
-    }
-  }
-  return null;
-}
-```
-
-`http.ts`:
-
-```ts
-import { LIMITS } from "@/shared/domain/form-model";
-
-const MB = 1024 * 1024;
-const NO_STORE = { "Cache-Control": "no-store" };
-
-/** A page post may carry every file of its upload fields: the per-submission cap plus room for the text. */
-export const PAGE_BODY_LIMIT = LIMITS.submissionSizeMb * MB + MB;
-/** An early upload carries one file. */
-export const FILE_BODY_LIMIT = LIMITS.fileSizeMb * MB + 64 * 1024;
-
-/**
- * The body as FormData, refusing more than `maxBytes` by the declared length
- * first and by counting as it streams otherwise, so an oversized upload is
- * never buffered whole. See specs/system/security.md, "Public form abuse protection".
- */
-export async function readFormData(request: Request, maxBytes: number): Promise<FormData | "too_large" | "malformed"> {
-  const declared = Number(request.headers.get("content-length") ?? Number.NaN);
-  if (Number.isFinite(declared) && declared > maxBytes) return "too_large";
-  if (request.body === null) return "malformed";
-  let seen = 0;
-  let over = false;
-  const limited = request.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        seen += chunk.byteLength;
-        if (seen > maxBytes) {
-          over = true;
-          controller.error(new Error("body too large"));
-          return;
-        }
-        controller.enqueue(chunk);
-      },
-    }),
-  );
-  try {
-    return await new Response(limited, { headers: { "Content-Type": request.headers.get("content-type") ?? "" } }).formData();
-  } catch {
-    return over ? "too_large" : "malformed";
-  }
-}
-
-export function seeOther(location: string, cookies: readonly string[] = []): Response {
-  const headers = new Headers({ Location: location, ...NO_STORE });
-  for (const c of cookies) headers.append("Set-Cookie", c);
-  return new Response(null, { status: 303, headers });
-}
-
-export function json(body: unknown, status = 200, cookies: readonly string[] = []): Response {
-  const headers = new Headers({ "Content-Type": "application/json", ...NO_STORE });
-  for (const c of cookies) headers.append("Set-Cookie", c);
-  return new Response(JSON.stringify(body), { status, headers });
-}
-
-export function html(body: string, status: number): Response {
-  return new Response(body, { status, headers: { "Content-Type": "text/html; charset=utf-8", ...NO_STORE } });
-}
-
-export function plain(status: number): Response {
-  return new Response(null, { status, headers: NO_STORE });
-}
-```
-
-`csp.ts`:
-
-```ts
-/** The renderer's policy; specs/system/security.md, "Transport and headers". */
-export function rendererCsp(nonce: string, development: boolean): string {
-  return [
-    "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${development ? " 'unsafe-eval'" : ""}`,
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' blob: data:",
-    "font-src 'self'",
-    "connect-src 'self'",
-    "object-src 'none'",
-    "base-uri 'none'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-  ].join("; ");
-}
-```
-
-`src/proxy.ts`: at the top of `proxy()`, before the admin logic:
-
-```ts
-  if (pathname.startsWith("/f/")) return withRendererCsp(request);
-```
-
-and
-
-```ts
-/** A fresh nonce per request; Next reads it from the request's policy and puts it on its scripts. */
-function withRendererCsp(request: NextRequest): NextResponse {
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const policy = rendererCsp(nonce, process.env.NODE_ENV === "development");
-  const headers = new Headers(request.headers);
-  headers.set("Content-Security-Policy", policy);
-  const response = NextResponse.next({ request: { headers } });
-  response.headers.set("Content-Security-Policy", policy);
-  return response;
-}
-```
-
-importing `rendererCsp` from `@/modules/submissions/presentation/csp`; set `matcher: ["/admin/:path*", "/f/:slug"]`: the policy matters only on the HTML page, and keeping the posts out of the proxy means upload bodies are never buffered by it (Next buffers a proxied request body only up to its own size limit). Update the doc comment of `proxy` to say it also sets the renderer's policy.
-
-`src/app/f/[slug]/_lib/respond.ts`:
-
-```ts
-import type { PostOutcome } from "@/modules/submissions/application";
-import { clearedFillCookie, fillCookie } from "@/modules/submissions/presentation/cookies";
-import { seeOther } from "@/modules/submissions/presentation/http";
-
-/** Every post ends here: Post/Redirect/Get to the form's one page, with the cookie the outcome needs. */
-export function outcomeResponse(slug: string, outcome: PostOutcome, secure: boolean): Response {
-  const page = `/f/${encodeURIComponent(slug)}`;
-  switch (outcome.kind) {
-    case "show":
-      return seeOther(page, [fillCookie(slug, { kind: "record", id: outcome.recordId }, secure)]);
-    case "submitted":
-      return seeOther(page, [fillCookie(slug, { kind: "done", submitToken: outcome.submitToken }, secure)]);
-    case "decoy":
-      return seeOther(page, [fillCookie(slug, { kind: "decoy", reference: outcome.reference }, secure)]);
-    case "expired":
-      return seeOther(`${page}?expired=1`, [clearedFillCookie(slug, secure)]);
-    case "gate":
-      return seeOther(page);
-  }
-}
-```
-
-`src/app/f/[slug]/answers/route.ts`:
-
-```ts
-import { getContainer } from "@/app/container";
-import { postContext, savePage, submitForm } from "@/modules/submissions/application";
-import { FILL_COOKIE, parseFillState, readCookie } from "@/modules/submissions/presentation/cookies";
-import { decodePagePost } from "@/modules/submissions/presentation/decode";
-import { errorPageHtml } from "@/modules/submissions/presentation/error-page";
-import { html, PAGE_BODY_LIMIT, plain, readFormData } from "@/modules/submissions/presentation/http";
-import { outcomeResponse } from "../_lib/respond";
-
-/** The page form's target: Next, Back, Submit, the language switch, Remove. */
-export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }): Promise<Response> {
-  const { slug } = await params;
-  const container = getContainer();
-  const deps = container.submissions;
-  const secure = container.config.session.secure;
-  const failure = (status: number) =>
-    html(errorPageHtml({ slug, retentionMonths: null, contact: container.config.privacyContactEmail }), status);
-  try {
-    const form = await readFormData(request, PAGE_BODY_LIMIT);
-    if (form === "too_large") return failure(413);
-    if (form === "malformed") return plain(400);
-    const state = parseFillState(readCookie(request.headers.get("cookie"), FILL_COOKIE));
-    const token = form.get("_token");
-    const ctx = await postContext(deps, { slug, state, submitToken: typeof token === "string" && token !== "" ? token : null });
-    if (!ctx.ok) return outcomeResponse(slug, ctx.outcome, secure);
-    const decoded = await decodePagePost(form, ctx.version.document, deps.registry);
-    if (decoded === null) return plain(400);
-    const post = { ...decoded, state, acceptLanguage: request.headers.get("accept-language") };
-    const outcome = decoded.action.kind === "submit" ? await submitForm(deps, ctx, post) : await savePage(deps, ctx, post);
-    return outcomeResponse(slug, outcome, secure);
-  } catch (e) {
-    container.logger.error("form post failed", { slug, error: e instanceof Error ? e.name : "Error" });
-    return failure(500);
-  }
-}
-```
-
-`src/app/f/[slug]/files/route.ts`:
-
-```ts
-import { getContainer } from "@/app/container";
-import { localeFor, pickLocale, postContext, uploadFields, uploadFile } from "@/modules/submissions/application";
-import { t } from "@/modules/submissions/presentation/copy";
-import { FILL_COOKIE, fillCookie, parseFillState, readCookie } from "@/modules/submissions/presentation/cookies";
-import { formatBytes } from "@/modules/submissions/presentation/format";
-import { FILE_BODY_LIMIT, json, plain, readFormData } from "@/modules/submissions/presentation/http";
-import { uploadRefusalMessage } from "@/modules/submissions/presentation/messages";
-import { resolveText } from "@/shared/domain/localized-text";
-
-/**
- * An early upload with script: one file, JSON back; renderer.md, "File upload".
- * Messages may hold "{file}", which the client fills with the name it shows.
- */
-export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }): Promise<Response> {
-  const { slug } = await params;
-  const container = getContainer();
-  const deps = container.submissions;
-  try {
-    const state = parseFillState(readCookie(request.headers.get("cookie"), FILL_COOKIE));
-    const ctx = await postContext(deps, { slug, state, submitToken: null });
-    if (!ctx.ok) return json({ ok: false, message: null }, 410);
-    const doc = ctx.version.document;
-    const fallback = ctx.record?.locale ?? pickLocale(doc.languages, request.headers.get("accept-language"));
-    const form = await readFormData(request, FILE_BODY_LIMIT);
-    if (form === "malformed") return plain(400);
-    if (form === "too_large") {
-      // The body was not read: the limits of the current page's upload field speak for it.
-      const pageKey = ctx.record?.pageKey ?? doc.pages[0]?.key;
-      const onPage = uploadFields(doc, deps.registry).find((u) =>
-        doc.pages.find((p) => p.key === pageKey)?.fields.some((f) => f.key === u.field.key),
-      );
-      if (!onPage) return plain(413);
-      const label = resolveText(onPage.field.label, fallback, doc.languages);
-      return json({ ok: false, message: uploadRefusalMessage("file_too_large", { file: "{file}", label, limits: onPage.limits }, fallback) }, 413);
-    }
-    const wanted = form.get("_locale");
-    const locale = wanted === "en" || wanted === "es" ? localeFor(doc.languages, wanted) : fallback;
-    const target = uploadFields(doc, deps.registry).find((u) => u.field.key === form.get("field"));
-    const file = form.get("file");
-    if (!target || file === null || typeof file === "string") return plain(400);
-    const label = resolveText(target.field.label, locale, doc.languages);
-    const out = await uploadFile(deps, ctx, {
-      fieldKey: target.field.key,
-      bytes: new Uint8Array(await file.arrayBuffer()),
-      renderedAt: null,
-      acceptLanguage: request.headers.get("accept-language"),
-    });
-    if (!out.ok) {
-      const message = uploadRefusalMessage(out.code, { file: file.name, label, limits: target.limits }, locale);
-      return json({ ok: false, message }, out.code === "expired" ? 410 : 422);
-    }
-    const size = formatBytes(out.file.size, locale);
-    return json(
-      { ok: true, file: out.file, count: out.count, label: t(locale, "file_row", { n: String(out.count), size }) },
-      200,
-      [fillCookie(slug, { kind: "record", id: out.recordId }, container.config.session.secure)],
-    );
-  } catch (e) {
-    container.logger.error("upload failed", { slug, error: e instanceof Error ? e.name : "Error" });
-    return json({ ok: false, message: null }, 500);
-  }
-}
-```
-
-Add `export { localeFor, pickLocale } from "../domain/locale";` to the submissions application `index.ts`.
-
-`src/app/f/[slug]/files/[fileId]/route.ts`:
-
-```ts
-import { getContainer } from "@/app/container";
-import { postContext, removeFile } from "@/modules/submissions/application";
-import { FILL_COOKIE, parseFillState, readCookie } from "@/modules/submissions/presentation/cookies";
-import { plain } from "@/modules/submissions/presentation/http";
-
-export async function DELETE(request: Request, { params }: { params: Promise<{ slug: string; fileId: string }> }): Promise<Response> {
-  const { slug, fileId } = await params;
-  const container = getContainer();
-  const state = parseFillState(readCookie(request.headers.get("cookie"), FILL_COOKIE));
-  const ctx = await postContext(container.submissions, { slug, state, submitToken: null });
-  if (!ctx.ok) return plain(410);
-  return plain((await removeFile(container.submissions, ctx, fileId)) ? 204 : 404);
-}
-```
-
-`src/app/f/[slug]/check/route.ts`:
-
-```ts
-import { getContainer } from "@/app/container";
-import { checkField, localeFor, postContext } from "@/modules/submissions/application";
-import { FILL_COOKIE, parseFillState, readCookie } from "@/modules/submissions/presentation/cookies";
-import { decodeField } from "@/modules/submissions/presentation/decode";
-import { json, plain, readFormData } from "@/modules/submissions/presentation/http";
-import { issueMessage } from "@/modules/submissions/presentation/messages";
-import { resolveText } from "@/shared/domain/localized-text";
-
-/** The blur check: one field through the server's own rules; renderer.md, "Validation and errors". */
-export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }): Promise<Response> {
-  const { slug } = await params;
-  const deps = getContainer().submissions;
-  const form = await readFormData(request, 64 * 1024);
-  if (!(form instanceof FormData)) return plain(400);
-  const state = parseFillState(readCookie(request.headers.get("cookie"), FILL_COOKIE));
-  const ctx = await postContext(deps, { slug, state, submitToken: null });
-  if (!ctx.ok) return json({ message: null });
-  const doc = ctx.version.document;
-  const key = form.get("_field");
-  const field = doc.pages.flatMap((p) => p.fields).find((f) => f.key === key);
-  if (!field) return plain(400);
-  const decoded = decodeField(form, field);
-  const result = checkField(deps, ctx, { fieldKey: field.key, answer: decoded.value, decodeIssue: decoded.issue });
-  if (result === null) return plain(400);
-  const locale = localeFor(doc.languages, form.get("_locale") === "en" ? "en" : "es");
-  const message = result.issue ? issueMessage(result.issue, resolveText(field.label, locale, doc.languages), locale) : null;
-  return json({ message });
-}
-```
-
-`src/app/f/[slug]/restart/route.ts`:
-
-```ts
-import { getContainer } from "@/app/container";
-import { clearedFillCookie } from "@/modules/submissions/presentation/cookies";
-import { seeOther } from "@/modules/submissions/presentation/http";
-
-/** "Start again" and "Fill in another form": forget the cookie, back to page 1. */
-export async function GET(_request: Request, { params }: { params: Promise<{ slug: string }> }): Promise<Response> {
-  const { slug } = await params;
-  return seeOther(`/f/${encodeURIComponent(slug)}`, [clearedFillCookie(slug, getContainer().config.session.secure)]);
-}
-```
-
-`src/app/f/[slug]/view.ts`:
-
-```ts
-import { cookies, headers } from "next/headers";
-import { cache } from "react";
-import { getContainer } from "@/app/container";
-import { viewForm } from "@/modules/submissions/application";
-import { FILL_COOKIE, parseFillState } from "@/modules/submissions/presentation/cookies";
-
-/** One viewForm per request, shared by the layout (for `lang`) and the page. */
-export const loadView = cache(async (slug: string, expired: boolean) => {
-  const [jar, head] = await Promise.all([cookies(), headers()]);
-  const container = getContainer();
-  const state = parseFillState(jar.get(FILL_COOKIE)?.value ?? null);
-  const view = await viewForm(container.submissions, { slug, state, acceptLanguage: head.get("accept-language"), expired });
-  return { view, container };
+describe("next.config", () => {
+  it("lets a page post carry every file of a submission, through the proxy and the Server Action", () => {
+    const limit = `${String(LIMITS.submissionSizeMb + 1)}mb`;
+    expect(nextConfig.experimental?.serverActions?.bodySizeLimit).toBe(limit);
+    expect(nextConfig.experimental?.proxyClientMaxBodySize).toBe(limit);
+    expect(nextConfig.serverExternalPackages).toEqual(["sharp", "libheif-js"]);
+  });
 });
 ```
 
-`src/app/f/[slug]/layout.tsx`:
-
-```tsx
-import type { ReactNode } from "react";
-import { viewLocale } from "@/modules/submissions/presentation/Screens";
-import { loadView } from "./view";
-
-export const instant = false;
-
-/** The renderer's root layout: `<html lang>` is the submitter's language. */
-export default async function RendererLayout({ children, params }: { children: ReactNode; params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const { view } = await loadView(slug, false);
-  return (
-    <html lang={viewLocale(view)}>
-      <body>{children}</body>
-    </html>
-  );
-}
-```
-
-`src/app/f/[slug]/page.tsx`:
-
-```tsx
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { resolveText } from "@/shared/domain/localized-text";
-import { pageTitle } from "@/modules/submissions/presentation/field-views";
-import { RendererScreen } from "@/modules/submissions/presentation/Screens";
-import { chrome } from "@/modules/submissions/presentation/copy";
-import { loadView } from "./view";
-
-export const instant = false;
-
-type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
-
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
-  const [{ slug }, sp] = await Promise.all([params, searchParams]);
-  const { view } = await loadView(slug, sp["expired"] === "1");
-  switch (view.screen) {
-    case "page":
-      return { title: pageTitle(view).documentTitle };
-    case "confirmation": {
-      const doc = view.version.document;
-      return { title: resolveText(doc.title, view.locale, doc.languages), robots: { index: false } };
-    }
-    case "closed":
-      return { title: `${chrome.closed_title.es} / ${chrome.closed_title.en}`, robots: { index: false } };
-    case "not_open":
-      return { title: `${chrome.not_open_title.es} / ${chrome.not_open_title.en}`, robots: { index: false } };
-    case "expired":
-      return { title: `${chrome.expired_title.es} / ${chrome.expired_title.en}`, robots: { index: false } };
-    case "not_found":
-      return { title: `${chrome.not_found_title.es} / ${chrome.not_found_title.en}`, robots: { index: false } };
-  }
-}
-
-/** `GET /f/<slug>`; specs/ui-ux/renderer.md, "Routes". */
-export default async function FormRoute({ params, searchParams }: Props) {
-  const [{ slug }, sp] = await Promise.all([params, searchParams]);
-  const { view, container } = await loadView(slug, sp["expired"] === "1");
-  if (view.screen === "not_found") notFound();
-  return <RendererScreen view={view} slug={slug} contact={container.config.privacyContactEmail} registry={container.submissions.registry} />;
-}
-```
-
-`src/app/f/[slug]/not-found.tsx`:
-
-```tsx
-import { NotFoundScreen } from "@/modules/submissions/presentation/Screens";
-
-export default function FormNotFound() {
-  return <NotFoundScreen />;
-}
-```
-
-`src/modules/submissions/presentation/error-copy.ts` holds the three rows the client error boundary needs, alone, so the boundary does not load the copy tables:
-
-```ts
-export const errorCopy = {
-  title: { en: "Something went wrong", es: "Algo salió mal" },
-  body: {
-    en: "Your answers on this page were not saved. Please try again.",
-    es: "Las respuestas de esta página no se guardaron. Inténtalo de nuevo.",
-  },
-  tryAgain: { en: "Try again", es: "Intentar de nuevo" },
-} as const;
-```
-
-and `copy.test.ts` gains:
+`copy.test.ts` gains:
 
 ```ts
   it("keeps the client error boundary's copy equal to the chrome rows", () => {
@@ -11612,77 +4601,52 @@ and `copy.test.ts` gains:
   });
 ```
 
-`src/app/f/[slug]/error.tsx`:
+- [ ] **Step 2: Run** `pnpm test src/modules/submissions/presentation src/app src/proxy.test.ts`: fails.
 
-```tsx
-"use client";
+- [ ] **Step 3: Implement.**
+  - `cookies.ts` (comment links `security.md`, "In-progress cookie"): `encodeFillState`/`parseFillState` as tested (a record id is a UUID; `done.` takes a UUID; `decoy.` takes `^[A-Z0-9]{2,6}-\d{4,}$`); `fillCookie` builds `effluz_fill=<value>; Path=…; HttpOnly; SameSite=Lax; Max-Age=…` plus `; Secure`, a `none` state clearing; `readCookie` finds one name in a `Cookie` header (empty is null).
+  - `http.ts` (comment links `security.md`, "Public form abuse protection"): `readFormData` refuses a declared `Content-Length` above the limit before reading, otherwise pipes the body through a counting `TransformStream` that errors past the limit (so an oversized upload is never buffered whole) and parses with `new Response(limited, { headers: { "Content-Type": … } }).formData()`, a failure being `too_large` when the counter tripped and `malformed` otherwise. The response helpers set `Cache-Control: no-store` and append each cookie as its own `Set-Cookie`.
+  - `csp.ts`: `default-src 'self'; script-src 'self' 'nonce-<n>' 'strict-dynamic'` (+ ` 'unsafe-eval'` in development)`; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`.
+  - `src/proxy.ts`: first in `proxy()`, `if (pathname.startsWith("/f/")) return withRendererCsp(request)`, where `withRendererCsp` makes a nonce from `crypto.randomUUID()` (base64), sets the policy on the forwarded request headers (Next reads the nonce from them and stamps its scripts) and on the response; the matcher becomes `["/admin/:path*", "/f/:slug"]` (the page and its form posts; uploads, checks and restart answer JSON or redirects and need no policy). The doc comment says it also sets the renderer's policy.
+  - `next.config.ts`: `serverExternalPackages: ["sharp", "libheif-js"]` (Task 7) and `experimental: { serverActions: { bodySizeLimit: "101mb" }, proxyClientMaxBodySize: "101mb", globalNotFound: true }`, the comment naming `LIMITS.submissionSizeMb` + 1 MB for the text fields.
+  - `_lib/respond.ts`: `outcomeLocation` is `/f/<slug>`, or `/f/<slug>?expired=1` for `expired`; `outcomeFillState` is the record for `show`, `done` for `submitted`, `decoy` for `decoy`, `clear` for `expired`, `keep` for `gate`.
+  - `actions.ts` (`"use server"`; comment: the renderer's page form, with or without script; a refused page is answered directly, everything else redirects; `renderer.md`, "Routes"): read the cookie jar and `accept-language` (`cookies()`, `headers()`), the fill state and the posted `_token`; `postContext`; a refused context sets the cookie its outcome asks for and redirects. `decodePagePost` null (an unknown page or action) redirects to the page and changes nothing. Otherwise `submitForm` for Submit, `savePage` for the rest, with `{ ...decoded, state, acceptLanguage }`. `refused`: set the record cookie, `refresh()`, and return the refused files' messages (the field's label and `uploadLimits` from the version, `fileIssueMessage({ code, name }, limits, outcome.locale)`). Others: set the cookie (`fillCookieOptions(slug, secure, FILL_COOKIE_MAX_AGE_SECONDS)`, or an empty value with `maxAge: 0` to clear), then `redirect(outcomeLocation(slug, outcome))`. An unexpected error is logged as `form post failed` with `{ slug, error: <error class> }` and rethrown, so the segment's error boundary answers.
+  - `files/route.ts`, per the route handler pattern, `POST` with `FILE_BODY_LIMIT`: a refused context answers `json({ ok: false, message: null }, 410)`; the locale is the posted `_locale` if the form offers it, else the record's, else `pickLocale`; `too_large` answers 413 with the `file_too_large` message of the current page's upload field and `{file}` left for the client (no field: `plain(413)`); an unknown `field` or a missing `file` is `plain(400)`; then `uploadFile` with the file's bytes; a refusal answers `{ ok: false, message: uploadRefusalMessage(code, { file: <name>, label, limits }, locale) }` with 410 for `expired` and 422 otherwise; success answers `{ ok: true, file, count, label: t(locale, "file_row", { n: count, size: formatBytes(size) }) }` with the record cookie.
+  - `files/[fileId]/route.ts`, per the pattern, `DELETE`: a refused context is `plain(410)`; `removeFile` true is 204, false 404.
+  - `check/route.ts`, per the pattern, `POST` with a 64 KB limit: a refused context answers `{ message: null }`; an unknown `_field` is 400; `decodeField`, then `checkField`; the answer is `{ message: issueMessage(issue, label, locale) }` or `{ message: null }`, in `localeFor(languages, _locale)`.
+  - `restart/route.ts`, per the pattern, `GET`: `seeOther("/f/<slug>", [clearedFillCookie(slug, secure)])`.
+  - `view.ts`: `loadView = cache(async (slug, expired) => …)` reads `cookies()` and `headers()` and calls `viewForm` once per request.
+  - `layout.tsx` (`export const instant = false`): `<html lang={viewLocale(view)}><body>{children}</body></html>`.
+  - `page.tsx` (`instant = false`): `generateMetadata` gives the page's document title, or the confirmation's form title, or both languages of the closed, not open, expired and not found titles, with `robots: { index: false }` on everything but form pages; the page calls `notFound()` for `not_found` and otherwise renders `RendererScreen` with the privacy contact, the registry and `formAction={postPage.bind(null, slug)}`.
+  - `not-found.tsx` renders `NotFoundScreen`. `error-copy.ts` holds the three rows the client boundary needs (`error_title`, `error_body`, `try_again`), alone, so the boundary does not load the copy tables; `error.tsx` (`"use client"`) shows them in both languages with a Try again link back to the page.
+  - Root layouts: `src/app/admin/layout.tsx` becomes the staff root layout (`metadata = adminMetadata`, `<html lang="en"><body style={{ margin: 0 }}>`); `src/app/(home)/layout.tsx` is the same wrapper with `metadata = { title: "Effluz Forms" }` (the old root layout's content); `git mv src/app/page.tsx "src/app/(home)/page.tsx"`; `git rm src/app/layout.tsx`; `src/app/global-not-found.tsx` renders `<html lang="es"><body><NotFoundScreen /></body></html>` with the renderer stylesheet. Search for imports of `@/app/layout` (there are none today) and for tests that render the old root layout.
 
-import { errorCopy } from "@/modules/submissions/presentation/error-copy";
-
-/** Unexpected errors while rendering, in both languages; Try again reloads the current page. */
-export default function FormError() {
-  return (
-    <main>
-      <h1>
-        {errorCopy.title.es}
-        <span lang="en">{errorCopy.title.en}</span>
-      </h1>
-      <p>
-        {errorCopy.body.es}
-        <span lang="en">{errorCopy.body.en}</span>
-      </p>
-      <a href="">
-        {errorCopy.tryAgain.es}
-        <span lang="en">{errorCopy.tryAgain.en}</span>
-      </a>
-    </main>
-  );
-}
-```
-
-Root layouts: `src/app/admin/layout.tsx` becomes
-
-```tsx
-import type { ReactNode } from "react";
-import { adminMetadata } from "@/shared/presentation/metadata";
-
-export const metadata = adminMetadata;
-
-/** The staff root layout; the renderer has its own (src/app/f/[slug]/layout.tsx). */
-export default function AdminLayout({ children }: { children: ReactNode }) {
-  return (
-    <html lang="en">
-      <body style={{ margin: 0 }}>{children}</body>
-    </html>
-  );
-}
-```
-
-`src/app/(home)/layout.tsx` is the same `<html lang="en"><body>` wrapper with `metadata = { title: "Effluz Forms" }` (the old root layout's content), `git mv src/app/page.tsx "src/app/(home)/page.tsx"`, and `git rm src/app/layout.tsx`. Search for imports of `@/app/layout` (there are none today) and for tests that render the old root layout.
-
-- [ ] **Step 4: Run** `pnpm test && pnpm lint && pnpm typecheck && pnpm format:check && pnpm build`. The first manual run in a browser needs a published form, which the e2e helper of Task 29 creates; it is part of Task 30, Step 3.
-- [ ] **Step 5: Commit** `feat(app): public form routes, root layouts per surface, the in-progress cookie and the renderer CSP`
+- [ ] **Step 4: Run** `pnpm test && pnpm lint && pnpm typecheck && pnpm format:check && pnpm build`. Then check the 404s against the built app: `pnpm start -p 3100` in one shell and, in another, `curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3100/no-such-path` and the same for `/f/no-such-form`; both print `404` (the first through `global-not-found.tsx`, the second through `not-found.tsx`). Stop the server. The first manual run in a browser needs a published form, which the e2e helper of Task 29 creates; it is part of Task 31, Step 3.
+- [ ] **Step 5: Commit** `feat(app): the page form's Server Action, public routes, root layouts per surface, the in-progress cookie and the renderer CSP`
 
 ---
 
 ### Task 29: End to end without script: the reference form, failure paths, and the budgets
 
 **Files:**
-- Create: `tests/support/test-database.ts`, `vitest.e2e.config.ts`, `tests/e2e/setup.ts`, `tests/e2e/vitest.d.ts`, `tests/e2e/http.ts`, `tests/e2e/publish.ts`, `tests/e2e/reference-form.test.ts`, `tests/e2e/budgets.test.ts`
-- Modify: `tests/integration/setup.ts` (uses `createTestDatabase`), `package.json` (`test:e2e`), `.github/workflows/ci.yml` (job `e2e`), `specs/system/ci-cd.md` ("As built")
+- Create: `tests/support/test-database.ts`, `tests/support/app-server.ts`, `vitest.e2e.config.ts`, `tests/e2e/setup.ts`, `tests/e2e/vitest.d.ts`, `tests/e2e/http.ts`, `tests/e2e/publish.ts`, `tests/e2e/reference-form.test.ts`, `tests/e2e/budgets.test.ts`
+- Modify: `tests/integration/setup.ts` (uses `createTestDatabase`), `vitest.config.ts` (the unit run excludes `tests/e2e/**`), `package.json` (`test:e2e`), `.github/workflows/ci.yml` (job `e2e`), `specs/system/ci-cd.md` ("As built")
 
 **Interfaces:**
-- Consumes: the built app (`pnpm build`), every route of Task 28, the definitions use cases, `referenceFormDraft` (`tests/fixtures/reference-form.ts`), `syntheticJpegWithGps`, `syntheticMp4` (Task 5).
+- Consumes: the built app (`pnpm build`), every route and the Server Action of Task 28, the definitions use cases (`createForm`, `updateSettings`, `publishPreview`, `publishForm`, `applyLifecycle`), `referenceFormDraft` and `referenceSubmission` (`tests/fixtures/reference-form.ts`), `syntheticJpegWithGps`, `syntheticMp4` (Task 5).
 - Produces:
 
 ```ts
 // tests/support/test-database.ts
 export async function createTestDatabase(): Promise<{ url: string; drop(): Promise<void> }>;
+// tests/support/app-server.ts
+export async function startApp(input: { port: number; databaseUrl: string }): Promise<{ baseUrl: string; stagingDir: string; stop(): Promise<void> }>;
 // tests/e2e/http.ts
 export class Visitor {
   constructor(base: string, headers?: Record<string, string>);
   get(path: string): Promise<{ status: number; html: string; location: string | null }>;
-  post(path: string, body: FormData): Promise<{ status: number; location: string | null }>;
+  /** Posts the page form found in `html`: its hidden inputs (Next's Server Action fields included), then `fields`, then `files`. */
+  submit(html: string, fields: Record<string, string>, files?: readonly { field: string; file: File }[]): Promise<{ status: number; html: string; location: string | null }>;
   cookie(): string | null;                          // the effluz_fill value
 }
 export function hidden(html: string, name: string): string | null;
@@ -11692,52 +4656,11 @@ export async function publishReferenceForm(pool: Pool, over?: Partial<FormSettin
 export function pageAnswers(pageKey: string): Record<string, string>;   // the reference submission's values for one page, as form fields
 ```
 
-This suite talks HTTP to `next start` exactly as a browser with script disabled does: multipart posts of the page forms, cookies, 303s. A browser run with script on a phone viewport (renderer.md, "Test fixtures") needs a browser runner, a new dependency this plan does not add; it is listed as a follow-up in the PR.
+This suite talks HTTP to `next start` exactly as a browser with script disabled does: it reads the page form from the HTML (action, hidden inputs) and posts it multipart, keeps the cookie, follows nothing automatically, and checks 303s and the 200 answers of refused posts. The browser run with script is Task 30.
 
-Decision (e2e files): the reference form allows ten files; the test first posts ten images and one video together, which is refused with `files_max` and stages nothing, then nine images and the video, which go through.
+Decision (e2e files): the reference form allows ten files; the test first posts ten images and one video together, which is refused with `files_max` and stages nothing, then nine images and the video, which go through. Both Submits wait for the minimum fill time, so the first is refused for its files and not silently accepted.
 
-- [ ] **Step 1: Shared database helper.** Move the database creation and drop from `tests/integration/setup.ts` into `tests/support/test-database.ts`:
-
-```ts
-import { randomBytes } from "node:crypto";
-import pg from "pg";
-import { loadMigrations, MIGRATION_DIRS, migrate } from "@/shared/infrastructure/postgres/migrate";
-import { createPool } from "@/shared/infrastructure/postgres/pool";
-
-const DEFAULT_ADMIN_URL = "postgres://effluz:effluz@127.0.0.1:5432/postgres";
-
-/** A throwaway, fully migrated database; see specs/system/database.md, "Local development". */
-export async function createTestDatabase(): Promise<{ url: string; drop(): Promise<void> }> {
-  const adminUrl = process.env["TEST_DATABASE_ADMIN_URL"] ?? DEFAULT_ADMIN_URL;
-  const name = `effluz_test_${randomBytes(4).toString("hex")}`;
-  const admin = new pg.Pool({ connectionString: adminUrl, max: 1 });
-  await admin.query(`create database ${name}`);
-  const url = new URL(adminUrl);
-  url.pathname = `/${name}`;
-  const drop = async () => {
-    try {
-      await admin.query("select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid()", [name]);
-      await admin.query(`drop database if exists ${name}`);
-    } finally {
-      await admin.end();
-    }
-  };
-  try {
-    const pool = createPool(url.toString(), { max: 1, statementTimeoutMs: 0 });
-    try {
-      await migrate(pool, loadMigrations(MIGRATION_DIRS));
-    } finally {
-      await pool.end();
-    }
-  } catch (e) {
-    await drop();
-    throw e;
-  }
-  return { url: url.toString(), drop };
-}
-```
-
-and reduce `tests/integration/setup.ts` to:
+- [ ] **Step 1: Shared helpers.** `tests/support/test-database.ts` takes the database creation and drop out of `tests/integration/setup.ts` unchanged in behavior: a random `effluz_test_<hex>` database created through `TEST_DATABASE_ADMIN_URL` (default `postgres://effluz:effluz@127.0.0.1:5432/postgres`), migrated with `migrate(pool, loadMigrations(MIGRATION_DIRS))` through a one-connection pool without a statement timeout, dropped (after terminating its connections) on failure or by `drop()`. `tests/integration/setup.ts` becomes:
 
 ```ts
 import type { TestProject } from "vitest/node";
@@ -11751,303 +4674,43 @@ export default async function setup(project: TestProject): Promise<() => Promise
 }
 ```
 
-Run `pnpm test:integration` once to confirm nothing changed.
+`tests/support/app-server.ts`: `startApp` makes a `mkdtemp` root, spawns `node node_modules/next/dist/bin/next start -p <port> -H 127.0.0.1` with `NODE_ENV=test`, `SERVICE=app`, `PUBLIC_BASE_URL=http://127.0.0.1:<port>`, `DATABASE_URL`, `STAGING_DIR=<root>/staging`, `MEDIA_PROVIDER=local`, `MEDIA_DURABLE_DIR=<root>/durable`, `EMAIL_PROVIDER=mailpit`, `PRIVACY_CONTACT_EMAIL=privacy@example.com`, `GOOGLE_CLIENT_ID=e2e-client`, `GOOGLE_CLIENT_SECRET=e2e-secret`, `GOOGLE_ALLOWED_HOSTED_DOMAIN=effluz.com`, `NOTIFICATION_ALLOWED_DOMAINS=example.com`, `LOG_LEVEL=warn` (stdout and stderr inherited), polls `GET /f/e2e-probe` every 250 ms for up to 60 seconds until it answers, and `stop()` sends `SIGTERM`, waits for `exit` and removes the root. Run `pnpm test:integration` once to confirm nothing changed.
 
-- [ ] **Step 2: The harness.** `vitest.e2e.config.ts`:
+- [ ] **Step 2: The harness.** `vitest.e2e.config.ts`: `include: ["tests/e2e/**/*.test.ts"]`, node environment, the `@` alias, `globalSetup: ["tests/e2e/setup.ts"]`, `fileParallelism: false`, test and hook timeouts 120 seconds, with the comment "End-to-end tests against the built app (`pnpm build` first). See specs/system/ci-cd.md." `vitest.config.ts` adds `"tests/e2e/**"` to `exclude`. `tests/e2e/vitest.d.ts` declares `ProvidedContext { databaseUrl: string; baseUrl: string; stagingDir: string }`. `tests/e2e/setup.ts`: `createTestDatabase()`, `startApp({ port: 3199, databaseUrl })`, provide the three values, and on teardown stop the app and drop the database.
 
-```ts
-import path from "node:path";
-import { defineConfig } from "vitest/config";
+`tests/e2e/http.ts` (header: a browser without script; synthetic data only):
+  - `Visitor` sends its headers (default `accept-language: es-PA,es;q=0.9`) and `cookie: effluz_fill=<value>` when it holds one, with `redirect: "manual"`; every response's `Set-Cookie` for `effluz_fill` updates or clears the value.
+  - `submit(html, fields, files)` finds `<form … id="page-form" …>` in `html`, takes its `action` attribute (the page's own URL), collects every `<input type="hidden" name value>` inside it with `&quot;`, `&amp;`, `&#x27;`, `&#39;`, `&lt;` and `&gt;` decoded, sets `fields` over them, appends each file under its field name, and posts multipart with `origin: <base>`; it returns the status, the `Location` and the body text.
+  - `hidden(html, name)` reads one hidden input's value; `textOf(html)` drops scripts and tags, decodes the entities above and collapses whitespace.
 
-// End-to-end tests against the built app (`pnpm build` first). See specs/system/ci-cd.md.
-export default defineConfig({
-  resolve: { alias: { "@": path.resolve(__dirname, "src") } },
-  test: {
-    include: ["tests/e2e/**/*.test.ts"],
-    environment: "node",
-    globalSetup: ["tests/e2e/setup.ts"],
-    fileParallelism: false,
-    testTimeout: 120_000,
-    hookTimeout: 120_000,
-  },
-});
-```
-
-`tests/e2e/vitest.d.ts`:
+`tests/e2e/publish.ts`: `publishReferenceForm(pool, over)` builds `DefinitionsDeps` over the Postgres definitions repositories (`PgSubmissionStats`, the identity audit log and reader, `allowedRecipientDomains: ["effluz.com", "example.com"]`, `publicBaseUrl: "http://127.0.0.1:3199"`), creates a form under a random slug `historia-prematuro-<6 chars>` (`languages: "es"`, title `{ es: "Historias" }`), saves the parsed `referenceFormDraft` as its draft at the draft's revision, updates the settings to `referencePrefix: "HP"`, `retentionMonths: 12`, `notificationRecipients: ["staff-group@example.com"]`, `notificationCadence: "per_submission"`, `closesAt` in 30 days and `...over`, then publishes with the preview's own numbers:
 
 ```ts
-import "vitest";
-
-declare module "vitest" {
-  export interface ProvidedContext {
-    databaseUrl: string;
-    baseUrl: string;
-    stagingDir: string;
-  }
-}
-```
-
-`tests/e2e/setup.ts`:
-
-```ts
-import { spawn } from "node:child_process";
-import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import type { TestProject } from "vitest/node";
-import { createTestDatabase } from "../support/test-database";
-
-const PORT = 3199;
-
-async function waitFor(url: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    try {
-      const res = await fetch(url);
-      await res.body?.cancel();
-      return;
-    } catch {
-      if (Date.now() > deadline) throw new Error(`server did not answer at ${url}`);
-      await new Promise((r) => setTimeout(r, 250));
-    }
-  }
-}
-
-/** A throwaway database, temporary media directories, and `next start` against them. */
-export default async function setup(project: TestProject): Promise<() => Promise<void>> {
-  const db = await createTestDatabase();
-  const root = await mkdtemp(path.join(os.tmpdir(), "effluz-e2e-"));
-  const baseUrl = `http://127.0.0.1:${String(PORT)}`;
-  const stagingDir = path.join(root, "staging");
-  const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", String(PORT), "-H", "127.0.0.1"], {
-    env: {
-      ...process.env,
-      NODE_ENV: "test",
-      SERVICE: "app",
-      PUBLIC_BASE_URL: baseUrl,
-      DATABASE_URL: db.url,
-      STAGING_DIR: stagingDir,
-      MEDIA_PROVIDER: "local",
-      MEDIA_DURABLE_DIR: path.join(root, "durable"),
-      EMAIL_PROVIDER: "mailpit",
-      PRIVACY_CONTACT_EMAIL: "privacy@example.com",
-      GOOGLE_CLIENT_ID: "e2e-client",
-      GOOGLE_CLIENT_SECRET: "e2e-secret",
-      GOOGLE_ALLOWED_HOSTED_DOMAIN: "effluz.com",
-      NOTIFICATION_ALLOWED_DOMAINS: "example.com",
-      LOG_LEVEL: "warn",
-    },
-    stdio: ["ignore", "inherit", "inherit"],
-  });
-  await waitFor(`${baseUrl}/f/e2e-probe`, 60_000);
-  project.provide("databaseUrl", db.url);
-  project.provide("baseUrl", baseUrl);
-  project.provide("stagingDir", stagingDir);
-  return async () => {
-    server.kill("SIGTERM");
-    await once(server, "exit");
-    await db.drop();
-    await rm(root, { recursive: true, force: true });
-  };
-}
-```
-
-`tests/e2e/http.ts`:
-
-```ts
-/** A browser without script: forms, cookies and redirects, by hand. Synthetic data only. */
-export class Visitor {
-  private fill: string | null = null;
-
-  constructor(
-    private readonly base: string,
-    private readonly headers: Record<string, string> = { "accept-language": "es-PA,es;q=0.9" },
-  ) {}
-
-  cookie(): string | null {
-    return this.fill;
-  }
-
-  private remember(res: Response): void {
-    for (const c of res.headers.getSetCookie()) {
-      const [pair = ""] = c.split(";");
-      const [name, value = ""] = pair.split("=");
-      if (name === "effluz_fill") this.fill = value === "" ? null : value;
-    }
-  }
-
-  private cookieHeader(): Record<string, string> {
-    return this.fill === null ? {} : { cookie: `effluz_fill=${this.fill}` };
-  }
-
-  async get(path: string): Promise<{ status: number; html: string; location: string | null }> {
-    const res = await fetch(`${this.base}${path}`, { headers: { ...this.headers, ...this.cookieHeader() }, redirect: "manual" });
-    this.remember(res);
-    return { status: res.status, html: await res.text(), location: res.headers.get("location") };
-  }
-
-  async post(path: string, body: FormData): Promise<{ status: number; location: string | null }> {
-    const res = await fetch(`${this.base}${path}`, { method: "POST", body, headers: { ...this.headers, ...this.cookieHeader() }, redirect: "manual" });
-    this.remember(res);
-    await res.body?.cancel();
-    return { status: res.status, location: res.headers.get("location") };
-  }
-}
-
-export function hidden(html: string, name: string): string | null {
-  return new RegExp(`<input type="hidden" name="${name}" value="([^"]*)"`).exec(html)?.[1] ?? null;
-}
-
-export function textOf(html: string): string {
-  return html.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, " ");
-}
-```
-
-`tests/e2e/publish.ts`:
-
-```ts
-import type { Pool } from "pg";
-import { createForm, publishForm, updateSettings, type FormSettings } from "@/modules/definitions/application";
-import type { DefinitionsDeps } from "@/modules/definitions/application/deps";
-import { PgDraftRepository } from "@/modules/definitions/infrastructure/pg-draft-repository";
-import { PgFormRepository } from "@/modules/definitions/infrastructure/pg-form-repository";
-import { PgVersionRepository } from "@/modules/definitions/infrastructure/pg-version-repository";
-import { PgAuditLog } from "@/modules/identity/infrastructure/pg-audit-log";
-import { PgAuditLogReader } from "@/modules/identity/infrastructure/pg-audit-log-reader";
-import { PgSubmissionStats } from "@/modules/submissions/infrastructure/pg-submission-stats";
-import { buildDefaultRegistry, parseDraft } from "@/shared/domain/form-model";
-import { systemClock } from "@/shared/infrastructure/clock";
-import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
-import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
-import { referenceFormDraft, referenceSubmission } from "../fixtures/reference-form";
-
-const editor = { email: "editor@example.com", ip: "203.0.113.7" };
-
-/** Builds the reference form from its fixture document and publishes it through the use cases. */
-export async function publishReferenceForm(
-  pool: Pool,
-  over: Partial<FormSettings> = {},
-): Promise<{ formId: string; slug: string; deps: DefinitionsDeps }> {
-  const registry = buildDefaultRegistry();
-  const deps: DefinitionsDeps = {
-    forms: new PgFormRepository(pool), drafts: new PgDraftRepository(pool), versions: new PgVersionRepository(pool),
-    stats: new PgSubmissionStats(pool), audit: new PgAuditLog(), auditReader: new PgAuditLogReader(pool),
-    uow: new PgUnitOfWorkFactory(pool), clock: systemClock, ids: systemIdGenerator, registry,
-    allowedRecipientDomains: ["effluz.com", "example.com"], publicBaseUrl: "http://127.0.0.1:3199",
-  };
-  const slug = `historia-prematuro-${Math.random().toString(36).slice(2, 8)}`;
-  const created = await createForm(deps, editor, { title: { es: "Historias" }, languages: "es", slug });
-  if (!created.ok) throw new Error(created.code);
-  const draft = await deps.drafts.find(created.formId);
-  const parsed = parseDraft(referenceFormDraft, registry);
-  if (!draft || !parsed.ok) throw new Error("fixture");
-  await deps.uow.run((uow) => deps.drafts.save(uow, { ...draft, document: parsed.version }, draft.revision));
-  const form = await deps.forms.findById(created.formId);
-  if (!form) throw new Error("form");
-  const settings = await updateSettings(deps, editor, {
-    formId: form.id,
-    settings: {
-      ...form.settings,
-      referencePrefix: "HP",
-      retentionMonths: 12,
-      notificationRecipients: ["staff-group@example.com"],
-      notificationCadence: "per_submission",
-      closesAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      ...over,
-    },
-  });
-  if (!settings.ok) throw new Error(settings.code);
-  const published = await publishForm(deps, editor, { formId: form.id, expectedNumber: 1 });
+  const preview = await publishPreview(deps, form.id);
+  if (!preview) throw new Error("no preview");
+  const published = await publishForm(deps, editor, { formId: form.id, expectedNumber: preview.nextNumber, expectedRevision: preview.draftRevision });
   if (!published.ok) throw new Error(published.code);
-  return { formId: form.id, slug, deps };
-}
-
-/** The reference submission's values for one page, as the page form posts them. */
-export function pageAnswers(pageKey: string): Record<string, string> {
-  const page = referenceFormDraft.pages.find((p) => p.key === pageKey);
-  const out: Record<string, string> = {};
-  for (const field of page?.fields ?? []) {
-    const value = referenceSubmission[field.key];
-    if (typeof value === "string") out[field.key] = value;
-    if (field.type === "consent") out[field.key] = "accepted";
-  }
-  return out;
-}
 ```
 
-- [ ] **Step 3: Failing e2e tests.** `tests/e2e/reference-form.test.ts`:
+`pageAnswers(pageKey)` returns, for each field of that page of `referenceFormDraft`, the string value of `referenceSubmission`, and `accepted` for the consent field.
+
+- [ ] **Step 3: Failing e2e tests.** `tests/e2e/reference-form.test.ts`. Shared helpers: a two-connection pool on `inject("databaseUrl")`, closed after all; `count(sql, args)`; `stagedFiles()` lists names with a dot under `inject("stagingDir")`; `photos(n)` makes `n` `syntheticJpegWithGps(64 + i, 48)` files `IMG_<i>.jpg` of type `image/jpeg`; `video()` is `syntheticMp4()` as `mensaje.mp4`; `asFiles(list)` maps them to `{ field: "photos", file }`; `waitForMinimumTime(renderedAt)` sleeps until 3.2 seconds after it; `fillToPhotos(slug)` GETs page 1 (200, text contains `Historias`), notes the time, and for `page1` to `page4` GETs the page and submits `{ _action: "next", "website-url": "", ...pageAnswers(page) }`, expecting 303 to `/f/<slug>`, then GETs page 5 (text contains `Página 5 de 5`) and returns `{ v, renderedAt, html }`.
 
 ```ts
-import { readdir } from "node:fs/promises";
-import path from "node:path";
-import pg from "pg";
-import sharp from "sharp";
-import { afterAll, describe, expect, inject, it } from "vitest";
-import { applyLifecycle } from "@/modules/definitions/application";
-import { syntheticJpegWithGps, syntheticMp4 } from "../fakes/media-files";
-import { hidden, textOf, Visitor } from "./http";
-import { pageAnswers, publishReferenceForm } from "./publish";
-
-const pool = new pg.Pool({ connectionString: inject("databaseUrl"), max: 2 });
-afterAll(() => pool.end());
-const base = inject("baseUrl");
-const staging = inject("stagingDir");
-
-const count = async (sql: string, args: unknown[] = []) => (await pool.query<{ n: number }>(sql, args)).rows[0]?.n ?? 0;
-const form = (fields: Record<string, string>, files: File[] = []) => {
-  const f = new FormData();
-  for (const [k, v] of Object.entries(fields)) f.append(k, v);
-  for (const file of files) f.append("photos", file);
-  return f;
-};
-
-/** GETs page 1, then posts pages 1 to 4; returns the visitor on page 5 and the time page 1 rendered. */
-async function fillToPhotos(slug: string): Promise<{ v: Visitor; renderedAt: number }> {
-  const v = new Visitor(base);
-  const first = await v.get(`/f/${slug}`);
-  expect(first.status).toBe(200);
-  expect(textOf(first.html)).toContain("Historias");
-  const renderedAt = Date.now();
-  const rendered = hidden(first.html, "_rendered") ?? "";
-  for (const [i, page] of ["page1", "page2", "page3", "page4"].entries()) {
-    const fields = { _page: page, _action: "next", "website-url": "", ...pageAnswers(page), ...(i === 0 ? { _rendered: rendered } : {}) };
-    const res = await v.post(`/f/${slug}/answers`, form(fields));
-    expect(res.status, page).toBe(303);
-    expect(res.location, page).toBe(`/f/${slug}`);
-  }
-  const fifth = await v.get(`/f/${slug}`);
-  expect(textOf(fifth.html)).toContain("Página 5 de 5");
-  return { v, renderedAt };
-}
-
-async function photos(n: number): Promise<File[]> {
-  return Promise.all(Array.from({ length: n }, async (_, i) => new File([await syntheticJpegWithGps(64 + i, 48)], `IMG_${String(i)}.jpg`, { type: "image/jpeg" })));
-}
-const video = () => new File([syntheticMp4()], "mensaje.mp4", { type: "video/mp4" });
-
-async function waitForMinimumTime(renderedAt: number): Promise<void> {
-  const left = 3_200 - (Date.now() - renderedAt);
-  if (left > 0) await new Promise((r) => setTimeout(r, left));
-}
-
 describe("the reference form without script", () => {
   it("is completed with nine photos and a video, and stored with its media rows and jobs", async () => {
     const { slug, formId } = await publishReferenceForm(pool);
-    const { v, renderedAt } = await fillToPhotos(slug);
-    const page5 = await v.get(`/f/${slug}`);
-    const token = hidden(page5.html, "_token") ?? "";
-
-    const tooMany = await v.post(`/f/${slug}/answers`, form({ _page: "page5", _action: "submit", _token: token, ...pageAnswers("page5") }, [...(await photos(10)), video()]));
-    expect(tooMany.status).toBe(303);
-    const refused = await v.get(`/f/${slug}`);
-    expect(textOf(refused.html)).toContain("Puedes subir hasta 10 archivos en Sube hasta 10 fotos sin editar del bebé");
-    expect(textOf(refused.html)).toContain("Corrige 1 problema para continuar");
-    expect(await count("select count(*)::int as n from submission where form_id = $1", [formId])).toBe(0);
-    expect((await readdir(staging, { recursive: true }).catch(() => [])).filter((f) => String(f).includes("."))).toHaveLength(0);
-
+    const { v, renderedAt, html } = await fillToPhotos(slug);
     await waitForMinimumTime(renderedAt);
-    const sent = await v.post(`/f/${slug}/answers`, form({ _page: "page5", _action: "submit", _token: token, "website-url": "", ...pageAnswers("page5") }, [...(await photos(9)), video()]));
+
+    const tooMany = await v.submit(html, { _action: "submit", "website-url": "", ...pageAnswers("page5") }, asFiles([...(await photos(10)), video()]));
+    expect(tooMany.status).toBe(200);
+    expect(textOf(tooMany.html)).toContain("Puedes subir hasta 10 archivos en Sube hasta 10 fotos sin editar del bebé");
+    expect(textOf(tooMany.html)).toContain("Corrige 1 problema para continuar");
+    expect(await count("select count(*)::int as n from submission where form_id = $1", [formId])).toBe(0);
+    expect(await stagedFiles()).toHaveLength(0);
+
+    const sent = await v.submit(tooMany.html, { _action: "submit", "website-url": "", ...pageAnswers("page5") }, asFiles([...(await photos(9)), video()]));
     expect(sent.status).toBe(303);
     expect(v.cookie()).toMatch(/^done\./);
 
@@ -12067,7 +4730,7 @@ describe("the reference form without script", () => {
     expect(media.rows[9]).toMatchObject({ kind: "video", content_type: "video/mp4" });
     expect(media.rows[9]?.durable_key).toBe(`forms/${slug}/HP-0001/10-sube-hasta-10-fotos-sin-editar-del-bebe.mp4`);
     for (const row of media.rows.filter((r) => r.kind === "image")) {
-      const meta = await sharp(path.join(staging, row.staging_ref)).metadata();
+      const meta = await sharp(path.join(inject("stagingDir"), row.staging_ref)).metadata();
       expect(meta.exif, row.staging_ref).toBeUndefined();
     }
     const jobs = await pool.query<{ type: string; payload: Record<string, unknown> }>(
@@ -12085,137 +4748,22 @@ describe("the reference form without script", () => {
     const back = await v.get(`/f/${slug}`);
     expect(textOf(back.html)).toContain("HP-0001");
   });
-
-  it("shows the error summary and keeps what was typed when a page is invalid", async () => {
-    const { slug } = await publishReferenceForm(pool);
-    const v = new Visitor(base);
-    const first = await v.get(`/f/${slug}`);
-    await v.post(`/f/${slug}/answers`, form({ _page: "page1", _action: "next", _rendered: hidden(first.html, "_rendered") ?? "", ...pageAnswers("page1"), adult_name: "", email: "no-es-un-correo" }));
-    const again = await v.get(`/f/${slug}`);
-    const text = textOf(again.html);
-    expect(text).toContain("Corrige 2 problemas para continuar");
-    expect(text).toContain("Nombre y apellido completo del adulto responsable es obligatorio");
-    expect(text).toContain("Escribe un correo válido, como nombre@ejemplo.com");
-    expect(again.html).toContain('value="no-es-un-correo"');
-  });
-
-  it("refuses a submission once the form is closed, even from a tab opened before", async () => {
-    const { slug, formId, deps } = await publishReferenceForm(pool);
-    const { v, renderedAt } = await fillToPhotos(slug);
-    const token = hidden((await v.get(`/f/${slug}`)).html, "_token") ?? "";
-    expect((await applyLifecycle(deps, { email: "editor@example.com", ip: "203.0.113.7" }, { formId, action: "close" })).ok).toBe(true);
-    await waitForMinimumTime(renderedAt);
-    await v.post(`/f/${slug}/answers`, form({ _page: "page5", _action: "submit", _token: token, ...pageAnswers("page5") }, await photos(1)));
-    expect(textOf((await v.get(`/f/${slug}`)).html)).toContain("Este formulario está cerrado");
-    expect(await count("select count(*)::int as n from submission where form_id = $1", [formId])).toBe(0);
-  });
-
-  it("answers a repeated Submit with the same confirmation and one submission", async () => {
-    const { slug, formId } = await publishReferenceForm(pool);
-    const { v, renderedAt } = await fillToPhotos(slug);
-    const token = hidden((await v.get(`/f/${slug}`)).html, "_token") ?? "";
-    await waitForMinimumTime(renderedAt);
-    const fields = { _page: "page5", _action: "submit", _token: token, ...pageAnswers("page5") };
-    const [a, b] = await Promise.all([v.post(`/f/${slug}/answers`, form(fields, await photos(1))), v.post(`/f/${slug}/answers`, form(fields, await photos(1)))]);
-    expect([a.status, b.status]).toEqual([303, 303]);
-    expect(await count("select count(*)::int as n from submission where form_id = $1", [formId])).toBe(1);
-    expect(textOf((await v.get(`/f/${slug}`)).html)).toContain("HP-0001");
-  });
-
-  it("silently accepts a filled honeypot: the confirmation, and nothing stored", async () => {
-    const { slug, formId } = await publishReferenceForm(pool);
-    const { v, renderedAt } = await fillToPhotos(slug);
-    const token = hidden((await v.get(`/f/${slug}`)).html, "_token") ?? "";
-    await waitForMinimumTime(renderedAt);
-    await v.post(`/f/${slug}/answers`, form({ _page: "page5", _action: "submit", _token: token, "website-url": "https://spam.example", ...pageAnswers("page5") }, await photos(2)));
-    const shown = textOf((await v.get(`/f/${slug}`)).html);
-    expect(shown).toMatch(/Tu referencia: HP-\d{4}/);
-    expect(await count("select count(*)::int as n from submission where form_id = $1", [formId])).toBe(0);
-    expect(await count("select count(*)::int as n from media where form_id = $1", [formId])).toBe(0);
-    expect(await count("select count(*)::int as n from submission_in_progress where form_id = $1", [formId])).toBe(0);
-  });
-
-  it("answers an unknown form with 404 and the not found screen", async () => {
-    const v = new Visitor(base);
-    const missing = await v.get("/f/no-such-form");
-    expect(missing.status).toBe(404);
-    expect(textOf(missing.html)).toContain("No encontramos este formulario");
-  });
 });
 ```
 
-(Each test publishes its own form under a random slug, so tests never share references or records. The staging directory check in the first test counts files of every record; it runs first in the file, so the directory is empty before it.)
+and, each on its own published form:
+- "answers an invalid page with the page itself: the error summary and what was typed": page 1 submitted with `pageAnswers("page1")` but `adult_name: ""` and `email: "no-es-un-correo"` answers 200; its text holds `Corrige 2 problemas para continuar`, `Nombre y apellido completo del adulto responsable es obligatorio` and `Escribe un correo válido, como nombre@ejemplo.com`; its HTML holds `value="no-es-un-correo"`.
+- "names a refused file only in the answer to its post": on page 5, after the minimum time, Next with `pageAnswers("page5")` and one file `new File(["solo texto"], "notas-privadas.jpg", { type: "image/jpeg" })` answers 200 whose text holds `notas-privadas.jpg no es un tipo permitido`; no `submission_in_progress` row of the form has `notas-privadas` in `pending::text` or `files::text`; a following `GET` does not contain `notas-privadas`.
+- "refuses a submission once the form is closed, even from a tab opened before": on page 5, close the form with `applyLifecycle(deps, { email: "editor@example.com", ip: "203.0.113.7" }, { formId, action: "close" })`, wait the minimum time, Submit with one photo → 303; the next `GET` holds `Este formulario está cerrado`; no submission is stored.
+- "answers a repeated Submit with the same confirmation and one submission": on page 5, after the minimum time, two Submits of the same page HTML, each with one photo, in parallel → both 303; one submission; the `GET` holds `HP-0001`.
+- "silently accepts a filled honeypot: the confirmation, and nothing stored": on page 5, after the minimum time, Submit with `"website-url": "https://spam.example"` and two photos; the `GET` matches `/Tu referencia: HP-\d{4}/`; no submission, media row or in-progress record of the form remains.
+- "answers an unknown form with 404 and the not found screen": `GET /f/no-such-form` is 404 with `No encontramos este formulario`.
 
-`tests/e2e/budgets.test.ts`:
+(Each test publishes its own form under a random slug, so tests never share references or records. The staging check in the first test counts files of every record; it runs first in the file, so the directory is empty before it.)
 
-```ts
-import { gzipSync } from "node:zlib";
-import pg from "pg";
-import { afterAll, describe, expect, inject, it } from "vitest";
-import { hidden, Visitor } from "./http";
-import { pageAnswers, publishReferenceForm } from "./publish";
-
-const pool = new pg.Pool({ connectionString: inject("databaseUrl"), max: 2 });
-afterAll(() => pool.end());
-const base = inject("baseUrl");
-const KB = 1024;
-
-function scriptUrls(html: string): string[] {
-  const urls = new Set<string>();
-  for (const m of html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)) if (m[1]) urls.add(m[1]);
-  for (const m of html.matchAll(/<link[^>]*rel="(?:preload|modulepreload)"[^>]*as="script"[^>]*href="([^"]+)"|<link[^>]*href="([^"]+)"[^>]*as="script"/g)) {
-    const u = m[1] ?? m[2];
-    if (u) urls.add(u);
-  }
-  return [...urls];
-}
-
-describe("renderer budgets (renderer.md, Performance targets)", () => {
-  it("keeps every page's HTML under 30 KB and its scripts under 150 KB, compressed", async () => {
-    const { slug } = await publishReferenceForm(pool);
-    const v = new Visitor(base);
-    const first = await v.get(`/f/${slug}`);
-    const pages = [first.html];
-    await v.post(`/f/${slug}/answers`, (() => {
-      const f = new FormData();
-      for (const [k, val] of Object.entries({ _page: "page1", _action: "next", _rendered: hidden(first.html, "_rendered") ?? "", ...pageAnswers("page1") })) f.append(k, val);
-      return f;
-    })());
-    for (const page of ["page2", "page3", "page4"]) {
-      pages.push((await v.get(`/f/${slug}`)).html);
-      const f = new FormData();
-      for (const [k, val] of Object.entries({ _page: page, _action: "next", ...pageAnswers(page) })) f.append(k, val);
-      await v.post(`/f/${slug}/answers`, f);
-    }
-    pages.push((await v.get(`/f/${slug}`)).html);
-    for (const [i, html] of pages.entries()) expect(gzipSync(html).length, `page ${String(i + 1)}`).toBeLessThan(30 * KB);
-
-    const urls = scriptUrls(first.html);
-    expect(urls.length).toBeGreaterThan(0);
-    let total = 0;
-    for (const url of urls) {
-      const res = await fetch(new URL(url, base));
-      total += gzipSync(Buffer.from(await res.arrayBuffer())).length;
-    }
-    expect(total).toBeLessThan(150 * KB);
-  });
-
-  it("renders page 1 in under 200 ms at the 95th percentile", async () => {
-    const { slug } = await publishReferenceForm(pool);
-    const time = async () => {
-      const start = performance.now();
-      const res = await fetch(`${base}/f/${slug}`);
-      await res.text();
-      return performance.now() - start;
-    };
-    for (let i = 0; i < 5; i++) await time();
-    const samples: number[] = [];
-    for (let i = 0; i < 40; i++) samples.push(await time());
-    samples.sort((a, b) => a - b);
-    expect(samples[Math.floor(samples.length * 0.95) - 1]).toBeLessThan(200);
-  });
-});
-```
+`tests/e2e/budgets.test.ts` (`scriptUrls(html)` collects every `<script src>` and every `<link rel="preload|modulepreload" as="script" href>`):
+- "keeps every page's HTML under 30 KB and its scripts under 150 KB, compressed": for `page1` to `page4`, `GET` the page, keep its HTML and submit `{ _action: "next", ...pageAnswers(page) }` (expect 303), then keep page 5's HTML; each page's `gzipSync` length is under 30 KB; page 1 lists at least one script URL, and the summed `gzipSync` sizes of their bodies are under 150 KB.
+- "renders page 1 in under 200 ms at the 95th percentile": five warm-up `GET`s, then 40 timed `GET`s of page 1 (body read); the sorted sample at index `floor(40 × 0.95) - 1` is under 200 ms.
 
 `package.json`: add `"test:e2e": "vitest run --config vitest.e2e.config.ts"`.
 
@@ -12248,20 +4796,136 @@ describe("renderer budgets (renderer.md, Performance targets)", () => {
         with: { name: e2e-report, path: reports/ }
 ```
 
-and add `e2e` to the `ci` job's `needs` and its result loop. In `specs/system/ci-cd.md`, "As built", replace "and `e2e` with the renderer plan" with: "`e2e` builds the app, starts it with `next start` against a throwaway database and temporary media directories, and drives the reference form over HTTP exactly as a browser without script does, plus the budgets of `ui-ux/renderer.md`. The browser run with script waits for the browser-runner decision."
+and add `e2e` to the `ci` job's `needs` and its result loop. In `specs/system/ci-cd.md`, "As built", replace "and `e2e` with the renderer plan" with: "`e2e` builds the app, starts it with `next start` against a throwaway database and temporary media directories, and drives the reference form over HTTP exactly as a browser without script does, plus the budgets of `ui-ux/renderer.md`."
 
 - [ ] **Step 6: Run** `pnpm test:e2e` until green, then `pnpm test && pnpm test:integration && pnpm lint && pnpm typecheck && pnpm format:check` (at most three of these at once).
 - [ ] **Step 7: Commit** `test(app): end-to-end reference form without script, failure paths and renderer budgets in CI`
 
 ---
 
-### Task 30: Full verification, spec sync and the pull request
+### Task 30: End to end in a browser: the reference form on a phone with script (Playwright)
+
+**Files:**
+- Create: `playwright.config.ts`, `tests/browser/global-setup.ts`, `tests/browser/reference-form.spec.ts`
+- Modify: `package.json`, `pnpm-lock.yaml` (`@playwright/test` as a dev dependency, `test:e2e:browser`), `.gitignore`, `.github/workflows/ci.yml` (job `e2e-browser`), `specs/system/ci-cd.md` ("As built")
+
+**Interfaces:**
+- Consumes: the built app; `createTestDatabase`, `startApp` (Task 29, `tests/support/`); `publishReferenceForm`, `pageAnswers` (`tests/e2e/publish.ts`); `syntheticJpegWithGps` (Task 5).
+- Produces: `pnpm test:e2e:browser`, which runs `playwright test` against `next start` on port 3299 with a throwaway database; the CI job `e2e-browser`.
+
+Decision (browser e2e, ADR 0024): Playwright with Chromium only, one phone project (`devices["Pixel 7"]`), one worker; the run counts as one heavy process on the developer machine, so start it only while at most two others run. The HTTP suite of Task 29 stays the script-disabled run and owns the budgets, which keep measuring the compressed client bundle.
+
+- [ ] **Step 1: Dependency.** `pnpm add -D @playwright/test@^1.56`, then `pnpm exec playwright install chromium`. `package.json` scripts gain `"test:e2e:browser": "playwright test"`; `.gitignore` gains, under `# testing`, `/playwright-report/` and `/test-results/`.
+
+- [ ] **Step 2: Config and setup.** `playwright.config.ts`:
+
+```ts
+import { defineConfig, devices } from "@playwright/test";
+
+// Browser end-to-end run against the built app (`pnpm build` first). See ADR 0024 and specs/system/ci-cd.md.
+export default defineConfig({
+  testDir: "tests/browser",
+  testMatch: "**/*.spec.ts",
+  workers: 1,
+  timeout: 120_000,
+  globalSetup: "./tests/browser/global-setup.ts",
+  reporter: process.env["CI"] ? [["list"], ["junit", { outputFile: "reports/e2e-browser.xml" }]] : "list",
+  use: { baseURL: "http://127.0.0.1:3299", trace: "retain-on-failure" },
+  projects: [{ name: "chromium-phone", use: { ...devices["Pixel 7"] } }],
+});
+```
+
+`tests/browser/global-setup.ts`: `createTestDatabase()`, `startApp({ port: 3299, databaseUrl: db.url })`, `process.env["E2E_DATABASE_URL"] = db.url` (the test workers start after it and inherit it), and return the teardown that stops the app and drops the database.
+
+- [ ] **Step 3: The browser test** `tests/browser/reference-form.spec.ts`. Helper `fillPage(page, answers)`: for each name and value, check `input[name="<name>"][value="<value>"]` when such a radio or checkbox exists, else `fill` `[name="<name>"]`.
+
+```ts
+test("completes the reference form on a phone with script: a blur check, focus, the offline banner, early uploads, Submit", async ({ page, context }) => {
+  const pool = new pg.Pool({ connectionString: process.env["E2E_DATABASE_URL"], max: 2 });
+  try {
+    const { slug, formId } = await publishReferenceForm(pool);
+    await page.goto(`/f/${slug}`);
+
+    await page.locator('[name="email"]').fill("no-es-un-correo");
+    await page.locator('[name="instagram"]').focus();
+    await expect(page.locator("#email-error")).toHaveText("Escribe un correo válido, como nombre@ejemplo.com");
+    await expect(page).toHaveURL(new RegExp(`/f/${slug}$`));
+
+    for (const key of ["page1", "page2", "page3", "page4"]) {
+      await fillPage(page, pageAnswers(key));
+      await page.locator("[data-primary]").click();
+      await expect(page.locator("[data-page-heading]")).toBeFocused();
+    }
+    await expect(page.getByText("Página 5 de 5")).toBeVisible();
+
+    await context.setOffline(true);
+    await expect(page.getByText("Parece que no tienes conexión")).toBeVisible();
+    await context.setOffline(false);
+    await expect(page.getByText("Parece que no tienes conexión")).toBeHidden();
+
+    const files = await Promise.all(
+      [0, 1].map(async (i) => ({ name: `IMG_${String(i)}.jpg`, mimeType: "image/jpeg", buffer: Buffer.from(await syntheticJpegWithGps(64 + i, 48)) })),
+    );
+    await page.locator('input[type="file"][name="photos"]').setInputFiles(files);
+    await expect(page.getByText("Subido", { exact: true })).toHaveCount(2);
+    await expect(page.locator("#photos-count")).toHaveText("2 de 10 archivos");
+
+    await fillPage(page, pageAnswers("page5"));
+    await page.locator("[data-primary]").click();
+    await expect(page.getByText("Tu referencia:")).toBeVisible();
+    await expect(page.getByText("HP-0001")).toBeVisible();
+    const { rows } = await pool.query<{ n: number }>("select count(*)::int as n from media where form_id = $1", [formId]);
+    expect(rows[0]?.n).toBe(2);
+  } finally {
+    await pool.end();
+  }
+});
+```
+
+- [ ] **Step 4: Run** `pnpm build && pnpm db:up && pnpm test:e2e:browser`. A failure is fixed in the task that owns the behavior, with a failing unit test there first (the reducers of Task 26 for focus, offline and submitting; the upload queue for the rows), never by loosening this test.
+
+- [ ] **Step 5: CI.** In `.github/workflows/ci.yml`, after the `e2e` job, add:
+
+```yaml
+  e2e-browser:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: effluz, POSTGRES_PASSWORD: effluz, POSTGRES_DB: postgres }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U effluz" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_DATABASE_ADMIN_URL: postgres://effluz:effluz@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version-file: .node-version, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm build
+      - run: pnpm test:e2e:browser
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: e2e-browser-report, path: "reports/\ntest-results/" }
+```
+
+and add `e2e-browser` to the `ci` job's `needs` and its result loop. In `specs/system/ci-cd.md`, "As built", after the `e2e` sentence add: "`e2e-browser` installs Chromium with `playwright install --with-deps chromium`, builds the app and completes the reference form on a phone viewport with script enabled (ADR 0024)."
+
+- [ ] **Step 6: Run** `pnpm lint && pnpm typecheck && pnpm format:check`, then `pnpm test:e2e:browser` once more alone.
+- [ ] **Step 7: Commit** `test(app): the reference form in Chromium on a phone with script, in CI (ADR 0024)`
+
+---
+
+### Task 31: Full verification, spec sync and the pull request
 
 **Files:**
 - Modify: `README.md` (one line: the public forms live at `/f/<slug>`), any spec section whose wording no longer matches the code as built
 
-- [ ] **Step 1: Verify everything**, no more than three heavy commands at once: `pnpm db:up`, then `pnpm test && pnpm lint && pnpm typecheck`, then `pnpm test:integration && pnpm format:check`, then `pnpm build && pnpm test:e2e`. All must pass.
-- [ ] **Step 2: Spec sync.** Read, against the code: `specs/architecture.md` (Ports rows, data flow step 2, technology row), `specs/system/database.md` (the four new or changed tables, column names as migrated), `specs/system/jobs.md` (registered handlers, `PermanentJobError`, `maxAttempts`, cleanup steps), `specs/system/media-storage.md`, `specs/system/email.md`, `specs/system/security.md` (honeypot name, 3 seconds, cookie, CSP), `specs/ui-ux/renderer.md` (routes, budget, copy rows), `specs/ui-ux/manager.md` (Settings note), ADRs 0002, 0016, 0023. Fix any drift in the same branch with a `docs:` commit.
+- [ ] **Step 1: Verify everything**, no more than three heavy commands at once: `pnpm db:up`, then `pnpm test && pnpm lint && pnpm typecheck`, then `pnpm test:integration && pnpm format:check`, then `pnpm build && pnpm test:e2e`, then `pnpm test:e2e:browser` alone. All must pass.
+- [ ] **Step 2: Spec sync.** Read, against the code: `specs/architecture.md` (modules and ports rows, the framework paragraph, data flow steps 2 and 3, technology rows), `specs/system/database.md` (the lock sentence, the four new or changed tables, column names as migrated), `specs/system/jobs.md` (registered handlers, `PermanentJobError`, `maxAttempts`, cleanup steps, delivery receipts), `specs/system/media-storage.md`, `specs/system/email.md`, `specs/system/security.md` (honeypot on every post, 3 seconds, cookie, per-submission size, CSP), `specs/ui-ux/renderer.md` (routes, the direct answer to refused posts, budget, copy rows), `specs/ui-ux/builder.md` (consent text), `specs/ui-ux/manager.md` (Settings note), `specs/use-cases/fill-and-submit-form.md` (step 5), ADRs 0002, 0008, 0016, 0023 to 0026. Fix any drift in the same branch with a `docs:` commit.
 - [ ] **Step 3: Manual checks recorded for the PR.** Publish the reference form into the dev database and print its slug:
 
   ```bash
@@ -12269,16 +4933,16 @@ and add `e2e` to the `ci` job's `needs` and its result loop. In `specs/system/ci
   pnpm exec tsx --env-file=.env -e 'import pg from "pg"; import { publishReferenceForm } from "./tests/e2e/publish"; const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL }); publishReferenceForm(pool).then((r) => { console.log(r.slug); return pool.end(); });'
   ```
 
-  With `pnpm dev` and `pnpm exec tsx --env-file=.env src/app/worker.ts` running against Mailpit and local media, open `http://localhost:3000/f/<slug>` and fill the reference form on a phone-sized window with script on (early uploads, Remove, a refused file, the offline banner by toggling the network, Submit) and with script off; keyboard only; VoiceOver or NVDA on one page with an error; 400% zoom; reduced motion; DevTools with the "Slow 3G" profile, page 1 interactive under 3 seconds. Watch the worker move the files to `MEDIA_DURABLE_DIR` and the staff notification arrive in Mailpit (http://127.0.0.1:8025) with no answers in it. Note results, not screenshots of real data.
-- [ ] **Step 4: Push and open the PR** against `main`, titled `feat: public renderer, submission intake, media and email jobs`, with a body that links the spec sections implemented (architecture.md "Submission data flow" 1 to 5, use-cases/fill-and-submit-form.md, ui-ux/renderer.md, system/media-storage.md, jobs.md, email.md, security.md "Public form abuse protection"), ADR 0023 and the ADR 0002 and 0016 amendments, the decisions list at the top of this plan, the spec additions that need review (the fifteen chrome rows, six singular catalog rows, the staff notification table, `set.challenge_unavailable`), the open questions (consent text plain in form-definition.md and markdown in builder.md; the privacy footer left off the not-found screen), and what is deliberately absent: review, Operations and Audit pages, `email.staff_digest`, `retention.purge`, `backup.database`, the builder and header images, DeepL, the bot challenge, the proxy rate limit on form routes (deployment plan), and the browser e2e run with script. End the body with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
-- [ ] **Step 5: Confirm** the seven CI jobs pass. The controller merges.
+  With `pnpm dev` and `pnpm exec tsx --env-file=.env src/app/worker.ts` running against Mailpit and local media, open `http://localhost:3000/f/<slug>` and fill the reference form on a phone-sized window with script on (early uploads, Remove, a pre-checked oversized file, a refused file, the offline banner by toggling the network, Submit) and with script off (a refused file named in the answer, then gone after a reload); keyboard only; VoiceOver or NVDA on one page with an error; 400% zoom; reduced motion; DevTools with the "Slow 3G" profile, page 1 interactive under 3 seconds. Watch the worker move the files to `MEDIA_DURABLE_DIR` and the staff notification arrive in Mailpit (http://127.0.0.1:8025) with no answers in it. Note results, not screenshots of real data.
+- [ ] **Step 4: Push and open the PR** against `main`, titled `feat: public renderer, submission intake, media and email jobs`, with a body that links the spec sections implemented (architecture.md "Submission data flow" 1 to 5, use-cases/fill-and-submit-form.md, ui-ux/renderer.md, system/media-storage.md, jobs.md, email.md, security.md "Public form abuse protection"), ADRs 0023 to 0026 and the ADR 0002, 0008 and 0016 amendments, the decisions list at the top of this plan, the spec additions that need review (the fifteen chrome rows, six singular catalog rows and `submission too large`, the staff notification table, `set.challenge_unavailable`, the routes table), the open question (the privacy footer left off the not-found screen), and what is deliberately absent: review, Operations and Audit pages, `email.staff_digest`, `retention.purge`, `backup.database`, the builder and header images, DeepL, the bot challenge, the proxy rate limit on form routes (deployment plan), and Firefox and WebKit in the browser run. End the body with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- [ ] **Step 5: Confirm** the eight CI jobs pass (`lint`, `typecheck`, `unit`, `build`, `integration`, `e2e`, `e2e-browser`, `ci`). The controller merges.
 
 ---
 
 ## Self-review notes
 
-- **Spec coverage.** architecture.md "Submission data flow": step 1 (Tasks 14, 18, 28), step 2 (Tasks 4, 7, 16, 19, 20), step 3 (Tasks 6, 11, 14, 21), step 4 (Tasks 21, 28), step 5 (Tasks 10, 11, 13, 27). use-cases/fill-and-submit-form.md: main flow 1 to 8 (Tasks 18 to 21, 24 to 28); every alternate flow: not found, archived, outside the window or closed (Tasks 14, 18, 25), session expired with cleanup (Tasks 16, 21, 22), a changed earlier answer (Task 21), republished mid-fill (Tasks 18, 21), upload failures (Tasks 7, 19, 20, 26), honeypot and minimum time (Tasks 16, 21, 29), duplicate submit (Tasks 18, 21, 22, 29); success criteria: ten files over a slow connection without losing progress (Tasks 19, 20, 29), every rule's message localized and announced (Tasks 23, 24), a closed form refusing an open tab (Tasks 22, 29), no orphans on intake failure (Task 22). ui-ux/renderer.md: layout, screens, field rendering table, file upload, validation and the message catalog, navigation and state, accessibility notes, performance targets, fixed chrome copy, confirmation email fixed parts (Tasks 12, 23 to 26, 29). media-storage.md: the port, both adapters, keys, file handling rules, lifecycle (Tasks 5 to 10). jobs.md: the four handlers, idempotency, permanent failure, cleanup (Tasks 2, 10, 11, 21, 27). email.md: ports, templates, provider, local development (Tasks 11 to 13). security.md: abuse protection layers 2 to 5, staff-authored content, CSP (Tasks 3, 16, 28). database.md: four tables and the counter (Tasks 8, 13, 14, 17). manager.md Settings note (Task 15). Not covered, by decision: review, staff digest, purge, backup, builder, header images, bot challenge, browser e2e with script.
-- **Placeholder scan.** No "TBD" or "similar to"; every code step carries its code. Two choices are left to the implementer on purpose, each with the rule that decides it: a Prettier layout pass on the CSS (Task 25) and fixing e2e gaps in the owning task (Task 29).
-- **Type consistency.** `StagedFile` (media) and `StagedUpload` (submissions domain) are structural twins by design; `attachToSubmission` takes `StagedUpload` values as `StagedFile`. `FillState`, `PostOutcome`, `PagePost`, `OpenContext` are defined in Task 18 and used unchanged in Tasks 19 to 21 and 28. `UploadRefusal` (Task 20) feeds `uploadRefusalMessage` (Task 23). `EmailRenderer` (Task 11) is satisfied by `emailTemplates` (Task 12), checked in Task 27. `MEDIA_JOB_TYPES` and `EMAIL_JOB_TYPES` name the job types in Tasks 6, 10, 11, 21, 27.
-- **Review Focus tests pinned:** 1 in Task 21 ("completes against the pinned version after a republish"); 2 in Task 21 ("discards answers and files of a page hidden by a changed answer"); 3 in Task 22 ("refuses a submission when the form closes during the intake"); 4 in Task 7 (sniffer and encoder refusals) and Task 22 ("refuses a lying, truncated or oversized file and stages nothing"); 5 in Task 21 ("treats an expired record as expired at submit") and Task 22 ("jobs.cleanup removes expired records and their staged files").
-- **Known coupling to revisit.** The renderer's root layout and page share one `viewForm` through React's `cache`; if Next changes how layouts and pages share a request, the layout's `lang` read is the one to re-check. The blur check is a server round trip per field; at Effluz's scale that is cheap, and it keeps the client bundle free of the rules.
+- **Spec coverage.** architecture.md "Submission data flow": step 1 (Tasks 14, 18, 28), step 2 (Tasks 4, 7, 16, 19, 20), step 3 (Tasks 6, 11, 14, 21), step 4 (Tasks 21, 28), step 5 (Tasks 10, 11, 13, 27). use-cases/fill-and-submit-form.md: main flow 1 to 8 (Tasks 18 to 21, 24 to 28), step 5's checks on both sides (Tasks 20, 26); every alternate flow: not found, archived, outside the window or closed (Tasks 14, 18, 25), session expired with cleanup (Tasks 16, 21, 22, 27), a changed earlier answer (Task 21), republished mid-fill (Tasks 18, 21), upload failures (Tasks 7, 19, 20, 26), honeypot on every post and minimum time (Tasks 16, 21, 22, 29), duplicate submit (Tasks 18, 21, 22, 29); success criteria: ten files over a slow connection without losing progress (Tasks 19, 20, 29, 30), every rule's message localized and announced (Tasks 23, 24, 25), a closed form refusing an open tab (Tasks 22, 29), no orphans on intake failure (Task 22). ui-ux/renderer.md: layout, screens, field rendering table, file upload, validation and the message catalog, the direct answer to refused posts, navigation and state, accessibility notes, performance targets, fixed chrome copy, confirmation email fixed parts, routes, both e2e runs of "Test fixtures" (Tasks 12, 23 to 30). media-storage.md: the port, both adapters, keys, file handling rules, lifecycle (Tasks 5 to 10). jobs.md: the four handlers, idempotency, permanent failure, cleanup (Tasks 2, 10, 11, 21, 27). email.md: ports, templates, provider, local development (Tasks 11 to 13). security.md: abuse protection layers 2 to 5, the cookie, the per-submission size, staff-authored content, CSP (Tasks 3, 16, 20, 21, 28). database.md: four tables, the counter and the lock order (Tasks 8, 13, 14, 17, 21). builder.md consent row (Task 1). manager.md Settings note (Task 15). Not covered, by decision: review, staff digest, purge, backup, builder, header images, bot challenge, Firefox and WebKit.
+- **Placeholder scan.** No "TBD" and no "similar to Task N" for a requirement. Named patterns are defined once and referenced by name: the probe pattern (Task 2, used in Tasks 6, 11, 18), the repository pattern (Task 8, used in Task 17) and the route handler pattern (Task 28). Case lists follow the convention in Global Constraints: every test keeps its name, inputs and expected results. Two choices are left to the implementer on purpose, each with the rule that decides it: a Prettier layout pass on the CSS (Task 25) and fixing e2e gaps in the owning task (Tasks 29, 30).
+- **Type consistency.** `StagedFile` (media) and `StagedUpload` (submissions domain) are structural twins by design; `attachToSubmission` takes `StagedUpload` values as `StagedFile`. `FillState`, `PostOutcome` (with `refused`), `PagePost`, `OpenContext` are defined in Task 18 and used unchanged in Tasks 19 to 21 and 28. `RefusedFile` (Task 16) flows from `stageIncoming` (Task 19) through `PostOutcome` to `fileIssueMessage` (Task 23) and the action's `PageFormState` (Tasks 24, 28); `PendingPage` never holds one. `UploadRefusal` (Task 20) feeds `uploadRefusalMessage` (Task 23). Messages take `Pick<ValidationIssue, "code" | "params">`, so no production code builds an issue with a fabricated `Key`. `EmailRenderer` (Task 11) is satisfied by `emailTemplates` (Task 12), checked in Task 27. `MEDIA_JOB_TYPES` and `EMAIL_JOB_TYPES` name the job types in Tasks 6, 10, 11, 21, 27. `createCleanupHandler` takes `Pick<PgJobStore, "pruneSucceeded">` (Task 2), which lets Task 27 run the composed handler on a stub. `UploadField` and `PageEnhancer` are created before their first consumer (Tasks 24 and 25) and gain behavior in Task 26 without changing their props. `publishReferenceForm` passes the preview's `nextNumber` and `draftRevision` to `publishForm` (Task 29).
+- **Review Focus tests pinned:** 1 in Task 21 ("completes against the pinned version after a republish"); 2 in Task 21 ("discards answers and files of a page hidden by a changed answer"); 3 in Task 22 ("refuses a submission when the form closes during the intake"); 4 in Task 7 (the sniffer's "ignores names and declared types" and the encoder's truncated-JPEG case), Task 20 and Task 22 ("refuses a lying, truncated or oversized file and stages nothing"); 5 in Task 21 ("treats an expired record as expired at submit") and Task 27 ("jobs.cleanup removes an expired record and its staged files, and stores no submission").
+- **Known coupling to revisit.** The renderer's root layout and page share one `viewForm` through React's `cache`; if Next changes how layouts and pages share a request, the layout's `lang` read is the one to re-check. The page form relies on React 19 honouring `preventDefault` in `onSubmit` before a form action and on Next answering a Server Action posted without script with the re-rendered page; Tasks 29 and 30 exercise both paths against the built app. The blur check is a server round trip per field; at Effluz's scale that is cheap, and it keeps the client bundle free of the rules.
