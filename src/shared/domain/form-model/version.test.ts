@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildDefaultRegistry } from "./field-types";
-import { parseDraft } from "./version";
+import { conditionOwners, parseDraft } from "./version";
 
 const registry = buildDefaultRegistry();
 const page = (key: string, fields: unknown[]) => ({ key, title: { en: key }, fields });
@@ -188,5 +188,31 @@ describe("parseDraft", () => {
       );
     expect(withValue("x").ok).toBe(true);
     expect(withValue(5).ok).toBe(false);
+  });
+});
+
+describe("conditionOwners", () => {
+  it("lists every condition in document order, page before its fields, with its order limit", () => {
+    const shown = { field: "aaaa", op: "is_not_empty" };
+    const r = parseDraft(
+      draft([
+        page("page1", [
+          field("aaaa", "short_text"),
+          field("bbbb", "short_text", { visibility: shown }),
+        ]),
+        {
+          ...page("page2", [field("cccc", "short_text", { visibility: shown })]),
+          visibility: shown,
+        },
+      ]),
+      registry,
+    );
+    if (!r.ok) throw new Error(JSON.stringify(r.issues));
+
+    expect(conditionOwners(r.version)).toEqual([
+      { key: "bbbb", condition: shown, limit: 1, path: "pages/0/fields/1/visibility" },
+      { key: "page2", condition: shown, limit: 2, path: "pages/1/visibility" },
+      { key: "cccc", condition: shown, limit: 2, path: "pages/1/fields/0/visibility" },
+    ]);
   });
 });

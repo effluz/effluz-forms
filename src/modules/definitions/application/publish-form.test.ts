@@ -60,6 +60,13 @@ async function publishableForm(deps: FakeDefinitionsDeps, fields = [NAME]): Prom
   return formId;
 }
 
+/** The publish input for a preview taken now: its number and the stored draft revision. */
+function previewed(deps: FakeDefinitionsDeps, formId: string, expectedNumber: number) {
+  const expectedRevision = deps.store.drafts.get(formId)?.revision;
+  if (expectedRevision === undefined) throw new Error("no draft");
+  return { formId, expectedNumber, expectedRevision };
+}
+
 function published(deps: FakeDefinitionsDeps) {
   return deps.audit.entries.filter((e) => e.entry.action === "form_published");
 }
@@ -71,6 +78,7 @@ describe("publishPreview", () => {
 
     expect(await publishPreview(deps, formId)).toEqual({
       nextNumber: 1,
+      draftRevision: deps.store.drafts.get(formId)?.revision,
       pages: 1,
       fields: 2,
       languages: "bilingual",
@@ -107,7 +115,7 @@ describe("publishPreview", () => {
   it("after a change, diffs against the current version with answer counts of removed keys", async () => {
     const deps = makeDefinitionsDeps();
     const formId = await publishableForm(deps, [NAME, CITY]);
-    await publishForm(deps, EDITOR, { formId, expectedNumber: 1 });
+    await publishForm(deps, EDITOR, previewed(deps, formId, 1));
     setDraft(deps, formId, document([field("f_name", "Full name", "Nombre completo"), PET]));
     deps.stats.setAnswerCounts(formId, Object.fromEntries([["f_city", 4]]));
 
@@ -125,7 +133,7 @@ describe("publishPreview", () => {
   it("flags a draft equal to the current version as unchanged", async () => {
     const deps = makeDefinitionsDeps();
     const formId = await publishableForm(deps);
-    await publishForm(deps, EDITOR, { formId, expectedNumber: 1 });
+    await publishForm(deps, EDITOR, previewed(deps, formId, 1));
 
     const preview = await publishPreview(deps, formId);
     expect(preview).toMatchObject({ nextNumber: 2, unchanged: true });
@@ -147,7 +155,7 @@ describe("publishForm", () => {
     const now = new Date("2026-10-11T10:00:00Z");
     deps.clock.set(now);
 
-    const result = await publishForm(deps, EDITOR, { formId, expectedNumber: 1 });
+    const result = await publishForm(deps, EDITOR, previewed(deps, formId, 1));
     if (!result.ok) throw new Error(result.code);
     expect(result).toEqual({
       ok: true,
@@ -181,7 +189,7 @@ describe("publishForm", () => {
     const deps = makeDefinitionsDeps();
     const formId = await publishableForm(deps);
 
-    await publishForm(deps, EDITOR, { formId, expectedNumber: 1 });
+    await publishForm(deps, EDITOR, previewed(deps, formId, 1));
     expect(published(deps).map((e) => e.entry)).toEqual([
       {
         action: "form_published",
@@ -195,7 +203,13 @@ describe("publishForm", () => {
 
   it("returns not_found for an unknown form", async () => {
     const deps = makeDefinitionsDeps();
-    expect(await publishForm(deps, EDITOR, { formId: UNKNOWN_ID, expectedNumber: 1 })).toEqual({
+    expect(
+      await publishForm(deps, EDITOR, {
+        formId: UNKNOWN_ID,
+        expectedNumber: 1,
+        expectedRevision: 1,
+      }),
+    ).toEqual({
       ok: false,
       code: "not_found",
     });
@@ -210,7 +224,7 @@ describe("publishForm", () => {
     const draftBefore = deps.store.drafts.get(formId);
     const auditBefore = deps.audit.entries.length;
 
-    expect(await publishForm(deps, EDITOR, { formId, expectedNumber: 1 })).toEqual({
+    expect(await publishForm(deps, EDITOR, previewed(deps, formId, 1))).toEqual({
       ok: false,
       code: "archived",
     });
@@ -226,7 +240,7 @@ describe("publishForm", () => {
     const draftBefore = deps.store.drafts.get(formId);
     const auditBefore = deps.audit.entries.length;
 
-    expect(await publishForm(deps, EDITOR, { formId, expectedNumber: 1 })).toEqual({
+    expect(await publishForm(deps, EDITOR, previewed(deps, formId, 1))).toEqual({
       ok: false,
       code: "issues",
       issues: [{ code: "unlabeled", path: "pages/0/fields/0/label" }],
@@ -240,9 +254,9 @@ describe("publishForm", () => {
   it("refuses to republish an unchanged draft", async () => {
     const deps = makeDefinitionsDeps();
     const formId = await publishableForm(deps);
-    await publishForm(deps, EDITOR, { formId, expectedNumber: 1 });
+    await publishForm(deps, EDITOR, previewed(deps, formId, 1));
 
-    expect(await publishForm(deps, EDITOR, { formId, expectedNumber: 2 })).toEqual({
+    expect(await publishForm(deps, EDITOR, previewed(deps, formId, 2))).toEqual({
       ok: false,
       code: "unchanged",
     });
@@ -252,10 +266,10 @@ describe("publishForm", () => {
   it("publishes a changed draft as the next version", async () => {
     const deps = makeDefinitionsDeps();
     const formId = await publishableForm(deps);
-    const first = await publishForm(deps, EDITOR, { formId, expectedNumber: 1 });
+    const first = await publishForm(deps, EDITOR, previewed(deps, formId, 1));
     setDraft(deps, formId, document([NAME, CITY]));
 
-    const second = await publishForm(deps, EDITOR, { formId, expectedNumber: 2 });
+    const second = await publishForm(deps, EDITOR, previewed(deps, formId, 2));
     if (!second.ok || !first.ok) throw new Error("publish refused");
     expect(second.number).toBe(2);
     expect(deps.store.forms.get(formId)).toMatchObject({
@@ -270,13 +284,13 @@ describe("publishForm", () => {
   it("keeps a closed form closed when it publishes a new version", async () => {
     const deps = makeDefinitionsDeps();
     const formId = await publishableForm(deps);
-    await publishForm(deps, EDITOR, { formId, expectedNumber: 1 });
+    await publishForm(deps, EDITOR, previewed(deps, formId, 1));
     const form = deps.store.forms.get(formId);
     if (!form) throw new Error("no form");
     deps.store.forms.set(formId, { ...form, status: "closed" });
     setDraft(deps, formId, document([NAME, CITY]));
 
-    const result = await publishForm(deps, EDITOR, { formId, expectedNumber: 2 });
+    const result = await publishForm(deps, EDITOR, previewed(deps, formId, 2));
     expect(result.ok).toBe(true);
     expect(deps.store.forms.get(formId)?.status).toBe("closed");
   });
@@ -284,19 +298,43 @@ describe("publishForm", () => {
   it("returns conflict when the expected number is not the next one", async () => {
     const deps = makeDefinitionsDeps();
     const formId = await publishableForm(deps);
-    await publishForm(deps, EDITOR, { formId, expectedNumber: 1 });
+    await publishForm(deps, EDITOR, previewed(deps, formId, 1));
     setDraft(deps, formId, document([NAME, CITY]));
 
-    expect(await publishForm(deps, EDITOR, { formId, expectedNumber: 1 })).toEqual({
+    expect(await publishForm(deps, EDITOR, previewed(deps, formId, 1))).toEqual({
       ok: false,
       code: "conflict",
     });
-    expect(await publishForm(deps, EDITOR, { formId, expectedNumber: 3 })).toEqual({
+    expect(await publishForm(deps, EDITOR, previewed(deps, formId, 3))).toEqual({
       ok: false,
       code: "conflict",
     });
     expect(deps.store.versions.size).toBe(1);
     expect(published(deps)).toHaveLength(1);
+  });
+
+  it("returns conflict when the draft was saved after the preview", async () => {
+    const deps = makeDefinitionsDeps();
+    const formId = await publishableForm(deps);
+    const preview = await publishPreview(deps, formId);
+    if (!preview) throw new Error("no preview");
+    const stored = deps.store.drafts.get(formId);
+    if (!stored) throw new Error("no draft");
+    deps.store.drafts.set(formId, {
+      ...stored,
+      revision: stored.revision + 1,
+      document: document([NAME, CITY]),
+    });
+
+    expect(
+      await publishForm(deps, EDITOR, {
+        formId,
+        expectedNumber: preview.nextNumber,
+        expectedRevision: preview.draftRevision,
+      }),
+    ).toEqual({ ok: false, code: "conflict" });
+    expect(deps.store.versions.size).toBe(0);
+    expect(published(deps)).toHaveLength(0);
   });
 
   it("returns conflict without further writes when the number is taken at insert", async () => {
@@ -311,7 +349,7 @@ describe("publishForm", () => {
     const formId = await publishableForm(deps);
     const draftBefore = deps.store.drafts.get(formId);
 
-    expect(await publishForm(deps, EDITOR, { formId, expectedNumber: 1 })).toEqual({
+    expect(await publishForm(deps, EDITOR, previewed(deps, formId, 1))).toEqual({
       ok: false,
       code: "conflict",
     });
@@ -347,7 +385,7 @@ describe("publishForm", () => {
       const draftBefore = deps.store.drafts.get(formId);
       const forms = formChange(deps, formId, { status: "archived", archivedAt: deps.clock.now() });
 
-      expect(await publishForm({ ...deps, forms }, EDITOR, { formId, expectedNumber: 1 })).toEqual({
+      expect(await publishForm({ ...deps, forms }, EDITOR, previewed(deps, formId, 1))).toEqual({
         ok: false,
         code: "archived",
       });
@@ -364,7 +402,7 @@ describe("publishForm", () => {
         currentVersionNumber: 1,
       });
 
-      expect(await publishForm({ ...deps, forms }, EDITOR, { formId, expectedNumber: 1 })).toEqual({
+      expect(await publishForm({ ...deps, forms }, EDITOR, previewed(deps, formId, 1))).toEqual({
         ok: false,
         code: "conflict",
       });
@@ -386,9 +424,10 @@ describe("publishForm", () => {
       });
       const draftBefore = structuredClone(deps.store.drafts.get(formId));
 
-      expect(await publishForm({ ...deps, drafts }, EDITOR, { formId, expectedNumber: 1 })).toEqual(
-        { ok: false, code: "conflict" },
-      );
+      expect(await publishForm({ ...deps, drafts }, EDITOR, previewed(deps, formId, 1))).toEqual({
+        ok: false,
+        code: "conflict",
+      });
       expect(deps.store.versions.size).toBe(0);
       expect(deps.store.drafts.get(formId)?.revision).toBe((draftBefore?.revision ?? 0) + 1);
       expect(published(deps)).toHaveLength(0);
@@ -402,7 +441,7 @@ describe("publishForm", () => {
       const forms = formChange(deps, formId, { settings: { ...settings, retentionMonths: 24 } });
       const revision = deps.store.drafts.get(formId)?.revision ?? 0;
 
-      const result = await publishForm({ ...deps, forms }, EDITOR, { formId, expectedNumber: 1 });
+      const result = await publishForm({ ...deps, forms }, EDITOR, previewed(deps, formId, 1));
 
       expect(result.ok).toBe(true);
       expect(deps.store.forms.get(formId)).toMatchObject({

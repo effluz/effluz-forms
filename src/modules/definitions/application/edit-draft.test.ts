@@ -87,34 +87,48 @@ describe("editDraft", () => {
     expect(deps.audit.entries).toHaveLength(0);
   });
 
-  it("returns stale when the repository reports a lost race, without other writes", async () => {
+  it("throws when the locked draft still reports stale on save, a bug", async () => {
     const { deps, formId, revision } = await setup();
-    const racing: typeof deps.drafts = Object.assign(
+    const broken: typeof deps.drafts = Object.assign(
       Object.create(deps.drafts) as typeof deps.drafts,
-      {
-        // Another editor saves between our read and our write.
-        save: async (...args: Parameters<typeof deps.drafts.save>) => {
-          await deps.drafts.save(args[0], { ...args[1] }, revision);
-          return deps.drafts.save(...args);
+      { save: () => Promise.resolve("stale" as const) },
+    );
+
+    await expect(
+      editDraft({ ...deps, drafts: broken }, EDITOR, {
+        formId,
+        baseRevision: revision,
+        commands: [{ kind: "rename_form", title: { en: "Renamed", es: "Renombrado" } }],
+      }),
+    ).rejects.toThrow(/changed while locked/);
+  });
+
+  it("locks the form row before the draft, also for an edit that does not mirror", async () => {
+    const { deps, formId, pageKey, revision } = await setup();
+    const locks: string[] = [];
+    const record = <R extends { findForUpdate: (...args: never[]) => unknown }>(
+      repo: R,
+      name: string,
+    ): R =>
+      Object.assign(Object.create(repo) as R, {
+        findForUpdate: (...args: Parameters<R["findForUpdate"]>) => {
+          locks.push(name);
+          return repo.findForUpdate(...args);
         },
+      });
+
+    const result = await editDraft(
+      { ...deps, forms: record(deps.forms, "form"), drafts: record(deps.drafts, "draft") },
+      EDITOR,
+      {
+        formId,
+        baseRevision: revision,
+        commands: [{ kind: "add_field", pageKey, type: "short_text" }],
       },
     );
-    const result = await editDraft({ ...deps, drafts: racing }, EDITOR, {
-      formId,
-      baseRevision: revision,
-      commands: [{ kind: "rename_form", title: { en: "Renamed", es: "Renombrado" } }],
-    });
 
-    const current = await deps.drafts.find(formId);
-    expect(current?.revision).toBe(revision + 1);
-    expect(result).toEqual({
-      ok: false,
-      code: "stale",
-      revision: current?.revision,
-      document: current?.document,
-    });
-    expect((await deps.forms.findById(formId))?.title.en).toBe("Sample form");
-    expect(deps.audit.entries).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    expect(locks).toEqual(["form", "draft"]);
   });
 
   it("returns the rejection with its index and writes nothing", async () => {

@@ -22,9 +22,8 @@ function stale(draft: Draft): EditDraftResult {
 
 /**
  * Applies a batch of builder commands to the draft in one unit of work, which
- * re-reads the draft (and, for a title or language change, the form) with a
- * row lock before writing. A stale base revision or a rejected command
- * changes nothing.
+ * re-reads the form and then the draft with row locks before writing. A stale
+ * base revision or a rejected command changes nothing.
  * See specs/use-cases/create-and-edit-form.md, "Main flow: edit the draft" and
  * "Audit entries".
  */
@@ -62,17 +61,15 @@ export async function editDraft(
   return deps.uow.run(async (uow): Promise<EditDraftResult> => {
     // Rows are locked form first, then draft, in every use case, so two units
     // of work never wait on each other in opposite order.
-    const freshForm = mirrored ? await deps.forms.findForUpdate(uow, formId) : form;
+    const freshForm = await deps.forms.findForUpdate(uow, formId);
     if (!freshForm) return { ok: false, code: "not_found" };
     const fresh = await deps.drafts.findForUpdate(uow, formId);
     if (!fresh) return { ok: false, code: "not_found" };
     // Another save landed after our read: hand back what is stored now.
     if (fresh.revision !== baseRevision) return stale(fresh);
-    // The lock makes this unreachable in Postgres; the save is the first write,
-    // so answering stale here still commits nothing.
+    // The row is locked, so a stale save is a bug; throwing undoes the unit of work.
     if ((await deps.drafts.save(uow, next, baseRevision)) === "stale") {
-      const current = await deps.drafts.findForUpdate(uow, formId);
-      return current ? stale(current) : { ok: false, code: "not_found" };
+      throw new Error(`draft of form ${formId} changed while locked`);
     }
 
     // The document is the source of truth; the form row mirrors its title and

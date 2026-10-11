@@ -33,12 +33,13 @@ Rules:
 - Read-only queries for the admin page may bypass the unit of work but still go
   through a repository.
 - Mutating use cases re-read the aggregate inside the unit of work with a row
-  lock (`for update`) before writing; reads outside a unit of work are for
-  display and early refusals only. The `definitions` use cases that change a
-  form (edit draft, publish, lifecycle, delete, settings) lock the `form` row
-  first and the `form_draft` row second, always in that order, and decide
-  again on the locked rows. These are transactional row locks, held until the
-  unit of work ends; they are not editor-visible locks (see
+  lock (`for update`) before writing, and decide again on the locked rows.
+  Every `definitions` use case that changes an existing form (edit draft,
+  publish, lifecycle, delete, settings) locks the `form` row; the ones that
+  write the draft (edit draft, publish) lock the `form_draft` row after it,
+  always in that order. Reads outside a unit of work are for display and early
+  refusals. These are transactional row locks, held until the unit of work
+  ends; they are not editor-visible locks (see
   `use-cases/create-and-edit-form.md`).
 
 ## Connections

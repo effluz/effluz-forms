@@ -68,6 +68,45 @@ export function fieldIndex(
   return map;
 }
 
+/** A visibility condition, where it sits, and the field order its references must stay below. */
+export interface ConditionOwner {
+  key: string;
+  condition: Condition;
+  limit: number;
+  path: string;
+}
+
+/**
+ * Every visibility condition in document order, page before its fields. A
+ * field may reference only earlier fields; a page only fields on earlier
+ * pages. See specs/form-definition.md, "Conditional logic".
+ */
+export function conditionOwners(version: Version): ConditionOwner[] {
+  const owners: ConditionOwner[] = [];
+  let order = 0;
+  version.pages.forEach((page, pi) => {
+    const pPath = `pages/${String(pi)}`;
+    if (page.visibility)
+      owners.push({
+        key: page.key,
+        condition: page.visibility,
+        limit: order,
+        path: `${pPath}/visibility`,
+      });
+    page.fields.forEach((field, fi) => {
+      if (field.visibility)
+        owners.push({
+          key: field.key,
+          condition: field.visibility,
+          limit: order,
+          path: `${pPath}/fields/${String(fi)}/visibility`,
+        });
+      order++;
+    });
+  });
+  return owners;
+}
+
 /** The shape a clause value must have for an operator, given the field's answer shape. */
 function clauseValueSchema(op: string, answer: z.ZodType): z.ZodType {
   if (op === "is_one_of") return z.array(answer);

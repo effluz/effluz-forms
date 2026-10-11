@@ -90,7 +90,7 @@ describe("concurrent definitions use cases against Postgres", () => {
       const { formId, revision } = await publishableForm(round);
 
       const [published, archived] = await Promise.all([
-        publishForm(deps, editor, { formId, expectedNumber: 1 }),
+        publishForm(deps, editor, { formId, expectedNumber: 1, expectedRevision: revision }),
         applyLifecycle(deps, other, { formId, action: "archive" }),
       ]);
 
@@ -116,14 +116,14 @@ describe("concurrent definitions use cases against Postgres", () => {
 
   it.each<[string, (round: number) => DraftCommand]>([
     [
-      "a rename, which also locks the form",
+      "a rename, which also writes the form row",
       (round) => ({
         kind: "rename_form",
         title: { en: `Renamed ${String(round)}`, es: `Renombrado ${String(round)}` },
       }),
     ],
     [
-      "a field edit, which locks only the draft",
+      "a field edit, which writes only the draft",
       () => ({
         kind: "update_field",
         fieldKey: "f_name" as Key,
@@ -136,7 +136,7 @@ describe("concurrent definitions use cases against Postgres", () => {
       const before = await deps.drafts.find(formId);
 
       const [published, edited] = await Promise.all([
-        publishForm(deps, editor, { formId, expectedNumber: 1 }),
+        publishForm(deps, editor, { formId, expectedNumber: 1, expectedRevision: revision }),
         editDraft(deps, other, { formId, baseRevision: revision, commands: [command(round)] }),
       ]);
 
@@ -154,8 +154,10 @@ describe("concurrent definitions use cases against Postgres", () => {
         expect(form).toMatchObject({ status: "published", currentVersionId: published.versionId });
         const version = await deps.versions.findById(published.versionId);
         expect(version?.document).toEqual(draft.document);
-        // The publish bump, plus the edit when it landed before the publish read the draft.
-        expect(draft.revision).toBe(revision + 1 + (edited.ok ? 1 : 0));
+        // An edit that landed first moves the previewed revision, so the publish
+        // wins only alone.
+        expect(edited.ok).toBe(false);
+        expect(draft.revision).toBe(revision + 1);
       } else {
         expect(published).toEqual({ ok: false, code: "conflict" });
         expect(edited.ok).toBe(true);
@@ -168,8 +170,12 @@ describe("concurrent definitions use cases against Postgres", () => {
 
   it("keeps both a settings change and a close that race each other", async () => {
     for (let round = 0; round < ROUNDS; round += 1) {
-      const { formId } = await publishableForm(round);
-      const first = await publishForm(deps, editor, { formId, expectedNumber: 1 });
+      const { formId, revision } = await publishableForm(round);
+      const first = await publishForm(deps, editor, {
+        formId,
+        expectedNumber: 1,
+        expectedRevision: revision,
+      });
       if (!first.ok) throw new Error(first.code);
       const settings = (await deps.forms.findById(formId))?.settings;
       if (!settings) throw new Error("form missing");

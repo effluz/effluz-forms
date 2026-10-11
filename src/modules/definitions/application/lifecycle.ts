@@ -71,6 +71,8 @@ export async function deleteForm(
 ): Promise<DeleteFormResult> {
   const form = await deps.forms.findById(input.formId);
   if (!form) return { ok: false, code: "not_found" };
+  // Read once, before the lock: a submission needs a version, so the version
+  // check on the locked row below covers one that lands meanwhile.
   const hasSubmissions = await deps.stats.hasAny(form.id);
   const refusal = deleteRefusal(form, hasSubmissions, input.slugConfirmation);
   if (refusal) return { ok: false, code: refusal };

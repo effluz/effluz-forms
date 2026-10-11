@@ -59,7 +59,11 @@ The editor opens a form's Settings tab in the manager.
   must confirm; the save is refused as `retention_confirm` with that count
   until the editor confirms. Audit entry `retention_shortened` records the
   old and new months and the count. With no submission affected, no
-  confirmation is asked and no such entry is written.
+  confirmation is asked and no such entry is written. The confirmation is
+  decided on the form row as re-read under the lock: when another editor
+  changed the retention meanwhile, the save compares against that value and
+  takes the count again, so a shortening it did not show is still refused
+  as `retention_confirm`.
 - **Removing the last notification recipient.** Allowed with a warning that
   no one will be notified; the manager still shows new submissions.
 - **Invalid date window** (close before open). Inline error (`date_order`).
@@ -70,8 +74,10 @@ The editor opens a form's Settings tab in the manager.
   `slug_reserved` and `slug_taken`.
 - **Locked values.** Changing the slug after the first publish is refused as
   `slug_locked`, and changing the reference prefix after the first
-  submission as `prefix_locked`. Both are decided again on the locked form
-  row, so a publish or a submission that landed meanwhile is respected.
+  submission as `prefix_locked`. Both are decided again when the save is
+  written: the form is re-read under the lock, so a publish that landed
+  meanwhile is respected, and whether submissions exist is read at request
+  time, not locked.
 - **A value no control can produce** (a tampered request, a date that is not
   a date) is refused as `malformed` at its path instead of failing the
   request.

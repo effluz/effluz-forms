@@ -67,6 +67,17 @@ describe("openForm", () => {
     expect((await openForm(deps, EDITOR, id))?.closingInDays).toBeNull();
   });
 
+  it("reports no closingInDays for a never-published draft with a close date", async () => {
+    const deps = makeDefinitionsDeps();
+    const id = await seedForm(deps);
+    const stored = deps.store.forms.get(id);
+    if (!stored) throw new Error("seed failed");
+    const closesAt = new Date(deps.clock.now().getTime() + 3 * DAY_MS).toISOString();
+    deps.store.forms.set(id, { ...stored, settings: { ...stored.settings, closesAt } });
+
+    expect((await openForm(deps, EDITOR, id))?.closingInDays).toBeNull();
+  });
+
   it("reports no closingInDays without a close date", async () => {
     const deps = makeDefinitionsDeps();
     const id = await seedForm(deps);

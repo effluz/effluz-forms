@@ -54,33 +54,35 @@ export async function updateSettings(
   });
   if (issues.length > 0) return { ok: false, code: "invalid", issues };
 
-  let submissions: boolean | undefined;
-  const hasSubmissions = async (): Promise<boolean> =>
-    (submissions ??= await deps.stats.hasAny(form.id));
+  // Asked on every plan, so `prefix_locked` is decided on the locked row too.
+  const hasSubmissions = (): Promise<boolean> => deps.stats.hasAny(form.id);
   const plan = (current: Form) => planChange(current, settings, input.slug, hasSubmissions);
+  const now = deps.clock.now();
+  /** Submissions the shortening from `current` would purge; 0 when it does not shorten. */
+  const purgeCount = async (current: Form): Promise<number> =>
+    settings.retentionMonths < current.settings.retentionMonths
+      ? deps.stats.countOlderThan(form.id, settings.retentionMonths, now)
+      : 0;
+  const unconfirmed = (count: number): boolean => count > 0 && input.confirmRetentionPurge !== true;
 
+  // Early refusals on the plain read; everything is decided again on the
+  // locked row below.
   const early = await plan(form);
   if (!early.ok) return early;
-
-  const now = deps.clock.now();
-  // The purge count is advisory (submissions keep arriving), so it is taken
-  // once, before the unit of work.
-  let purged = 0;
-  if (settings.retentionMonths < form.settings.retentionMonths) {
-    purged = await deps.stats.countOlderThan(form.id, settings.retentionMonths, now);
-    if (purged > 0 && input.confirmRetentionPurge !== true) {
-      return { ok: false, code: "retention_confirm", count: purged };
-    }
-  }
+  const earlyPurge = await purgeCount(form);
+  if (unconfirmed(earlyPurge)) return { ok: false, code: "retention_confirm", count: earlyPurge };
   if (early.changed.length === 0) return { ok: true, changed: [] };
 
   return deps.uow.run(async (uow): Promise<UpdateSettingsResult> => {
-    // Decided again on the locked row, so a concurrent status change or
-    // publish is neither undone nor bypassed.
+    // Decided again on the locked row, so a concurrent status change, publish
+    // or retention change is neither undone nor bypassed.
     const fresh = await deps.forms.findForUpdate(uow, form.id);
     if (!fresh) return { ok: false, code: "not_found" };
     const decided = await plan(fresh);
     if (!decided.ok) return decided;
+    // The count itself is read at request time: submissions keep arriving.
+    const purged = await purgeCount(fresh);
+    if (unconfirmed(purged)) return { ok: false, code: "retention_confirm", count: purged };
     const { slug, changed } = decided;
     if (changed.length === 0) return { ok: true, changed };
 
@@ -93,14 +95,17 @@ export async function updateSettings(
       { ...base, action: "form_settings_changed", details: { keys: changed.join(",") } },
       now,
     );
-    const from = fresh.settings.retentionMonths;
-    if (purged > 0 && settings.retentionMonths < from) {
+    if (purged > 0) {
       await deps.audit.record(
         uow,
         {
           ...base,
           action: "retention_shortened",
-          details: { from, to: settings.retentionMonths, count: purged },
+          details: {
+            from: fresh.settings.retentionMonths,
+            to: settings.retentionMonths,
+            count: purged,
+          },
         },
         now,
       );

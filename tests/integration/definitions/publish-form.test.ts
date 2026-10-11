@@ -78,8 +78,8 @@ describe("publishForm against Postgres", () => {
     const { formId, revision } = await publishableForm();
 
     const results = await Promise.all([
-      publishForm(deps, actor, { formId, expectedNumber: 1 }),
-      publishForm(deps, actor, { formId, expectedNumber: 1 }),
+      publishForm(deps, actor, { formId, expectedNumber: 1, expectedRevision: revision }),
+      publishForm(deps, actor, { formId, expectedNumber: 1, expectedRevision: revision }),
     ]);
 
     const winners = results.filter((r) => r.ok);
@@ -103,8 +103,12 @@ describe("publishForm against Postgres", () => {
   });
 
   it("leaves the published version immutable", async () => {
-    const { formId } = await publishableForm();
-    const result = await publishForm(deps, actor, { formId, expectedNumber: 1 });
+    const { formId, revision } = await publishableForm();
+    const result = await publishForm(deps, actor, {
+      formId,
+      expectedNumber: 1,
+      expectedRevision: revision,
+    });
     if (!result.ok) throw new Error(result.code);
 
     await expect(

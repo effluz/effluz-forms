@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDefaultRegistry,
-  keySchema,
   parseDraft,
   referencedKeys,
   type Condition,
@@ -11,7 +10,6 @@ import {
   DRAFT_AUDIT_WINDOW_MS,
   duplicateDocument,
   emptyDocument,
-  newKey,
   shouldAuditSave,
   type Draft,
   type IdSource,
@@ -29,24 +27,6 @@ function sequentialIds(): IdSource {
 }
 
 const title = { en: "Camp", es: "Campamento" };
-
-describe("newKey", () => {
-  it("builds a valid key from the prefix and the first 8 hex characters", () => {
-    const key = newKey({ newId: () => "AB12CD34-ef56-4000-8000-000000000000" }, "f");
-    expect(key).toBe("f_ab12cd34");
-    expect(keySchema.safeParse(key).success).toBe(true);
-  });
-
-  it("starts with the requested prefix", () => {
-    const ids = sequentialIds();
-    expect(newKey(ids, "p").startsWith("p_")).toBe(true);
-    expect(newKey(ids, "o").startsWith("o_")).toBe(true);
-  });
-
-  it("surfaces a malformed id immediately", () => {
-    expect(() => newKey({ newId: () => "!!!!!!!!-0000-4000-8000-000000000000" }, "f")).toThrow();
-  });
-});
 
 describe("emptyDocument", () => {
   it("has one empty page, the title and the languages", () => {

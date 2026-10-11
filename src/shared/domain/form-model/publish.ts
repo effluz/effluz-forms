@@ -3,12 +3,13 @@ import {
   type LocalizedText,
   requiredLocales,
 } from "@/shared/domain/localized-text";
-import { referencedKeys, type Condition } from "./condition";
+import { referencedKeys } from "./condition";
 import type { ExclusiveRole } from "./field-type";
 import type { PublishIssue } from "./issues";
 import { LIMITS } from "./limits";
 import type { FieldTypeRegistry } from "./registry";
 import {
+  conditionOwners,
   fieldIndex,
   inputFields,
   parseDraft,
@@ -77,17 +78,14 @@ export function checkDefinition(version: Version, registry: FieldTypeRegistry): 
   }
 
   const index = fieldIndex(version);
-  const pageStart = new Map<string, number>(); // page key -> order of its first field
-  let order = 0;
-  version.pages.forEach((page) => {
-    pageStart.set(page.key, order);
-    order += page.fields.length;
-  });
-
-  const checkCondition = (cond: Condition, ownOrder: number, path: string) => {
-    for (const ref of referencedKeys(cond)) {
+  const owners = new Map(conditionOwners(version).map((owner) => [owner.path, owner]));
+  /** Flags every reference of the condition at `path` that is missing or not earlier. */
+  const checkCondition = (path: string) => {
+    const owner = owners.get(path);
+    if (!owner) return;
+    for (const ref of referencedKeys(owner.condition)) {
       const target = index.get(ref);
-      if (!target || target.order >= ownOrder) push("dangling_condition", path, { ref });
+      if (!target || target.order >= owner.limit) push("dangling_condition", owner.path, { ref });
     }
   };
 
@@ -98,16 +96,14 @@ export function checkDefinition(version: Version, registry: FieldTypeRegistry): 
     const pPath = `pages/${String(pi)}`;
     requireText(page.title, `${pPath}/title`, "unlabeled");
     optionalText(page.description, `${pPath}/description`);
-    if (page.visibility)
-      checkCondition(page.visibility, pageStart.get(page.key) ?? 0, `${pPath}/visibility`);
+    checkCondition(`${pPath}/visibility`);
 
     page.fields.forEach((field: Field, fi) => {
       const fPath = `${pPath}/fields/${String(fi)}`;
       const def = registry.get(field.type);
       if (def.isInput) requireText(field.label, `${fPath}/label`, "unlabeled");
       optionalText(field.help, `${fPath}/help`);
-      if (field.visibility)
-        checkCondition(field.visibility, index.get(field.key)?.order ?? 0, `${fPath}/visibility`);
+      checkCondition(`${fPath}/visibility`);
 
       // A never-hidden field cannot be conditional; consent is the only such type (ADR 0016).
       if (def.neverHidden && (field.visibility || page.visibility)) push("consent_missing", fPath);

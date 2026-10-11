@@ -23,6 +23,17 @@ export interface FormActivity {
 const DEFAULT_LIMIT = 50;
 
 /**
+ * A whole page size of at least one; a missing or non-finite limit is the
+ * default. One row more than the page is read to learn `hasMore`, so the page
+ * stays below the reader's cap.
+ */
+function pageSizeOf(limit: number | undefined): number {
+  const requested =
+    limit !== undefined && Number.isFinite(limit) ? Math.floor(limit) : DEFAULT_LIMIT;
+  return Math.min(Math.max(1, requested), AUDIT_PAGE_MAX - 1);
+}
+
+/**
  * The audit log filtered to one form, newest first, with the actors for the
  * filter menu. See specs/ui-ux/manager.md, "Activity tab".
  */
@@ -31,8 +42,7 @@ export async function formActivity(
   formId: string,
   filter: ActivityFilter,
 ): Promise<FormActivity> {
-  // One row more than the page is read to learn `hasMore`, so the page stays below the reader's cap.
-  const pageSize = Math.min(filter.limit ?? DEFAULT_LIMIT, AUDIT_PAGE_MAX - 1);
+  const pageSize = pageSizeOf(filter.limit);
   const query: AuditQuery = {
     targetId: formId,
     ...(filter.action !== undefined ? { action: filter.action } : {}),

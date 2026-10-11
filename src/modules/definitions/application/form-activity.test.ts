@@ -71,6 +71,29 @@ describe("formActivity", () => {
     expect(first).toEqual({ entries: [], actors: [`actor-of-${FORM_ID}`], hasMore: false });
   });
 
+  it.each([
+    [0, 2],
+    [-5, 2],
+    [2.7, 3],
+    [Number.NaN, 51],
+    [Number.POSITIVE_INFINITY, 51],
+    [1000, 200],
+  ])("clamps a limit of %s to a page the reader accepts (reads %s)", async (limit, read) => {
+    const calls: AuditQuery[] = [];
+    const reader: AuditLogReader = {
+      listByTarget: (query) => {
+        calls.push(query);
+        return Promise.resolve([]);
+      },
+      actorsForTarget: () => Promise.resolve([]),
+    };
+    const deps: DefinitionsDeps = { ...makeDefinitionsDeps(), auditReader: reader };
+
+    await formActivity(deps, FORM_ID, { limit });
+
+    expect(calls).toEqual([{ targetId: FORM_ID, limit: read }]);
+  });
+
   it("passes the (createdAt, id) cursor through", async () => {
     const calls: AuditQuery[] = [];
     const reader: AuditLogReader = {

@@ -1,7 +1,7 @@
 import type { FieldTypeRegistry, Key, Version } from "@/shared/domain/form-model";
 import { fieldIndex, inputFields } from "@/shared/domain/form-model";
 
-/** What changed between two versions, for the publish summary. See specs/use-cases/definitions.md. */
+/** What changed between two versions, for the publish summary. See specs/use-cases/publish-form.md, "Main flow: publish", step 3. */
 export interface VersionDiff {
   addedKeys: Key[];
   removedKeys: Key[];

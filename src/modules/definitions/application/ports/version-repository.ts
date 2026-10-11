@@ -1,7 +1,7 @@
 import type { Version } from "@/shared/domain/form-model";
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 
-/** A published, immutable version of a form. See specs/form-definition.md, "Versioning". */
+/** A published, immutable version of a form. See specs/form-definition.md, "Concepts". */
 export interface FormVersion {
   id: string;
   formId: string;

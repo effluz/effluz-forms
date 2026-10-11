@@ -1,6 +1,6 @@
 import {
-  asKey,
   buildDefaultRegistry,
+  newKey,
   parseDraft,
   type Clause,
   type Condition,
@@ -11,7 +11,7 @@ import {
 } from "@/shared/domain/form-model";
 import type { Languages, LocalizedText } from "@/shared/domain/localized-text";
 
-/** The working copy of a form. See specs/form-definition.md, "Versioning". */
+/** The working copy of a form. See specs/form-definition.md, "Concepts". */
 export interface Draft {
   formId: string;
   revision: number;
@@ -25,19 +25,6 @@ export interface Draft {
 /** Structural twin of the application layer's id generator; a domain cannot import it. */
 export interface IdSource {
   newId(): string;
-}
-
-export type KeyPrefix = "p" | "f" | "o";
-
-const KEY_HEX_LENGTH = 8;
-
-/**
- * A page, field or option key: the prefix plus 8 hex characters of a fresh uuid.
- * The space is 32 bits; a collision surfaces as a parse error from parseOrThrow.
- */
-export function newKey(ids: IdSource, prefix: KeyPrefix): Key {
-  const hex = ids.newId().replaceAll("-", "").toLowerCase().slice(0, KEY_HEX_LENGTH);
-  return asKey(`${prefix}_${hex}`);
 }
 
 function parseOrThrow(document: unknown): Version {

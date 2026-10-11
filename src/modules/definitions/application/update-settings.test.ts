@@ -412,6 +412,15 @@ describe("updateSettings", () => {
       });
     }
 
+    /** Rewrites the stored retention and returns the stored settings. */
+    function storeRetention(deps: Deps, formId: string, retentionMonths: number) {
+      const stored = deps.store.forms.get(formId);
+      if (!stored) throw new Error("no form");
+      const settings = { ...stored.settings, retentionMonths };
+      deps.store.forms.set(formId, { ...stored, settings });
+      return settings;
+    }
+
     it("keeps a status change made meanwhile", async () => {
       const deps = makeDefinitionsDeps();
       const formId = await seeded(deps, true);
@@ -467,6 +476,79 @@ describe("updateSettings", () => {
 
       expect(result).toEqual({ ok: false, code: "slug_locked" });
       expect(deps.store.forms.get(formId)?.slug).toBe("sample-form");
+      expect(deps.audit.entries).toEqual([]);
+    });
+
+    it("asks for confirmation when retention was lengthened meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await seeded(deps, true);
+      deps.stats.receive(
+        formId,
+        new Date("2026-01-05T00:00:00Z"),
+        new Date("2026-09-30T00:00:00Z"),
+      );
+      const before = storeRetention(deps, formId, 6);
+      const forms = changeForm(deps, formId, (form) => ({
+        settings: { ...form.settings, retentionMonths: 12 },
+      }));
+
+      const result = await updateSettings({ ...deps, forms }, EDITOR, {
+        formId,
+        settings: { ...before, botChallenge: true },
+      });
+
+      expect(result).toEqual({ ok: false, code: "retention_confirm", count: 1 });
+      expect(deps.store.forms.get(formId)?.settings).toMatchObject({
+        retentionMonths: 12,
+        botChallenge: false,
+      });
+      expect(deps.audit.entries).toEqual([]);
+    });
+
+    it("audits retention_shortened with the locked count once confirmed", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await seeded(deps, true);
+      deps.stats.receive(
+        formId,
+        new Date("2026-01-05T00:00:00Z"),
+        new Date("2026-09-30T00:00:00Z"),
+      );
+      const before = storeRetention(deps, formId, 6);
+      const forms = changeForm(deps, formId, (form) => ({
+        settings: { ...form.settings, retentionMonths: 12 },
+      }));
+
+      const result = await updateSettings({ ...deps, forms }, EDITOR, {
+        formId,
+        settings: { ...before, botChallenge: true },
+        confirmRetentionPurge: true,
+      });
+
+      expect(result).toEqual({ ok: true, changed: ["retentionMonths", "botChallenge"] });
+      expect(deps.audit.entries.map((e) => e.entry)).toContainEqual({
+        action: "retention_shortened",
+        actorEmail: EDITOR.email,
+        targetId: formId,
+        ip: EDITOR.ip,
+        details: { from: 12, to: 6, count: 1 },
+      });
+    });
+
+    it("refuses a prefix change with prefix_locked when the first submission landed meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await seeded(deps, true);
+      const before = await currentSettings(deps, formId);
+      const forms = withConcurrentChange(deps.forms, () => {
+        deps.stats.receive(formId, new Date("2026-10-09T00:00:00Z"));
+      });
+
+      const result = await updateSettings({ ...deps, forms }, EDITOR, {
+        formId,
+        settings: { ...before, referencePrefix: "NEW" },
+      });
+
+      expect(result).toEqual({ ok: false, code: "prefix_locked" });
+      expect(deps.store.forms.get(formId)?.settings.referencePrefix).toBe(before.referencePrefix);
       expect(deps.audit.entries).toEqual([]);
     });
 

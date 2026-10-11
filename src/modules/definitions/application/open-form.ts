@@ -23,10 +23,13 @@ export interface FormOverview {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CLOSING_SOON_DAYS = 7;
 
-/** Only a form that can still be reachable is "closing"; a closed or archived one is not. */
+/**
+ * Only a form that can still be reachable is "closing"; a closed, archived or
+ * never-published one is not.
+ */
 function closingInDays(form: Form, now: Date): number | null {
   const { closesAt } = form.settings;
-  if (closesAt === undefined) return null;
+  if (closesAt === undefined || form.currentVersionId === null) return null;
   if (form.status === "closed" || form.status === "archived") return null;
   const remaining = Date.parse(closesAt) - now.getTime();
   if (remaining <= 0) return null;

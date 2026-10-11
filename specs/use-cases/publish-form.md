@@ -34,10 +34,11 @@ manager (close, reopen, archive, unarchive).
    revision advances. Audit entry `form_published`.
 5. The public URL `/f/<slug>` serves the new version from the next request.
 
-The publish call carries the version number the preview announced. It is
-refused, in this order, as `not_found`, `archived`, `conflict` (the number is
-no longer the next one), `issues` (with the list of step 2) or `unchanged`;
-the first refusal found is the one reported.
+The publish call carries the version number the preview announced and the
+draft revision it checked. It is refused, in this order, as `not_found`,
+`archived`, `conflict` (the number is no longer the next one, or the draft
+was saved since the preview), `issues` (with the list of step 2) or
+`unchanged`; the first refusal found is the one reported.
 
 ## Main flow: close, reopen, archive
 
@@ -60,19 +61,23 @@ Each writes its audit entry.
   message. Dates narrow a `published` status, they never change it.
 - **Publishing with no changes since the last version.** Refused with a
   message; nothing to publish.
-- **Concurrent publish.** A publish that finds, once it holds the form and
-  draft rows, that another publish or a draft save landed after its preview
-  is refused and asked to reload. The version number uniqueness constraint
-  backs this up.
+- **Concurrent publish.** The publish carries the preview's draft revision
+  and version number. If either moved (another publish, or a draft save after
+  the preview), checked first on a plain read and again once it holds the
+  form and draft rows, it is refused as `conflict` and asked to reload. The
+  version number uniqueness constraint backs this up.
 - **Publishing an archived form.** Refused as `archived`; unarchive it first.
 - **A lifecycle action the status no longer allows**, because someone else
   acted first, is refused as `invalid_transition` and changes nothing.
 - **Deleting a form.** Only a form with zero submissions and no published
   version can be deleted, from the manager, with confirmation by typing the
   form's slug exactly, and audit entry `form_deleted`. A wrong slug is
-  refused as `slug_mismatch`, and a form that was published or received
-  submissions meanwhile as `not_allowed`. Deleting removes the form with its
-  draft; the audit entries remain. Anything else is archived.
+  refused as `slug_mismatch`, and one that no longer qualifies as
+  `not_allowed`: the form is re-read under the lock, so a publish that landed
+  meanwhile is caught, and the submission count is read at request time (a
+  submission needs a published version, which the re-read sees). Deleting
+  removes the form with its draft; the audit entries remain. Anything else is
+  archived.
 
 ## Rules
 

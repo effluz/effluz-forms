@@ -1,4 +1,5 @@
-// The only import surface other modules may use.
+// Entry point of the shared form model (ADR 0022). Import this path only; the files
+// behind it are internal.
 export { buildDefaultRegistry, fieldTypes, operatorsFor } from "./field-types";
 export type { FieldTypeRegistry } from "./registry";
 export { createRegistry, UnknownFieldTypeError } from "./registry";
@@ -12,8 +13,8 @@ export type {
 } from "./field-type";
 export { defineFieldType, fieldTypeIds } from "./field-type";
 export { LIMITS } from "./limits";
-export { keySchema, asKey } from "./keys";
-export type { Key } from "./keys";
+export { keySchema, asKey, newKey } from "./keys";
+export type { Key, KeyPrefix } from "./keys";
 export type { ValidationIssue, ValidationCode, PublishIssue, PublishCode } from "./issues";
 export { validationCodes, publishCodes } from "./issues";
 export { OPERATORS, operatorSchema } from "./operators";
@@ -22,8 +23,8 @@ export { conditionSchema, evaluateCondition, referencedKeys } from "./condition"
 export type { Condition, Clause } from "./condition";
 export { ruleSchema, graphemeLength } from "./rules";
 export type { Rule, RuleId, RuleContext } from "./rules";
-export { versionSchema, parseDraft, inputFields, fieldIndex } from "./version";
-export type { Version, Page, Field, ParseIssue, ParseResult } from "./version";
+export { versionSchema, parseDraft, inputFields, fieldIndex, conditionOwners } from "./version";
+export type { Version, Page, Field, ParseIssue, ParseResult, ConditionOwner } from "./version";
 export { evaluateVisibility } from "./visibility";
 export type { Visibility } from "./visibility";
 export { validateSubmission, isAbsent } from "./submission";

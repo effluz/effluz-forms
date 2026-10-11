@@ -14,6 +14,8 @@ import type { FormVersion } from "./ports/version-repository";
 /** What the editor confirms before publishing. See specs/use-cases/publish-form.md, "Main flow: publish", step 3. */
 export interface PublishPreview {
   nextNumber: number;
+  /** The draft revision this preview checked; the publish carries it back. */
+  draftRevision: number;
   pages: number;
   fields: number;
   languages: Languages;
@@ -35,6 +37,8 @@ export interface PublishFormInput {
   formId: string;
   /** The number the preview announced; anything else means someone published meanwhile. */
   expectedNumber: number;
+  /** The draft revision the preview checked; anything else means a save landed meanwhile. */
+  expectedRevision: number;
 }
 
 interface PublishState {
@@ -95,6 +99,7 @@ export async function publishPreview(
 
   return {
     nextNumber: latestNumber + 1,
+    draftRevision: draft.revision,
     ...countFields(document, deps.registry),
     languages: document.languages,
     issues,
@@ -107,8 +112,8 @@ export async function publishPreview(
  * Publishes the draft as the next immutable version in one unit of work: the
  * version row, the form's current version and status, a fresh draft and the
  * `form_published` audit entry. The checks run on a plain read first; the unit
- * of work re-reads the form and draft with row locks and refuses when either
- * moved since.
+ * of work re-reads the form and draft with row locks and refuses when the
+ * version or the draft revision moved since the preview.
  * See specs/use-cases/publish-form.md, "Main flow: publish", step 4, and
  * "Concurrent publish".
  */
@@ -123,7 +128,9 @@ export async function publishForm(
   // An archived form must be unarchived first; see specs/form-definition.md, "Lifecycle".
   if (form.status === "archived") return { ok: false, code: "archived" };
   // Checked next: a stale preview must reload whatever else is true of the draft.
-  if (input.expectedNumber !== latestNumber + 1) return { ok: false, code: "conflict" };
+  if (input.expectedNumber !== latestNumber + 1 || draft.revision !== input.expectedRevision) {
+    return { ok: false, code: "conflict" };
+  }
   if (issues.length > 0) return { ok: false, code: "issues", issues };
   if (isUnchanged(current, draft.document)) return { ok: false, code: "unchanged" };
 
@@ -145,12 +152,12 @@ export async function publishForm(
     const freshDraft = await deps.drafts.findForUpdate(uow, form.id);
     if (!freshDraft) return { ok: false, code: "not_found" };
     if (fresh.status === "archived") return { ok: false, code: "archived" };
-    // Another publish, or an editor's save, landed after our read: the
-    // previewed number or the checked document no longer holds.
+    // Another publish landed after our read, or an editor's save after the
+    // preview: the previewed number or the checked document no longer holds.
     const versionMoved =
       fresh.currentVersionId !== form.currentVersionId ||
       fresh.currentVersionNumber !== form.currentVersionNumber;
-    if (versionMoved || freshDraft.revision !== draft.revision) {
+    if (versionMoved || freshDraft.revision !== input.expectedRevision) {
       return { ok: false, code: "conflict" };
     }
 

@@ -1,15 +1,16 @@
 import { z } from "zod";
 import {
+  conditionOwners,
   conditionSchema,
   fieldIndex,
   fieldTypeIds,
   keySchema,
   LIMITS,
   mediaIdSchema,
+  newKey,
   parseDraft,
   referencedKeys,
   ruleSchema,
-  type Condition,
   type Field,
   type FieldTypeId,
   type FieldTypeRegistry,
@@ -25,7 +26,7 @@ import {
   type Locale,
   type LocalizedText,
 } from "@/shared/domain/localized-text";
-import { newKey, type IdSource } from "./draft";
+import type { IdSource } from "./draft";
 
 const text = localizedTextSchema;
 const optionalCondition = conditionSchema.nullable().optional();
@@ -167,32 +168,6 @@ const isInput = (registry: FieldTypeRegistry, type: string): boolean =>
 
 const inputCount = (registry: FieldTypeRegistry, page: Page): number =>
   page.fields.filter((f) => isInput(registry, f.type)).length;
-
-/** A visibility condition and the field order its references must stay below. */
-interface ConditionOwner {
-  key: string;
-  condition: Condition;
-  limit: number;
-}
-
-/**
- * Every condition in document order, page before its fields. A field may
- * reference only earlier fields; a page only fields on earlier pages, as in
- * `checkDefinition` (specs/form-definition.md).
- */
-function conditionOwners(doc: Version): ConditionOwner[] {
-  const owners: ConditionOwner[] = [];
-  let order = 0;
-  for (const page of doc.pages) {
-    if (page.visibility) owners.push({ key: page.key, condition: page.visibility, limit: order });
-    for (const field of page.fields) {
-      if (field.visibility)
-        owners.push({ key: field.key, condition: field.visibility, limit: order });
-      order++;
-    }
-  }
-  return owners;
-}
 
 /** Checks the condition owned by `key` in `doc`, if it has one. */
 function checkOwnCondition(doc: Version, key: string): Rejected | undefined {
