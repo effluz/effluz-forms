@@ -209,6 +209,14 @@ describe("layer boundaries", () => {
     expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });
 
+  it("forbids definitions importing submissions, which would make a cycle", async () => {
+    const rules = await lintVirtual(
+      "src/modules/definitions/application/boundary-probe-subs.ts",
+      `import { viewForm } from "@/modules/submissions/application";\nexport const v = viewForm;\n`,
+    );
+    expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
+  });
+
   it("forbids notifications importing any other module", async () => {
     const rules = await lintVirtual(
       "src/modules/notifications/application/boundary-probe-subs.ts",
