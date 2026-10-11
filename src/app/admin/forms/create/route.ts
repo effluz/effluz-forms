@@ -40,10 +40,13 @@ export async function POST(request: Request): Promise<Response> {
   if (!languages.success) {
     return new Response(null, { status: 400, headers: { "Cache-Control": "no-store" } });
   }
+  // A title typed for a language the mode does not use is dropped here, so it is
+  // neither saved nor carried back to the dialog.
+  const used = requiredLocales(languages.data);
   const typed: NewFormValues = {
     kind: text(form, "kind") === "duplicate" ? "duplicate" : "blank",
-    titleEn: text(form, "title_en").trim(),
-    titleEs: text(form, "title_es").trim(),
+    titleEn: used.includes("en") ? text(form, "title_en").trim() : "",
+    titleEs: used.includes("es") ? text(form, "title_es").trim() : "",
     languages: languages.data,
     slug: text(form, "slug").trim(),
     source: text(form, "source"),

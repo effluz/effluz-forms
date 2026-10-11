@@ -191,7 +191,12 @@ function Moment({ at, timezone }: { at: Date | string | null; timezone: string }
   return (
     <time className={local.time} dateTime={date.toISOString()}>
       {zoned}
-      {zoned === utc ? null : <span className={local.utc}>{utc}</span>}
+      {zoned === utc ? null : (
+        <>
+          {" "}
+          <span className={local.utc}>{utc}</span>
+        </>
+      )}
     </time>
   );
 }

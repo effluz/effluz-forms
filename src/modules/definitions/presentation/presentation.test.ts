@@ -154,10 +154,10 @@ describe("FormsList", () => {
     const [last] = tags(html, "time", 'dateTime="2026-10-09T14:30:00.000Z"');
     expect(last).not.toContain("title=");
     expect(html).toMatch(
-      /<time [^>]*>2026-10-09 09:30 America\/Panama<span class="[^"]*">2026-10-09 14:30 UTC<\/span><\/time>/,
+      /<time [^>]*>2026-10-09 09:30 America\/Panama <span class="[^"]*">2026-10-09 14:30 UTC<\/span><\/time>/,
     );
     expect(html).toMatch(
-      /<time [^>]*>2026-10-19 23:59 America\/Panama<span class="[^"]*">2026-10-20 04:59 UTC<\/span><\/time>/,
+      /<time [^>]*>2026-10-19 23:59 America\/Panama <span class="[^"]*">2026-10-20 04:59 UTC<\/span><\/time>/,
     );
   });
 

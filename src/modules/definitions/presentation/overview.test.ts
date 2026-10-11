@@ -70,6 +70,13 @@ const tags = (html: string, element: string, ...attrs: string[]) =>
   (html.match(new RegExp(`<${element}\\b[^>]*>`, "g")) ?? []).filter((tag) =>
     attrs.every((attr) => tag.includes(attr)),
   );
+/** The text of each date moment as rendered: markup removed, whitespace kept. */
+const moments = (html: string) =>
+  [
+    ...html.matchAll(
+      /<span class="[^"]*moment[^"]*">(<time.*?<\/time>(?: <span[^>]*>.*?<\/span>)?)<\/span>/g,
+    ),
+  ].map((m) => (m[1] ?? "").replace(/<[^>]+>/g, ""));
 const hrefs = (html: string) =>
   [...html.matchAll(/href="([^"]*)"/g)].map((m) => m[1]?.replaceAll("&amp;", "&"));
 
@@ -103,12 +110,17 @@ describe("FormOverview", () => {
     const html = render();
     expect(html).toContain("English and Spanish");
     expect(html).toContain("Opens");
-    expect(html).toContain("2026-10-01 09:00");
-    expect(html).toContain("2026-10-01 14:00 UTC");
     expect(html).toContain("Closes");
-    expect(html).toContain("2026-10-12 23:59");
-    expect(html).toContain("2026-10-13 04:59 UTC");
-    expect(html).toContain("America/Panama");
+    expect(moments(html)).toEqual([
+      "2026-10-01 09:00 America/Panama 2026-10-01 14:00 UTC",
+      "2026-10-12 23:59 America/Panama 2026-10-13 04:59 UTC",
+    ]);
+  });
+
+  it("shows UTC once for a form kept in UTC", () => {
+    const settings = { ...overview().form.settings, timezone: "UTC" };
+    const html = render({ overview: overview({}, { settings }) });
+    expect(moments(html)).toEqual(["2026-10-01 14:00 UTC", "2026-10-13 04:59 UTC"]);
   });
 
   it("notes when the form closes within seven days", () => {

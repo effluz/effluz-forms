@@ -132,6 +132,13 @@ describe("POST /admin/forms/create", () => {
     expect(definitions.store.forms.get(fakeUuid(1))?.title).not.toHaveProperty("en");
   });
 
+  it("does not carry a title typed for an unused language back on a refusal", async () => {
+    const res = await create({ ...BLANK, languages: "es", slug: "Not A Slug" });
+    const query = refusal(res);
+    expect(query).toMatchObject({ error: "slug_format", title_es: "Historias de primavera" });
+    expect(query).not.toHaveProperty("title_en");
+  });
+
   it("goes back to the dialog with slug_taken when the link name is in use", async () => {
     await seedForm(definitions, { slug: "spring-stories" });
     const res = await create({ ...BLANK, slug: "spring-stories" });

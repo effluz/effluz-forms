@@ -299,13 +299,21 @@ function OverviewFacts({ overview }: { overview: Overview }) {
   );
 }
 
-/** A date in the form's time zone, named, with the UTC time beside it. */
+/**
+ * A date in the form's time zone, named, with the UTC time beside it unless the
+ * zone is UTC. See specs/ui-ux/manager.md, "Form overview".
+ */
 function Moment({ iso, timezone }: { iso: string; timezone: string }) {
-  const { local: text, utc } = formatDate(iso, timezone);
+  const { local: zoned, utc } = formatDate(iso, timezone);
   return (
     <span className={local.moment}>
-      <time dateTime={new Date(iso).toISOString()}>{text}</time> ({timezone})
-      <span className={local.utc}>{utc}</span>
+      <time dateTime={new Date(iso).toISOString()}>{zoned}</time>
+      {zoned === utc ? null : (
+        <>
+          {" "}
+          <span className={local.utc}>{utc}</span>
+        </>
+      )}
     </span>
   );
 }
