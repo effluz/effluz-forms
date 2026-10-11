@@ -1,5 +1,5 @@
-import type { FieldTypeRegistry, Key, Version } from "@/modules/form-model/application";
-import { fieldIndex, inputFields } from "@/modules/form-model/application";
+import type { FieldTypeRegistry, Key, Version } from "@/shared/domain/form-model";
+import { fieldIndex, inputFields } from "@/shared/domain/form-model";
 
 /** What changed between two versions, for the publish summary. See specs/use-cases/definitions.md. */
 export interface VersionDiff {

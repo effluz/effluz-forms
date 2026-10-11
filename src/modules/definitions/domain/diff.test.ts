@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDefaultRegistry, parseDraft, type Version } from "@/modules/form-model/application";
+import { buildDefaultRegistry, parseDraft, type Version } from "@/shared/domain/form-model";
 import { countFields, diffVersions, sameDefinition } from "./diff";
 
 const registry = buildDefaultRegistry();

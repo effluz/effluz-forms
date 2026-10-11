@@ -9,7 +9,7 @@ import {
   type FormSettings,
 } from "./settings";
 
-const ctx = { allowedRecipientDomains: ["partner.example"] };
+const ctx = { allowedRecipientDomains: ["effluz.com", "partner.example"] };
 
 function settings(overrides: Partial<FormSettings> = {}): FormSettings {
   return { ...defaultSettings("historias-bebe"), ...overrides };
@@ -93,6 +93,13 @@ describe("checkSettings", () => {
       notificationRecipients: ["someone@effluz.com", "partner@partner.example"],
     });
     expect(checkSettings(s, ctx)).toEqual([]);
+  });
+
+  it("refuses an effluz.com recipient when the list does not contain the domain", () => {
+    const s = settings({ notificationRecipients: ["someone@effluz.com"] });
+    expect(checkSettings(s, { allowedRecipientDomains: ["partner.example"] })).toEqual([
+      { code: "recipient_domain", path: "notificationRecipients.0", params: { index: 0 } },
+    ]);
   });
 
   it("flags a recipient outside the allowed domains with its index", () => {

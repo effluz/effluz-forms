@@ -1,16 +1,9 @@
 import { z } from "zod";
 
+import { LIMITS } from "@/shared/domain/form-model";
+
 export const CADENCES = ["per_submission", "daily"] as const;
 export const DEFAULT_TIMEZONE = "America/Panama";
-
-/** Staff notifications may always go to this domain; partners come from configuration. */
-const HOME_DOMAIN = "effluz.com";
-/**
- * Retention bounds from specs/form-definition.md. They mirror `LIMITS` of the
- * form-model module, which domain code may not import (domain depends on
- * nothing outside itself); the application layer asserts they stay equal.
- */
-export const RETENTION_MONTHS = { min: 1, max: 36, default: 12 } as const;
 
 const MAX_RECIPIENTS = 20;
 const PREFIX_PATTERN = /^[A-Z0-9]{2,6}$/;
@@ -27,7 +20,7 @@ export const settingsSchema = z.object({
   digestHour: z.number().int().min(0).max(23).default(9),
   timezone: z.string().default(DEFAULT_TIMEZONE),
   referencePrefix: z.string(),
-  retentionMonths: z.number().int().default(RETENTION_MONTHS.default),
+  retentionMonths: z.number().int().default(LIMITS.retentionMonthsDefault),
   opensAt: z.iso.datetime().optional(),
   closesAt: z.iso.datetime().optional(),
   botChallenge: z.boolean().default(false),
@@ -83,8 +76,9 @@ export function isTimeZone(id: string): boolean {
 }
 
 /**
- * Semantic checks on settings. Recipients on effluz.com are always allowed;
- * `allowedRecipientDomains` adds the configured partner domains.
+ * Semantic checks on settings. A recipient's domain is allowed only when it is
+ * in `allowedRecipientDomains` (compared case-insensitively); configuration
+ * puts the Workspace hosted domain first in that list.
  * See specs/use-cases/manage-form-settings.md, "Main flow".
  */
 export function checkSettings(
@@ -92,10 +86,7 @@ export function checkSettings(
   ctx: { allowedRecipientDomains: readonly string[] },
 ): SettingsIssue[] {
   const issues: SettingsIssue[] = [];
-  const allowed = new Set([
-    HOME_DOMAIN,
-    ...ctx.allowedRecipientDomains.map((d) => d.toLowerCase()),
-  ]);
+  const allowed = new Set(ctx.allowedRecipientDomains.map((d) => d.toLowerCase()));
 
   if (s.notificationRecipients.length > MAX_RECIPIENTS) {
     issues.push({
@@ -120,13 +111,13 @@ export function checkSettings(
   }
   if (
     !Number.isInteger(s.retentionMonths) ||
-    s.retentionMonths < RETENTION_MONTHS.min ||
-    s.retentionMonths > RETENTION_MONTHS.max
+    s.retentionMonths < LIMITS.retentionMonthsMin ||
+    s.retentionMonths > LIMITS.retentionMonthsMax
   ) {
     issues.push({
       code: "retention_range",
       path: "retentionMonths",
-      params: { min: RETENTION_MONTHS.min, max: RETENTION_MONTHS.max },
+      params: { min: LIMITS.retentionMonthsMin, max: LIMITS.retentionMonthsMax },
     });
   }
   if (s.opensAt !== undefined && s.closesAt !== undefined) {
