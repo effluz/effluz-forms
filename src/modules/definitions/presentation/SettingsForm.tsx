@@ -109,7 +109,7 @@ export function SettingsForm(props: SettingsFormProps) {
         <Bilingual k={message.key} vars={message.vars} />
       </p>
     ));
-  /** A checkbox's id and description: its error messages first, then `describedBy`. */
+  /** A control's id, invalid marker and description: its error messages first, then `describedBy`. */
   const aria = (field: Field, describedBy: string[]): ControlProps => {
     const errors = errorsOn(field);
     const ids = [...errors.map((message) => message.id), ...describedBy];
@@ -129,6 +129,7 @@ export function SettingsForm(props: SettingsFormProps) {
     </p>
   );
 
+  const cadenceInvalid = errorsOn("cadence").length > 0;
   const zones = props.timezones.includes(values.timezone)
     ? props.timezones
     : [values.timezone, ...props.timezones];
@@ -201,11 +202,17 @@ export function SettingsForm(props: SettingsFormProps) {
               name={FIELD.cadence}
               value="per_submission"
               checked={values.cadence !== "daily"}
+              invalid={cadenceInvalid}
             >
               <Bilingual k="set.cadence_each" />
             </Choice>
             <div className={own.row}>
-              <Choice name={FIELD.cadence} value="daily" checked={values.cadence === "daily"}>
+              <Choice
+                name={FIELD.cadence}
+                value="daily"
+                checked={values.cadence === "daily"}
+                invalid={cadenceInvalid}
+              >
                 <span id={id("hour", "label")}>
                   <Bilingual k="set.cadence_daily" />
                 </span>
@@ -270,14 +277,6 @@ export function SettingsForm(props: SettingsFormProps) {
                   }}
                 />
               </p>
-              <button
-                className={cx(styles.primary, own.confirm)}
-                type="submit"
-                name={FIELD.confirm}
-                value="1"
-              >
-                <Bilingual k="set.save" />
-              </button>
             </Banner>
           ) : null}
           <div className={styles.field}>
@@ -408,9 +407,22 @@ export function SettingsForm(props: SettingsFormProps) {
               <Bilingual k="set.discard_warn" />
             </p>
           ) : null}
+          {/* Save comes first in source order: it is the form's default button, so
+              Enter in a field saves without ever confirming a purge. */}
           <button className={styles.primary} type="submit">
             <Bilingual k="set.save" />
           </button>
+          {props.retentionConfirm ? (
+            <button
+              className={styles.destructive}
+              type="submit"
+              name={FIELD.confirm}
+              value="1"
+              aria-describedby={RETENTION_WARN_ID}
+            >
+              <Bilingual k="set.retention_confirm" />
+            </button>
+          ) : null}
         </div>
       </form>
     </section>
@@ -461,7 +473,13 @@ function Section(props: { k: CopyKey; children: ReactNode }) {
   );
 }
 
-function Choice(props: { name: string; value: string; checked: boolean; children: ReactNode }) {
+function Choice(props: {
+  name: string;
+  value: string;
+  checked: boolean;
+  invalid: boolean;
+  children: ReactNode;
+}) {
   return (
     <label className={local.choice}>
       <input
@@ -469,6 +487,7 @@ function Choice(props: { name: string; value: string; checked: boolean; children
         name={props.name}
         value={props.value}
         {...(props.checked ? { defaultChecked: true } : {})}
+        {...(props.invalid ? { "aria-invalid": true } : {})}
       />
       <span>{props.children}</span>
     </label>

@@ -57,6 +57,8 @@ export const SETTINGS_STATE_COOKIE = "effluz_settings_state";
 export const SETTINGS_STATE_MAX_AGE_SECONDS = 600;
 /** Below the 4 KB a browser keeps per cookie, with room for its attributes. */
 const MAX_ENCODED_LENGTH = 3400;
+/** The most issues the cookie keeps; a form has far fewer fields than this. */
+const MAX_ISSUES = 20;
 
 /** The posted field names; the settings ones are the setting keys. */
 export const FIELD = {
@@ -305,10 +307,15 @@ const envelopeSchema = z.object({ at: z.string(), state: stateSchema });
 
 /**
  * A refused save's state for `SETTINGS_STATE_COOKIE`, tagged with `at`, the
- * value the redirect carries in `refused`. When it would not fit in a cookie,
- * the submitted values are dropped and the tab shows the stored ones.
+ * value the redirect carries in `refused`. Only the first 20 issues are kept.
+ * When it would not fit in a cookie, the submitted values are dropped and the
+ * tab shows the stored ones.
  */
-export function encodeSettingsState(at: string, state: SettingsFormState): string {
+export function encodeSettingsState(at: string, given: SettingsFormState): string {
+  const state: SettingsFormState =
+    given.issues !== undefined && given.issues.length > MAX_ISSUES
+      ? { ...given, issues: given.issues.slice(0, MAX_ISSUES) }
+      : given;
   const encode = (value: SettingsFormState) =>
     Buffer.from(JSON.stringify({ at, state: value })).toString("base64url");
   const full = encode(state);

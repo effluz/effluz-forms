@@ -5,7 +5,8 @@
  * token from design-system/tokens.json (staff surfaces), named in a comment.
  */
 
-/* The tab body: one column, at most 720 px wide so lines stay readable. */
+/* The tab body: one column, at most size.drawerWidth (720 px) wide so lines
+ * stay readable. */
 .settings {
   max-width: 720px;
 }
@@ -79,19 +80,22 @@
   gap: 8px 12px;
 }
 
-/* The number of months: wide enough for two digits and the spinner. */
+/* The number of months: 96 px is space.8 plus space.6 (64 + 32), wide enough
+ * for two digits and the spinner. */
 .months {
   width: 96px;
 }
 
-/* The prefix: six characters in font.family.mono. */
+/* The prefix: six characters in font.family.mono; 160 px is space.8 times
+ * 2.5, wide enough for six capitals at font.size.staff.body. */
 .prefix {
   max-width: 160px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   text-transform: uppercase;
 }
 
-/* The recipients text area: space.2 and space.3 padding, about four lines tall. */
+/* The recipients text area: space.2 and space.3 padding; 120 px is four lines
+ * at font.lineHeight.body (1.6) of font.size.staff.body (15 px) plus padding. */
 .textarea {
   min-height: 120px;
   padding: 8px 12px;
@@ -106,8 +110,9 @@
   cursor: not-allowed;
 }
 
-/* One checkbox and its label: a 44 px row, space.2 gap, a 20 px control in
- * color.action.primary.bg. */
+/* One checkbox and its label: a size.touchTarget (44 px) row, space.2 gap, a
+ * 24 px control (design-system/components.md, "Radio and checkbox"), the same
+ * size as the radios, in color.action.primary.bg. */
 .check {
   display: flex;
   align-items: center;
@@ -117,8 +122,8 @@
 
 .check input {
   flex: none;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   margin: 0;
   accent-color: #372549;
 }
@@ -128,16 +133,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The warning banner's confirm button sits under its text, space.3 apart. */
-.confirm {
-  margin-top: 12px;
-}
-
 .warnText {
   margin: 0;
 }
 
-/* Save and the unsaved-changes note: right aligned, space.3 gap. */
+/* Save, the purge confirmation and the unsaved-changes note: right aligned,
+ * space.3 gap. */
 .footer {
   display: flex;
   flex-wrap: wrap;

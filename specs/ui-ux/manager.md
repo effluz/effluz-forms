@@ -197,7 +197,10 @@ First pass, without JavaScript:
   open and close times are entered in it; the daily summary hour uses it
   too. Each set time also shows in UTC.
 - Shortening retention below existing submissions shows `set.retention_warn`
-  in a warning banner with a second Save button that confirms the purge.
+  in a warning banner. The footer then shows a second, destructive button,
+  `set.retention_confirm`, after Save and described by the warning, that
+  confirms the purge. Save stays the form's first submit button, so Enter in
+  a field never confirms a purge.
 - A save that succeeds returns to the tab with a success banner,
   `set.saved`, in place of the toast. `set.discard_warn` shows beside Save
   after a refused save. The warning on navigating away with unsaved edits
@@ -495,6 +498,7 @@ wrong CSRF token.
 | set.months | months | meses |
 | set.retention_hint | Counted from each submission. Deletion is permanent. | Se cuenta desde cada respuesta. La eliminación es permanente. |
 | set.retention_warn | Shortening to {n} months will delete {count} submissions on the next run. | Reducir a {n} meses eliminará {count} respuestas en la próxima ejecución. |
+| set.retention_confirm | Delete them and save | Eliminarlas y guardar |
 | set.prefix | Reference prefix | Prefijo de referencia |
 | set.prefix_hint | Used in reference numbers and folder names. Fixed after the first submission. | Se usa en los números de referencia y nombres de carpeta. Fijo después de la primera respuesta. |
 | set.availability | Availability | Disponibilidad |

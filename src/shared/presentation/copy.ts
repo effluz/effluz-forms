@@ -134,6 +134,7 @@ export const copy = {
     en: "Shortening to {n} months will delete {count} submissions on the next run.",
     es: "Reducir a {n} meses eliminará {count} respuestas en la próxima ejecución.",
   },
+  "set.retention_confirm": { en: "Delete them and save", es: "Eliminarlas y guardar" },
   "set.prefix": { en: "Reference prefix", es: "Prefijo de referencia" },
   "set.prefix_hint": {
     en: "Used in reference numbers and folder names. Fixed after the first submission.",

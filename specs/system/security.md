@@ -105,7 +105,9 @@ The step-by-step flow is in `use-cases/sign-in.md`.
 - **CSRF.** Each session has a random token issued at sign-in and stored with
   it. Every state-changing admin form embeds it in a hidden `csrf` field, and
   the server compares it with the session's token in constant time. A mismatch
-  answers `403` and leaves the session alone. Today the only such form is
+  answers `403` and leaves the session alone. The settings server action
+  instead refuses a mismatched token with a redirect to the tab and an
+  out-of-date banner rather than a `403`. Today the only such form is
   sign-out; every later state-changing admin route follows the same rule.
 - Sign-out destroys the server record, not just the cookie. A sign-out POST
   that arrives without the session cookie changes nothing, writes no audit

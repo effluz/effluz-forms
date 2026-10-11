@@ -267,6 +267,16 @@ describe("encodeSettingsState and decodeSettingsState", () => {
     expect(raw.length).toBeLessThan(3500);
     expect(decodeSettingsState(raw, "1")).toEqual({ issues: state.issues });
   });
+
+  it("keeps the first 20 issues so the cookie can never outgrow the browser limit", () => {
+    const many = Array.from({ length: 60 }, (_, index) => ({
+      code: "malformed" as const,
+      path: `notificationRecipients.${String(index)}`,
+    }));
+    const raw = encodeSettingsState("1", { issues: many });
+    expect(decodeSettingsState(raw, "1")?.issues).toEqual(many.slice(0, 20));
+    expect(raw.length).toBeLessThan(3400);
+  });
 });
 
 describe("TIMEZONES", () => {
@@ -488,9 +498,38 @@ describe("SettingsForm", () => {
     const confirm = tagWith(html, "button", ['name="confirmRetentionPurge"']);
     expect(confirm).toContain('type="submit"');
     expect(confirm).toContain('value="1"');
-    expect(html.slice(html.indexOf(confirm) + confirm.length)).toMatch(/^Save settings/);
+    expect(html.slice(html.indexOf(confirm) + confirm.length)).toMatch(/^Delete them and save/);
     expect(describedBy(control(html, "retentionMonths"))).toContain("settings-retention-warn");
     expect(render()).not.toContain("confirmRetentionPurge");
+  });
+
+  it("never lets Enter confirm a purge: the first submit button is the ordinary Save", () => {
+    const html = render({ retentionConfirm: { count: 4, months: 6 } });
+    const firstSubmit = html.match(/<button [^>]*type="submit"[^>]*>/)?.[0] ?? "";
+    expect(firstSubmit).not.toContain("confirmRetentionPurge");
+    expect(html.slice(html.indexOf(firstSubmit) + firstSubmit.length)).toMatch(/^Save settings/);
+    expect(html.indexOf(firstSubmit)).toBeLessThan(html.indexOf('name="confirmRetentionPurge"'));
+  });
+
+  it("describes the confirm button by the warning text", () => {
+    const html = render({ retentionConfirm: { count: 4, months: 6 } });
+    const confirm = tagWith(html, "button", ['name="confirmRetentionPurge"']);
+    const warningId = describedBy(confirm)[0] ?? "";
+    expect(warningId).toBe("settings-retention-warn");
+    const warning = new RegExp(`<p [^>]*id="${warningId}"[^>]*>(.*?)</p>`).exec(html)?.[1] ?? "";
+    expect(warning).toContain("Shortening to 6 months will delete 4 submissions");
+  });
+
+  it("marks every cadence radio invalid when the cadence has an issue", () => {
+    const html = render({ issues: [{ code: "malformed", path: "notificationCadence" }] });
+    for (const value of ["per_submission", "daily"]) {
+      const radio = tagWith(html, "input", ['name="notificationCadence"', `value="${value}"`]);
+      expect(radio).toContain('aria-invalid="true"');
+    }
+    const clean = render();
+    expect(tagWith(clean, "input", ['name="notificationCadence"', 'value="daily"'])).not.toContain(
+      "aria-invalid",
+    );
   });
 
   it("confirms a save with a success banner", () => {
