@@ -51,7 +51,7 @@ version.
 | Saving | Saving… | Appears only if a save takes longer than 500 ms |
 | Offline | Offline, changes kept on this device | Changes queue in local storage and replay on reconnect; conflicts resolve last-save-wins per field |
 | Signed out | Session expired, changes kept on this device | Button "Sign in again"; after sign-in the queue replays |
-| Conflict | Updated by {name} | Shown on the field that changed under you; your panel refreshes to the saved value |
+| Conflict | Updated by {name} | The save came back stale (`create-and-edit-form.md`): the builder takes the stored draft, re-applies your pending edits over it, and shows this on a field that changed under you; your panel refreshes to the saved value |
 
 ### Presence
 
@@ -96,6 +96,12 @@ navigate, Enter adds and focuses the new field's label.
 | Consent and layout | Consent, Section |
 
 Names and one-line descriptions are in Fixed chrome copy.
+
+A new field is created with an empty label and the starting settings of its
+type (`form-definition.md`, "New field starting values"): a choice field has
+two empty options, an upload accepts images and one file, a section has an
+empty title, a consent field has empty text with no checklist item ticked.
+Fields that are still incomplete show their issue badge until filled in.
 
 ## Panel
 
@@ -300,7 +306,9 @@ prefilled. A refusal shows one error row on the field concerned:
 `new.slug_taken`, `new.slug_reserved`, `new.slug_hint` for a malformed link
 name, `new.title_missing` and `new.source_missing`. The redirect carries the
 typed values back (titles, language mode, link name, choice and source), so
-the page comes back filled in; a title over 500 characters is not carried.
+the page comes back filled in; a value is not carried when it is longer than
+its field allows in a redirect (titles 500 characters, a link name 64, a
+source id 36), and its input then comes back empty.
 Until the builder exists, a created form opens on its overview.
 
 ## Keyboard reference

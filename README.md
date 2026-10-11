@@ -7,6 +7,7 @@ publish forms; the public fills them in; staff review the results.
 - What the system is: `specs/architecture.md`, `specs/form-definition.md`
 - Design: `specs/design.md`, `design-system/`
 - Decisions: `specs/decisions/`
+- Staff manager: after sign-in, the forms live at `/admin/forms`
 
 ## Develop
 

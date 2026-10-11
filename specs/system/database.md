@@ -34,7 +34,12 @@ Rules:
   through a repository.
 - Mutating use cases re-read the aggregate inside the unit of work with a row
   lock (`for update`) before writing; reads outside a unit of work are for
-  display and early refusals only.
+  display and early refusals only. The `definitions` use cases that change a
+  form (edit draft, publish, lifecycle, delete, settings) lock the `form` row
+  first and the `form_draft` row second, always in that order, and decide
+  again on the locked rows. These are transactional row locks, held until the
+  unit of work ends; they are not editor-visible locks (see
+  `use-cases/create-and-edit-form.md`).
 
 ## Connections
 
@@ -49,15 +54,18 @@ Rules:
 ## Schema conventions
 
 - Table and column names in `snake_case`, singular table names per aggregate.
-- Every table has `id` (random UUID), `created_at`, `updated_at` in UTC. The
-  one exception is `schema_migration`, the migration ledger.
+- Every table has `id` (random UUID), `created_at`, `updated_at` in UTC.
+  Exceptions: `schema_migration`, the migration ledger; and the two
+  `definitions` tables whose key is their natural one, `form_draft`
+  (`form_id`) and `form_visit` (`form_id`, `email`).
 - Core tables and the module that owns their migrations:
 
   | Table | Owner | Notes |
   |---|---|---|
-  | `form` | `definitions` | slug, status, settings (jsonb), current_version_id |
-  | `form_draft` | `definitions` | one row per form, definition (jsonb), mutable |
-  | `form_version` | `definitions` | number, definition (jsonb), published_at, published_by. **Never updated after insert**; enforced by a trigger. |
+  | `form` | `definitions` | `slug` (unique), `title` (jsonb `LocalizedText`) and `languages` (`bilingual`, `en`, `es`), both mirrored from the draft document so the list never reads documents, `status` (`draft`, `published`, `closed`, `archived`), `settings` (jsonb), `current_version_id` and `current_version_number` (null until the first publish), `archived_at` |
+  | `form_draft` | `definitions` | one row per form, `form_id` is the key (deleted with the form); `document` (jsonb, mutable), `revision` (starts at 1, bumped by every write; an edit applies only to the revision it was based on), `updated_by`, `audited_by` and `audited_at` (the last `draft_saved` audit entry, for coalescing) |
+  | `form_version` | `definitions` | `form_id`, `number` (unique per form), `document` (jsonb), `published_at`, `published_by`. **Never updated or deleted after insert**; the trigger `form_version_no_update` rejects both. |
+  | `form_visit` | `definitions` | `form_id`, `email`, `last_opened_at`: when each staff member last opened each form, for the "new submissions" count. Key (`form_id`, `email`); deleted with the form. |
   | `submission_in_progress` | `submissions` | opaque token, form_version_id, locale, answers so far (jsonb), submit token, expires_at. Personal data; purged after 24 hours. |
   | `submission` | `submissions` | form_id, form_version_id, locale, answers (jsonb, **immutable after insert, trigger-enforced**), consent (jsonb), received_at, reference (unique per form), status, curated_answers (jsonb), published_post_url, status_changed_by, status_changed_at |
   | `submission_edit` | `review` | submission_id, field_key, text, source (`manual`, `suggested`), editor, created_at. Append-only. |
@@ -72,12 +80,20 @@ Rules:
 - Definitions and answers are jsonb documents validated by the form model
   (`shared/domain/form-model`) before they are written. The database does
   not know field types.
+- `form.current_version_id` points at `form_version` through a deferrable
+  foreign key checked at commit, so publish can insert the version and move
+  the pointer in one transaction. `form_version.form_id` has no cascade: a
+  form that has a version cannot be deleted, which backs the rule that only
+  never-published forms are deleted.
 - `answers` is personal data as a whole. Retention and export treat the
   document, never individual keys.
 - Indexes: `submission (form_id, received_at desc)` for review listing;
-  `form (slug)` unique; GIN on `answers` only if a real query needs it.
-- No soft deletes for submissions. Retention means the row is gone. Forms
-  are archived, never deleted, once they have submissions.
+  `form (slug)` unique (`form_slug_key`) and `form (status)`; GIN on `answers`
+  only if a real query needs it.
+- No soft deletes for submissions. Retention means the row is gone. A form
+  that has been published or has submissions is archived, never deleted; one
+  that never was and has none can be deleted (audited), which removes its
+  draft and visits with it.
 
 ## Migrations
 

@@ -87,11 +87,32 @@ of the same question line up.
 
 Each type is implemented once as a registered capability that provides: the
 builder editor for its settings, the renderer component, the server validator,
-the storage normalizer, the export formatter, and the review display. A type
-missing any of these fails the conformance suite.
+the storage normalizer, the export formatter, the review display, and the
+starting settings a newly added field gets (the `defaultSettings` hook, ADR
+0016). A type missing any of these fails the conformance suite.
 
 Adding a type: see `CLAUDE.md`, "Adding a capability". Removing a type is not
 supported while any version uses it.
+
+### New field starting values
+
+Adding a field creates it with a fresh key, an empty label, not required, not
+personal, no rules, and the smallest settings its type accepts, so a field
+can be added before it is complete. Publish validation, not parsing, reports
+what is still missing. Changing a field to a compatible type keeps the
+settings the new type accepts and otherwise uses these values.
+
+| Type | Starting settings |
+|---|---|
+| `short_text`, `phone`, `date`, `checkbox` | none |
+| `long_text` | 4 rows |
+| `email` | not marked as the submitter's address |
+| `number` | decimals allowed, no unit |
+| `single_choice` | two options with generated keys and empty labels, shown as radio buttons |
+| `multiple_choice` | two options with generated keys and empty labels |
+| `consent` | empty text; no checklist item ticked as covered |
+| `file_upload` | `image` only, one file, the system maximum size per file |
+| `section` | empty title, no description |
 
 ### Export formats
 

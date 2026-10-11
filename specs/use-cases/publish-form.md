@@ -29,9 +29,15 @@ manager (close, reopen, archive, unarchive).
    changed field keys with a warning for each removed field that has answers.
 4. On confirm, in one transaction: a `form_version` row is inserted from the
    draft with the next number; the form's `current_version_id` points at it;
-   the form's status becomes `published` if it was `draft`; a new draft is
-   cloned from the version. Audit entry `form_published`.
+   the form's status becomes `published` if it was `draft`; the draft row
+   stays with the published content as the base of further edits, and its
+   revision advances. Audit entry `form_published`.
 5. The public URL `/f/<slug>` serves the new version from the next request.
+
+The publish call carries the version number the preview announced. It is
+refused, in this order, as `not_found`, `archived`, `conflict` (the number is
+no longer the next one), `issues` (with the list of step 2) or `unchanged`;
+the first refusal found is the one reported.
 
 ## Main flow: close, reopen, archive
 
@@ -58,10 +64,15 @@ Each writes its audit entry.
   draft rows, that another publish or a draft save landed after its preview
   is refused and asked to reload. The version number uniqueness constraint
   backs this up.
-- **Publishing an archived form.** Refused; unarchive it first.
+- **Publishing an archived form.** Refused as `archived`; unarchive it first.
+- **A lifecycle action the status no longer allows**, because someone else
+  acted first, is refused as `invalid_transition` and changes nothing.
 - **Deleting a form.** Only a form with zero submissions and no published
-  version can be deleted, from the manager, with confirmation and audit entry
-  `form_deleted`. Anything else is archived.
+  version can be deleted, from the manager, with confirmation by typing the
+  form's slug exactly, and audit entry `form_deleted`. A wrong slug is
+  refused as `slug_mismatch`, and a form that was published or received
+  submissions meanwhile as `not_allowed`. Deleting removes the form with its
+  draft; the audit entries remain. Anything else is archived.
 
 ## Rules
 
@@ -77,7 +88,9 @@ Each writes its audit entry.
 ## Audit entries
 
 `form_published` (with version number), `form_closed`, `form_reopened`,
-`form_archived`, `form_unarchived`, `form_deleted`.
+`form_archived`, `form_unarchived`, `form_deleted` (with the slug, since the
+form no longer exists to resolve it). Details are listed in
+`system/security.md`, "Audit log".
 
 ## Success criteria
 

@@ -6,6 +6,16 @@ first pass, 2026-10-09. Use cases: `sign-in.md`, `publish-form.md`,
 `operate-jobs.md`. The builder is its own surface, `ui-ux/builder.md`,
 reached from here.
 
+## Build status
+
+Built: the shell, the Forms list, the New form page, the form overview with
+its lifecycle actions, and the Settings, Share and Activity tabs. Pending, each
+with its own plan: the Submissions tab and everything under review (list,
+drawer, export), the Operations page, the Audit page, the banner above the
+Forms list, the language menu and keyboard shortcuts of the shell, and the
+builder (its route is a placeholder). The sections below specify the target;
+the "First pass" notes say what the built pages do today.
+
 ## Principles
 
 1. **Forms first.** The home screen is the list of forms with what is new.
@@ -28,6 +38,41 @@ button. Every page has an `<h1>` and a breadcrumb from Forms downward.
 Responsive tiers match the builder: three-column layouts from 1280 px,
 two from 768, single column with full-screen panels below.
 
+First pass: Operations and Audit appear in the navigation as disabled links
+(`aria-disabled`, no `href`) until their pages exist. There is no language
+preference yet, so every string shows English with the Spanish line beneath
+it, marked `lang="es"`; identical text shows once. The language menu and the
+keyboard shortcuts entry wait for the manager's first client component.
+
+## Routes
+
+All routes sit under `/admin`, which the proxy gates (`src/proxy.ts`).
+
+| Route | What it is |
+|---|---|
+| `GET /admin` | Redirects to `/admin/forms` |
+| `GET /admin/forms` | Forms list (`?tab=`, `?q=`) |
+| `GET /admin/forms/new` | New form page (`?error=` and the carried-back values) |
+| `POST /admin/forms/create` | Creates a form, 303 to its overview or back to the New form page. A route cannot sit beside the page at `/admin/forms`, hence the name |
+| `GET /admin/forms/[id]` | Form overview, which is the Submissions tab (`?action=` opens a lifecycle confirmation, `?error=` shows a refusal) |
+| `GET /admin/forms/[id]/settings`, `share`, `activity` | The other tabs |
+| `GET /admin/forms/[id]/edit` | Builder placeholder |
+| `POST /admin/forms/[id]/lifecycle` | Close, reopen, archive or unarchive, 303 to the overview |
+| `POST /admin/forms/[id]/delete` | Delete a never-published form, 303 to the list |
+| `GET /admin/forms/[id]/qr.png?size=1024\|2048`, `qr.svg` | QR downloads (`?download=1` makes the SVG an attachment; without it the SVG is the preview) |
+| Settings server action | `saveSettings` in `(gated)/forms/[id]/settings/actions.ts`, posted by the Settings tab |
+
+Every handler that changes data answers a form post with a 303 (Post/
+Redirect/Get). `src/app/admin/_lib/request.ts` holds the guards:
+`requireSession` returns the active session or a redirect to sign-in, and
+`requireCsrf` adds the check of the form's `csrf` field against the session
+token (a mismatch is the `auth.stale_*` page with status 403). Both take the page to return to after
+sign-in, since sign-in returns with a GET. Pages read the session through
+`pageSession` (`_lib/page.ts`), and every page or layout that does so exports
+`instant = false`, which lets it block on the session and the database under
+Cache Components. The QR routes need a session but no CSRF token, as they
+change nothing.
+
 ## Forms list (home)
 
 - Tabs: **Active** (draft and published), **Closed**, **Archived**. Counts
@@ -35,7 +80,9 @@ two from 768, single column with full-screen panels below.
 - Table columns: title, status badge with version, new submissions since
   this user last opened the form (bold when above zero), total submissions,
   last submission time, close date if set, actions menu.
-- Sorted by last submission time, then title. Search by title or slug.
+- Sorted by last submission time (forms with none last), then title. Search by
+  title or slug. Submission figures come from the `SubmissionStats` port;
+  until the submissions module supplies one every form shows zero.
 - Row click opens the form overview. Actions menu: Open, Edit in builder,
   Share, Settings, and the lifecycle actions allowed for its status. Each
   lifecycle action opens its confirmation on the form overview; Delete is
@@ -182,11 +229,15 @@ entry.
 First pass, without JavaScript:
 
 - The tab is one form posted to a server action, which always redirects
-  back to the tab (Post/Redirect/Get). A refused save keeps the values as
-  submitted and the reasons in a cookie scoped to the tab's path, httpOnly,
-  for ten minutes, and returns with `refused` set to the save's time; the
-  tab shows that state only for that value. A save that goes through clears
-  the cookie and returns with `saved`.
+  back to the tab (Post/Redirect/Get); it is not a route handler. A refused
+  save keeps the values as submitted and the reasons in the cookie
+  `effluz_settings_state`, scoped to the tab's path, httpOnly, `SameSite=Lax`,
+  living 600 seconds, and returns with `refused` set to the save's time (in
+  milliseconds); the tab shows that state only for that value. A save that
+  goes through clears the cookie and returns with `saved`. The cookie may
+  carry the submitted notification addresses, staff data already held in the
+  database; when the state would not fit a cookie the values are dropped and
+  the tab shows the stored ones.
 - After a refusal each issue sits under its field, linked with
   `aria-describedby`, the field marked `aria-invalid`. An issue with no
   field of its own (`set.err_malformed` on the whole payload,
@@ -212,15 +263,16 @@ First pass, without JavaScript:
 
 Public URL in a read-only, selectable field. Its Copy button needs script
 and waits for the manager's first client component (`sh.copy` and
-`sh.copied` are bound for it). QR code preview with download as PNG
-(1024 px and 2048 px) and SVG; the preview and the downloads encode exactly
-the public URL, and the files are named `<slug>-qr-<size>.png` and
-`<slug>-qr.svg`. A print-ready PDF with the form title and URL under the
-code is planned and has no link until it exists. A warning when the form is
-not currently reachable: closed, archived, or outside its date window, with
-the reason in words (`sh.reason_*`). The link and QR stay available
-meanwhile. Short guidance: "The QR code and link stay the same when you
-publish changes."
+`sh.copied` are bound for it; the first pass has no Copy button). QR code
+preview, rendered locally by the `qrcode` library (`decisions/0021`), with
+download as PNG (1024 px and 2048 px) and SVG; the preview and the downloads
+encode exactly the public URL, and the files are named
+`<slug>-qr-<size>.png` and `<slug>-qr.svg`. A print-ready PDF with the form
+title and URL under the code is planned and has no link until it exists. A
+warning when the form is not currently reachable: never published, closed,
+archived, or outside its date window, with the reason in words
+(`sh.reason_*`). The link and QR stay available meanwhile. Short guidance:
+"The QR code and link stay the same when you publish changes."
 
 ## Activity tab
 
