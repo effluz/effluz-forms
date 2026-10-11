@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { pageSession } from "@/app/admin/_lib/page";
-import { formActivity, shareInfo, type ActivityFilter } from "@/modules/definitions/application";
+import { formActivity, openForm, type ActivityFilter } from "@/modules/definitions/application";
 import { ACTIVITY_PAGE_SIZE, ActivityList } from "@/modules/definitions/presentation/ActivityList";
+import { FormOverview } from "@/modules/definitions/presentation/FormOverview";
 import { formHref } from "@/modules/definitions/presentation/view-models";
 import { pageMetadata } from "@/shared/presentation/metadata";
 
@@ -46,11 +47,20 @@ export default async function ActivityPage(props: {
   searchParams: SearchParams;
 }) {
   const { id } = await props.params;
-  const { container } = await pageSession(formHref(id, "activity"));
-  if ((await shareInfo(container.definitions, id)) === null) notFound();
+  const { session, container, actor } = await pageSession(formHref(id, "activity"));
+  const overview = await openForm(container.definitions, actor, id);
+  if (overview === null) notFound();
   const filter = filterOf(await props.searchParams);
   const { entries, actors, hasMore } = await formActivity(container.definitions, id, filter);
   return (
-    <ActivityList entries={entries} actors={actors} hasMore={hasMore} filter={filter} formId={id} />
+    <FormOverview overview={overview} csrfToken={session.csrfToken} tab="activity">
+      <ActivityList
+        entries={entries}
+        actors={actors}
+        hasMore={hasMore}
+        filter={filter}
+        formId={id}
+      />
+    </FormOverview>
   );
 }
