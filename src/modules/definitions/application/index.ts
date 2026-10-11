@@ -17,6 +17,7 @@ export type { PublishPreview, PublishResult } from "./publish-form";
 export type { LifecycleResult, DeleteFormResult } from "./lifecycle";
 export type { UpdateSettingsResult } from "./update-settings";
 export type { ShareInfo } from "./share-info";
+export type { ActivityFilter, FormActivity } from "./form-activity";
 
 export { publicUrl } from "./deps";
 export { createForm } from "./create-form";

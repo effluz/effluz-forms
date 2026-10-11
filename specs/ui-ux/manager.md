@@ -158,16 +158,29 @@ entry.
 
 ## Share tab
 
-Public URL with Copy. QR code preview with download as PNG (1024 px and
-2048 px) and SVG, and a print-ready PDF with the form title and URL under
-the code. A warning when the form is not currently reachable: closed,
-archived, or outside its date window. Short guidance: "The QR code and link
-stay the same when you publish changes."
+Public URL in a read-only, selectable field. Its Copy button needs script
+and waits for the manager's first client component (`sh.copy` and
+`sh.copied` are bound for it). QR code preview with download as PNG
+(1024 px and 2048 px) and SVG; the preview and the downloads encode exactly
+the public URL, and the files are named `<slug>-qr-<size>.png` and
+`<slug>-qr.svg`. A print-ready PDF with the form title and URL under the
+code is planned and has no link until it exists. A warning when the form is
+not currently reachable: closed, archived, or outside its date window, with
+the reason in words (`sh.reason_*`). The link and QR stay available
+meanwhile. Short guidance: "The QR code and link stay the same when you
+publish changes."
 
 ## Activity tab
 
-The audit log filtered to this form: time, actor, action, target with a
-link where one exists. Filter by actor and action. Export as CSV.
+The audit log filtered to this form, newest first: time (shown in UTC, as
+`YYYY-MM-DD HH:mm UTC`), actor, action (plain words, `au.action_*`), and
+target. Every entry of this tab concerns the form itself, so the target is a
+link to the overview, followed by the entry's details when it has any. An
+action written by another module is shown as stored. Filter by actor and
+action with a plain GET form, so a filtered view is a shareable link. A page
+holds 50 entries; when it is full, "Older entries" continues from the oldest
+one shown. Export as CSV comes with the audit page and has no control here
+until then.
 
 ## Operations page
 
@@ -448,6 +461,11 @@ wrong CSRF token.
 | sh.pdf | Print sheet (PDF) | Hoja para imprimir (PDF) |
 | sh.unreachable | The form is not reachable right now: {reason}. The link and QR will work once it is. | El formulario no está disponible ahora: {reason}. El enlace y el QR funcionarán cuando lo esté. |
 | sh.stable | The QR code and link stay the same when you publish changes. | El código QR y el enlace no cambian cuando publicas cambios. |
+| sh.reason_draft | it has not been published | todavía no se ha publicado |
+| sh.reason_closed | it is closed | está cerrado |
+| sh.reason_archived | it is archived | está archivado |
+| sh.reason_not_open | it is not open yet | todavía no abre |
+| sh.reason_past_close | its close date has passed | su fecha de cierre ya pasó |
 
 ### Operations and audit
 
@@ -476,6 +494,24 @@ wrong CSRF token.
 | au.when | When | Cuándo |
 | au.export | Export CSV | Exportar CSV |
 | au.retention | Entries are kept for one year. | Las entradas se conservan un año. |
+| au.any_actor | Everyone | Todas las personas |
+| au.any_action | All actions | Todas las acciones |
+| au.apply | Filter | Filtrar |
+| au.empty | No activity matches. | Ninguna actividad coincide. |
+| au.system | System | Sistema |
+| au.target_form | This form | Este formulario |
+| au.older | Older entries | Entradas anteriores |
+| au.action_form_created | Form created | Formulario creado |
+| au.action_draft_saved | Draft saved | Borrador guardado |
+| au.action_draft_language_mode_changed | Languages changed | Idiomas cambiados |
+| au.action_form_published | Form published | Formulario publicado |
+| au.action_form_closed | Form closed | Formulario cerrado |
+| au.action_form_reopened | Form reopened | Formulario reabierto |
+| au.action_form_archived | Form archived | Formulario archivado |
+| au.action_form_unarchived | Form restored from archive | Formulario restaurado del archivo |
+| au.action_form_deleted | Form deleted | Formulario eliminado |
+| au.action_form_settings_changed | Settings changed | Configuración cambiada |
+| au.action_retention_shortened | Retention shortened | Retención acortada |
 
 ## Test fixtures
 
