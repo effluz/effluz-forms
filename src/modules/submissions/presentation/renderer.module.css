@@ -491,6 +491,31 @@
   white-space: nowrap;
 }
 
+/* An enhanced row's middle column: name, size and status stacked with a space.1 gap. */
+.fileBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The row's status line: font.size.public.small, color.text.muted (errors keep color.text.error). */
+.fileStatus {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.fileStatus.errorLine {
+  color: var(--error);
+}
+
+/* Retry and Remove side by side, each a 44 px target. */
+.fileActions {
+  display: flex;
+  flex-wrap: wrap;
+}
+
 /* Upload progress: 4 px bar on surface.subtle with an action.primary.bg fill. */
 .fileBar {
   height: 4px;
@@ -652,9 +677,9 @@
   color: var(--tertiary-hover);
 }
 
-/* Status line: color.text.error, hidden when empty. */
+/* Status line: color.text.error, space.4 below the form, hidden when empty. */
 .status {
-  margin: 0;
+  margin: 16px 0 0;
   color: var(--error);
 }
 

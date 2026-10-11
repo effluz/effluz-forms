@@ -57,7 +57,7 @@ export function FormPage(props: FormPageProps): ReactElement {
         />
       }
     >
-      <h1 id="page-title" tabIndex={-1} className={styles.title}>
+      <h1 id="page-title" tabIndex={-1} data-page-heading="" className={styles.title}>
         {title.h1}
       </h1>
       {title.subtitle ? <h2 className={styles.subtitle}>{title.subtitle}</h2> : null}
