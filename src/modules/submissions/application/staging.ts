@@ -180,3 +180,22 @@ export async function discardQuietly(
     });
   }
 }
+
+/**
+ * The refused files of a post: those refused before staging, plus those that
+ * lost a race for the per-submission size on the locked record, reported the
+ * same way.
+ */
+export function refusedOf(
+  batch: StagedBatch,
+  oversize: readonly { fieldKey: string; stagingRef: string }[],
+): RefusedFile[] {
+  return [
+    ...batch.refused,
+    ...oversize.map((o): RefusedFile => ({
+      fieldKey: o.fieldKey,
+      code: "submission_too_large",
+      name: batch.names[o.stagingRef] ?? "",
+    })),
+  ];
+}

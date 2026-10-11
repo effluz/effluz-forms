@@ -31,6 +31,8 @@ export { viewForm } from "./view-form";
 export { savePage } from "./save-page";
 export { checkField } from "./check-field";
 export { uploadFile, removeFile } from "./upload-file";
+export { submitForm } from "./submit-form";
+export { expireInProgress } from "./expire";
 export type { UploadOutcome, UploadRefusal } from "./upload-file";
 export { HONEYPOT_FIELD, MIN_FILL_MS } from "../domain/protection";
 export { uploadFields } from "../domain/intake";
