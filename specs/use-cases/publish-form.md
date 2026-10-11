@@ -56,6 +56,7 @@ Each writes its audit entry.
   message; nothing to publish.
 - **Concurrent publish.** The second attempt fails on the version number
   uniqueness constraint and is asked to reload.
+- **Publishing an archived form.** Refused; unarchive it first.
 - **Deleting a form.** Only a form with zero submissions and no published
   version can be deleted, from the manager, with confirmation and audit entry
   `form_deleted`. Anything else is archived.

@@ -26,6 +26,7 @@ export interface PublishPreview {
 export type PublishResult =
   | { ok: true; versionId: string; number: number; publicUrl: string }
   | { ok: false; code: "not_found" }
+  | { ok: false; code: "archived" }
   | { ok: false; code: "issues"; issues: PublishIssue[] }
   | { ok: false; code: "unchanged" }
   | { ok: false; code: "conflict" };
@@ -117,7 +118,9 @@ export async function publishForm(
   const state = await loadState(deps, input.formId);
   if (!state) return { ok: false, code: "not_found" };
   const { form, draft, current, latestNumber, issues } = state;
-  // Checked first: a stale preview must reload whatever else is true of the draft.
+  // An archived form must be unarchived first; see specs/form-definition.md, "Lifecycle".
+  if (form.status === "archived") return { ok: false, code: "archived" };
+  // Checked next: a stale preview must reload whatever else is true of the draft.
   if (input.expectedNumber !== latestNumber + 1) return { ok: false, code: "conflict" };
   if (issues.length > 0) return { ok: false, code: "issues", issues };
   if (isUnchanged(current, draft.document)) return { ok: false, code: "unchanged" };

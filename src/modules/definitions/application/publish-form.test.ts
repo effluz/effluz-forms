@@ -198,6 +198,25 @@ describe("publishForm", () => {
     });
   });
 
+  it("refuses to publish an archived form and writes nothing", async () => {
+    const deps = makeDefinitionsDeps();
+    const formId = await publishableForm(deps);
+    const form = deps.store.forms.get(formId);
+    if (!form) throw new Error("no form");
+    deps.store.forms.set(formId, { ...form, status: "archived" });
+    const draftBefore = deps.store.drafts.get(formId);
+    const auditBefore = deps.audit.entries.length;
+
+    expect(await publishForm(deps, EDITOR, { formId, expectedNumber: 1 })).toEqual({
+      ok: false,
+      code: "archived",
+    });
+    expect(deps.store.versions.size).toBe(0);
+    expect(deps.store.drafts.get(formId)).toEqual(draftBefore);
+    expect(deps.store.forms.get(formId)?.status).toBe("archived");
+    expect(deps.audit.entries).toHaveLength(auditBefore);
+  });
+
   it("refuses a draft with issues and writes nothing", async () => {
     const deps = makeDefinitionsDeps();
     const formId = await publishableForm(deps, [field("f_blank", "", "")]);

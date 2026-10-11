@@ -167,6 +167,7 @@ draft --publish--> published --close--> closed --archive--> archived
 - `closed`: public URL shows a closed message. Submissions remain reviewable.
 - `archived`: hidden from the default manager list. Reversible: unarchive
   returns the form to `closed`, or to `draft` when it was never published.
+  Cannot publish while archived.
 - A form with submissions cannot be deleted, only archived. Submissions are
   removed by retention or explicit, audited deletion.
 
