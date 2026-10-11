@@ -15,7 +15,9 @@
  *   cap (given to the constructor) and handling of malformed limits and cursors.
  * - `InMemoryJobQueue`: `enqueued` as `{ type, payload, opts }`, `ofType(type)`;
  *   ids are `job-<n>`; a `uniqueKey` already recorded returns null; `failAt`
- *   makes the nth enqueue (0-based) throw.
+ *   makes the nth enqueue (0-based) throw. `opts` is recorded as passed (no
+ *   `runAt` or `maxAttempts` defaults are applied), and a unique key is never
+ *   released, unlike the real queue, which frees it once the job finishes.
  * - `RecordingLogger`: `lines` as `{ level, msg, fields }`; children share them.
  * - `handlerContext(over)`: a `JobHandlerContext` built from the fakes above.
  *

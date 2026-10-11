@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { JobHandlerContext } from "@/shared/application/ports/job-queue";
-import { handlerContext } from "@/shared/application/testing/fakes";
+import { RecordingLogger, handlerContext } from "@/shared/application/testing/fakes";
 import { createCleanupHandler } from "@/shared/infrastructure/jobs/handlers/cleanup";
 import { PgJobStore } from "@/shared/infrastructure/jobs/pg-job-store";
 import { testPool, truncateAll } from "../db";
@@ -29,12 +29,18 @@ describe("jobs.cleanup", () => {
     const seen: string[] = [];
     const ctx = handlerContext({ clock });
     const handler = createCleanupHandler(store, [
-      async (c: JobHandlerContext) => {
-        seen.push(`a:${c.jobId}:${String(await exists(old))}`);
+      {
+        name: "a",
+        run: async (c: JobHandlerContext) => {
+          seen.push(`a:${c.jobId}:${String(await exists(old))}`);
+        },
       },
-      () => {
-        seen.push("b");
-        return Promise.resolve();
+      {
+        name: "b",
+        run: () => {
+          seen.push("b");
+          return Promise.resolve();
+        },
       },
     ]);
     await handler({}, ctx);
@@ -44,13 +50,44 @@ describe("jobs.cleanup", () => {
   it("runs the remaining steps when one fails, then fails the job", async () => {
     const ran: string[] = [];
     const handler = createCleanupHandler(store, [
-      () => Promise.reject(new Error("step failed")),
-      () => {
-        ran.push("second");
-        return Promise.resolve();
+      { name: "first", run: () => Promise.reject(new Error("step failed")) },
+      {
+        name: "second",
+        run: () => {
+          ran.push("second");
+          return Promise.resolve();
+        },
       },
     ]);
     await expect(handler({}, handlerContext({ clock }))).rejects.toThrow("step failed");
     expect(ran).toEqual(["second"]);
+  });
+
+  it("logs one scrubbed warning per failed step and rethrows the first failure", async () => {
+    const logger = new RecordingLogger();
+    const ran: string[] = [];
+    const handler = createCleanupHandler(store, [
+      { name: "alpha", run: () => Promise.reject(new Error("alpha broke for pat@example.com")) },
+      { name: "beta", run: () => Promise.reject(new Error("beta broke")) },
+      {
+        name: "gamma",
+        run: () => {
+          ran.push("gamma");
+          return Promise.resolve();
+        },
+      },
+    ]);
+    await expect(handler({}, handlerContext({ clock, logger }))).rejects.toThrow(
+      "alpha broke for pat@example.com",
+    );
+    expect(ran).toEqual(["gamma"]);
+    expect(logger.lines.filter((l) => l.level === "warn")).toEqual([
+      {
+        level: "warn",
+        msg: "cleanup step failed",
+        fields: { step: "alpha", error: "alpha broke for [redacted]" },
+      },
+      { level: "warn", msg: "cleanup step failed", fields: { step: "beta", error: "beta broke" } },
+    ]);
   });
 });

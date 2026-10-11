@@ -331,4 +331,22 @@ describe("test-only boundary exception (ADR 0026)", () => {
     );
     expect(ruleIds(rules)).toContain("no-restricted-imports");
   });
+
+  it("refuses production code importing any file under tests/", async () => {
+    const rules = await probe(
+      "src/modules/definitions/presentation/boundary-probe-tests-dir.ts",
+      "helper",
+      "../../../../tests/integration/db",
+    );
+    expect(ruleIds(rules)).toContain("no-restricted-imports");
+  });
+
+  it("refuses production code importing a testing folder through its index", async () => {
+    const rules = await probe(
+      "src/modules/definitions/application/boundary-probe-testing-index.ts",
+      "makeDefinitionsDeps",
+      "./testing",
+    );
+    expect(ruleIds(rules)).toContain("no-restricted-imports");
+  });
 });

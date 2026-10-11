@@ -71,10 +71,12 @@ describe("Worker", () => {
   }
 
   async function job(id: string) {
-    const r = await pool.query<{ status: string; last_error: string | null; attempts: number }>(
-      "select status, last_error, attempts from job where id = $1",
-      [id],
-    );
+    const r = await pool.query<{
+      status: string;
+      last_error: string | null;
+      attempts: number;
+      finished_at: Date | null;
+    }>("select status, last_error, attempts, finished_at from job where id = $1", [id]);
     const row = r.rows[0];
     if (!row) throw new Error("job not found");
     return row;
@@ -275,6 +277,7 @@ describe("Worker", () => {
       attempts: 1,
       last_error: "recipient rejected",
     });
+    expect((await job(id)).finished_at).not.toBeNull();
     expect(lines.some((l) => l.level === "error" && l.msg === "job failed permanently")).toBe(true);
   });
 

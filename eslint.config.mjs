@@ -212,11 +212,11 @@ export default tseslint.config(
           patterns: [
             FORM_MODEL_ENTRY,
             {
-              group: ["**/testing/*", "**/testing/**"],
+              group: ["**/testing", "**/testing/*", "**/testing/**"],
               message: "Testing fakes are for tests only (ADR 0026).",
             },
             {
-              group: ["**/tests/fixtures/*", "**/tests/fakes/*"],
+              group: ["**/tests", "**/tests/**"],
               message: "Test fixtures are for tests only (ADR 0026).",
             },
           ],

@@ -16,7 +16,8 @@ test data from `tests/fixtures/` and `tests/fakes/`.
   any module's `application/testing/*` and any file under `tests/fixtures/`
   or `tests/fakes/`.
 - Production code keeps the single entry point: no other file may import a
-  `testing/` folder or `tests/`, its own module's included.
+  `testing` folder (`**/testing`, `**/testing/**`) or anything under
+  `tests/` (`**/tests/**`), its own module's included.
 - `eslint.config.mjs` encodes both rules; `tests/boundaries/` probes them.
 
 ## Consequences
