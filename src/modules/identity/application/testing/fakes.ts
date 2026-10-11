@@ -1,29 +1,31 @@
 /**
  * In-memory fakes for identity use-case tests, shared with the route tests.
+ * The clock, id, unit-of-work and audit fakes live in
+ * `@/shared/application/testing/fakes` and are re-exported here.
  *
  * - `makeDeps(overrides?)` builds a full `IdentityDeps` wired to the fakes below
  *   and returns the concrete fakes too, so tests can seed and inspect them.
- * - `FixedClock`: `set(date)`, `advance(ms)`; starts at 2026-10-10T09:00:00Z.
- * - `SequentialIdGenerator`: UUID-shaped ids ending in 1, 2, ..., see `fakeUuid(n)`.
  * - `InMemorySessionRepository`: `seed(session)`, `all()`, `has(id)`.
  * - Like the Postgres adapters, the session and attempt fakes treat an id that is
  *   not a UUID as absent (reads return null, writes keyed by it do nothing), and
  *   refuse to store a row under one.
- * - `InMemoryAuditLog`: `entries` as `{ entry, at }`.
- * - `InMemoryAuditLogReader`: reads the same `entries`; ids are `audit-<n>` by insertion order.
+ * - `InMemoryAuditLog`: the shared log with `assertNoPersonalData` as its guard.
+ * - `InMemoryAuditLogReader`: the shared reader, typed against identity's port.
  * - `InMemorySignInAttemptStore`: `seed(attempt)`, `size()`; honours the 10-minute expiry.
  * - `ScriptedAdminIdentity`: `script(completion)` queues the next completion;
  *   `beginCalls` and `completeCalls` record the arguments received.
- * - `FakeUnitOfWorkFactory`: runs the callback with a plain unit of work. The fakes
- *   write immediately, so rollback is NOT simulated; the Postgres integration
- *   tests cover rollback fidelity.
  *
  * Synthetic data only. Not for production code.
  */
-import type { Clock } from "@/shared/application/ports/clock";
-import type { IdGenerator } from "@/shared/application/ports/id-generator";
-import type { UnitOfWork, UnitOfWorkFactory } from "@/shared/application/ports/unit-of-work";
-import { assertNoPersonalData, type AuditEntry } from "../../domain/audit";
+import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
+import {
+  FakeUnitOfWorkFactory,
+  FixedClock,
+  InMemoryAuditLog as SharedInMemoryAuditLog,
+  InMemoryAuditLogReader as SharedInMemoryAuditLogReader,
+  SequentialIdGenerator,
+} from "@/shared/application/testing/fakes";
+import { assertNoPersonalData } from "../../domain/audit";
 import type { Session } from "../../domain/session";
 import type { IdentityDeps } from "../deps";
 import type {
@@ -33,72 +35,19 @@ import type {
   SignInStart,
 } from "../ports/admin-identity";
 import type { AuditLog } from "../ports/audit-log";
-import {
-  AUDIT_PAGE_MAX,
-  type AuditLogReader,
-  type AuditQuery,
-  type AuditRecord,
-} from "../ports/audit-log-reader";
+import type { AuditLogReader } from "../ports/audit-log-reader";
 import type { SessionRepository } from "../ports/session-repository";
 import type { SignInAttempt, SignInAttemptStore } from "../ports/sign-in-attempt-store";
 
-export class FixedClock implements Clock {
-  private current: Date;
-
-  constructor(start: Date = new Date("2026-10-10T09:00:00Z")) {
-    this.current = new Date(start.getTime());
-  }
-
-  now(): Date {
-    return new Date(this.current.getTime());
-  }
-
-  set(date: Date): void {
-    this.current = new Date(date.getTime());
-  }
-
-  advance(ms: number): void {
-    this.current = new Date(this.current.getTime() + ms);
-  }
-}
-
-/** The `n`th id `SequentialIdGenerator` returns: `00000000-0000-4000-8000-000000000001` for 1. */
-export function fakeUuid(n: number): string {
-  return `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
-}
-
-export class SequentialIdGenerator implements IdGenerator {
-  private counter = 0;
-
-  newId(): string {
-    this.counter += 1;
-    return fakeUuid(this.counter);
-  }
-}
+// Moved to the shared kernel, which definitions also uses; re-exported so callers keep this path.
+export { FakeUnitOfWorkFactory, FixedClock, SequentialIdGenerator };
+export { fakeUuid } from "@/shared/application/testing/fakes";
 
 // Mirrors infrastructure/uuid.ts, which this layer may not import.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function requireUuid(id: string): void {
   if (!UUID.test(id)) throw new Error("fake store: id must be a UUID, as the uuid column requires");
-}
-
-function plainUnitOfWork(): UnitOfWork {
-  return {
-    handle: null,
-    commit: () => Promise.resolve(),
-    rollback: () => Promise.resolve(),
-  };
-}
-
-export class FakeUnitOfWorkFactory implements UnitOfWorkFactory {
-  begin(): Promise<UnitOfWork> {
-    return Promise.resolve(plainUnitOfWork());
-  }
-
-  run<T>(fn: (uow: UnitOfWork) => Promise<T>): Promise<T> {
-    return fn(plainUnitOfWork());
-  }
 }
 
 export class InMemorySessionRepository implements SessionRepository {
@@ -153,53 +102,17 @@ export class InMemorySessionRepository implements SessionRepository {
   }
 }
 
-export class InMemoryAuditLog implements AuditLog {
-  readonly entries: { entry: AuditEntry; at: Date }[] = [];
-
-  record(_uow: UnitOfWork, entry: AuditEntry, at: Date): Promise<void> {
-    assertNoPersonalData(entry.details);
-    this.entries.push({ entry, at: new Date(at.getTime()) });
-    return Promise.resolve();
+/** The shared in-memory log with identity's personal-data guard wired in. */
+export class InMemoryAuditLog extends SharedInMemoryAuditLog implements AuditLog {
+  constructor() {
+    super(assertNoPersonalData);
   }
 }
 
-/** Reads an `InMemoryAuditLog`, mirroring `PgAuditLogReader` ordering, filters and cap. */
-export class InMemoryAuditLogReader implements AuditLogReader {
-  constructor(private readonly log: InMemoryAuditLog) {}
-
-  listByTarget(query: AuditQuery): Promise<AuditRecord[]> {
-    const limit = Math.min(Math.max(Math.floor(query.limit), 0), AUDIT_PAGE_MAX);
-    const found = this.log.entries
-      .map(({ entry, at }, index) => ({ entry, at, index }))
-      .filter(({ entry, at }) => {
-        if (entry.targetId !== query.targetId) return false;
-        if (query.action !== undefined && entry.action !== query.action) return false;
-        if (query.actorEmail !== undefined && entry.actorEmail !== query.actorEmail) return false;
-        if (query.before !== undefined && at.getTime() >= query.before.getTime()) return false;
-        return true;
-      })
-      .sort((a, b) => b.at.getTime() - a.at.getTime() || b.index - a.index)
-      .slice(0, limit)
-      .map(({ entry, at, index }): AuditRecord => ({
-        id: `audit-${String(index + 1)}`,
-        action: entry.action,
-        actorEmail: entry.actorEmail,
-        targetId: entry.targetId,
-        ip: entry.ip,
-        details: entry.details === undefined ? null : { ...entry.details },
-        at: new Date(at.getTime()),
-      }));
-    return Promise.resolve(found);
-  }
-
-  actorsForTarget(targetId: string): Promise<string[]> {
-    const actors = new Set<string>();
-    for (const { entry } of this.log.entries) {
-      if (entry.targetId === targetId && entry.actorEmail !== null) actors.add(entry.actorEmail);
-    }
-    return Promise.resolve([...actors].sort());
-  }
-}
+/** The shared reader, checked against identity's port. */
+export class InMemoryAuditLogReader
+  extends SharedInMemoryAuditLogReader
+  implements AuditLogReader {}
 
 const ATTEMPT_TTL_MS = 10 * 60 * 1000;
 
