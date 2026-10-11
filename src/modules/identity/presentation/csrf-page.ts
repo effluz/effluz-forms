@@ -1,7 +1,7 @@
 import { copy, type CopyKey } from "./copy";
 
 /**
- * The page behind a sign-out refused for a wrong CSRF token, as one static HTML
+ * The pages behind a form post refused for a wrong CSRF token, each one static HTML
  * document: a route handler response has no React tree or CSS module behind it.
  * Colors and sizes repeat the tokens used in `auth.module.css` (the card width
  * is `size.contentWidthPublic`).
@@ -33,17 +33,29 @@ function bilingual(key: CopyKey): string {
   return `${escapeHtml(en)}<span lang="es">${escapeHtml(es)}</span>`;
 }
 
-export function csrfRejectedPage(): string {
-  const title = copy["auth.csrf_title"];
+function outOfDatePage(titleKey: CopyKey, bodyKey: CopyKey): string {
+  const title = copy[titleKey];
   return [
     '<!doctype html><html lang="en"><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     '<meta name="robots" content="noindex, nofollow">',
     `<title>${escapeHtml(`${title.en} / ${title.es}`)}</title>`,
     `<style>${STYLE}</style></head><body><main>`,
-    `<h1>${bilingual("auth.csrf_title")}</h1>`,
-    `<p>${bilingual("auth.csrf_body")}</p>`,
+    `<h1>${bilingual(titleKey)}</h1>`,
+    `<p>${bilingual(bodyKey)}</p>`,
     `<a href="/admin">${bilingual("auth.error_retry")}</a>`,
     "</main></body></html>",
   ].join("");
+}
+
+export function csrfRejectedPage(): string {
+  return outOfDatePage("auth.csrf_title", "auth.csrf_body");
+}
+
+/**
+ * The page behind any other manager form refused for a wrong CSRF token.
+ * See specs/ui-ux/manager.md, "Sign-in and access".
+ */
+export function staleFormPage(): string {
+  return outOfDatePage("auth.stale_title", "auth.stale_body");
 }

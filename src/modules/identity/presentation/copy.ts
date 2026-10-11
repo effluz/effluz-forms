@@ -39,6 +39,14 @@ export const copy = {
     en: "This page was out of date. Open the admin area again and sign out from there.",
     es: "Esta página estaba desactualizada. Vuelve a abrir el área de administración y cierra la sesión desde allí.",
   },
+  "auth.stale_title": {
+    en: "This page was out of date",
+    es: "Esta página estaba desactualizada",
+  },
+  "auth.stale_body": {
+    en: "Nothing was saved. Open the admin area again and try once more.",
+    es: "No se guardó nada. Vuelve a abrir el área de administración e inténtalo otra vez.",
+  },
 } as const satisfies Record<string, Text>;
 
 export type CopyKey = keyof typeof copy;

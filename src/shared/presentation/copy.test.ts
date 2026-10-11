@@ -12,7 +12,7 @@ describe("copy", () => {
   });
 
   it("binds every row of the groups the manager chrome owns", () => {
-    const owned = /^(nav|shell|home|form|life|set|sh|au|new)\.|^builder\.placeholder$/;
+    const owned = /^(nav|shell|home|form|life|set|sh|au|new|status)\.|^builder\.placeholder$/;
     const expected = [...rows.keys()].filter((key) => owned.test(key)).sort();
     expect(Object.keys(copy).sort()).toEqual(expected);
   });

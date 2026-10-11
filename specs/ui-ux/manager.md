@@ -37,7 +37,16 @@ two from 768, single column with full-screen panels below.
   last submission time, close date if set, actions menu.
 - Sorted by last submission time, then title. Search by title or slug.
 - Row click opens the form overview. Actions menu: Open, Edit in builder,
-  Share, Settings, and the lifecycle actions allowed for its status.
+  Share, Settings, and the lifecycle actions allowed for its status. Each
+  lifecycle action opens its confirmation on the form overview; Delete is
+  offered there only. Without JavaScript the menu is a disclosure of links,
+  named after its form, reached with Tab.
+- Search is a plain GET form that keeps the current tab. Tab counts do not
+  depend on the search. A tab or search with no forms says
+  `home.none_here`; `home.empty` is only for an installation with no forms
+  at all.
+- Dates show in the default time zone (`America/Panama`) as
+  `YYYY-MM-DD HH:mm`, with the UTC time as the element's title.
 - "New form" button opens the dialog specified in `ui-ux/builder.md`.
 - A banner appears above the list only when something is wrong: worker
   heartbeat stale, dead jobs present, last backup older than two days. It
@@ -253,6 +262,11 @@ builder (status names, New form dialog).
 | home.banner_dead | {count} jobs need attention. | {count} trabajos necesitan atención. |
 | home.banner_backup | The last backup is older than two days. | La última copia de seguridad tiene más de dos días. |
 | home.see_operations | See Operations | Ver Operaciones |
+| home.search_submit | Search | Buscar |
+| home.none_here | No forms to show here. | No hay formularios para mostrar aquí. |
+| home.version | v{n} | v{n} |
+| home.actions | Actions | Acciones |
+| home.open | Open | Abrir |
 | shell.wordmark | Effluz | Effluz |
 | shell.signed_in_as | Signed in as {name} | Sesión iniciada como {name} |
 | shell.skip_to_main | Skip to main content | Saltar al contenido principal |
@@ -281,9 +295,13 @@ Pages outside the session gate, from `use-cases/sign-in.md`.
 | auth.error_retry | Try again | Intentar de nuevo |
 | auth.csrf_title | Sign-out did not go through | No se pudo cerrar la sesión |
 | auth.csrf_body | This page was out of date. Open the admin area again and sign out from there. | Esta página estaba desactualizada. Vuelve a abrir el área de administración y cierra la sesión desde allí. |
+| auth.stale_title | This page was out of date | Esta página estaba desactualizada |
+| auth.stale_body | Nothing was saved. Open the admin area again and try once more. | No se guardó nada. Vuelve a abrir el área de administración e inténtalo otra vez. |
 
-The out-of-date page reuses `auth.error_retry` for its link back to the
-admin area.
+The out-of-date pages reuse `auth.error_retry` for their link back to the
+admin area. `auth.csrf_*` is the page behind a refused sign-out;
+`auth.stale_*` is the page behind any other manager form refused for a
+wrong CSRF token.
 
 ### Form overview and lifecycle
 

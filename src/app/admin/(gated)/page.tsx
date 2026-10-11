@@ -1,15 +1,9 @@
-// Interim admin home: the heading only, inside the shell's main landmark. The forms
-// list task replaces this page with a redirect to /admin/forms.
-import { Bilingual } from "@/shared/presentation/Bilingual";
-import { pageMetadata } from "@/shared/presentation/metadata";
-import { styles } from "@/shared/presentation/styles";
+import { redirect } from "next/navigation";
 
-export const metadata = pageMetadata("nav.forms");
+/** A redirect has no instant shell to validate; dev reports it otherwise. */
+export const instant = false;
 
+/** The admin home is the forms list; see specs/ui-ux/manager.md, "Principles". */
 export default function AdminHome() {
-  return (
-    <h1 className={styles.pageTitle}>
-      <Bilingual k="nav.forms" />
-    </h1>
-  );
+  redirect("/admin/forms");
 }

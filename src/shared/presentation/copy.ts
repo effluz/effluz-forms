@@ -1,6 +1,7 @@
 /**
  * Copy bindings for the manager chrome: shell, home, form overview, lifecycle,
- * settings, share, audit, the New form dialog and the builder placeholder. The text
+ * settings, share, audit, the status names and New form dialog shared with the
+ * builder, and the builder placeholder. The text
  * is owned by specs/ui-ux/manager.md and specs/ui-ux/builder.md ("Fixed chrome
  * copy"); `copy.test.ts` keeps this object equal to those rows.
  */
@@ -39,6 +40,18 @@ export const copy = {
     es: "La última copia de seguridad tiene más de dos días.",
   },
   "home.see_operations": { en: "See Operations", es: "Ver Operaciones" },
+  "home.search_submit": { en: "Search", es: "Buscar" },
+  "home.none_here": {
+    en: "No forms to show here.",
+    es: "No hay formularios para mostrar aquí.",
+  },
+  "home.version": { en: "v{n}", es: "v{n}" },
+  "home.actions": { en: "Actions", es: "Acciones" },
+  "home.open": { en: "Open", es: "Abrir" },
+  "status.draft": { en: "Draft", es: "Borrador" },
+  "status.published": { en: "Published v{n}", es: "Publicado v{n}" },
+  "status.closed": { en: "Closed", es: "Cerrado" },
+  "status.archived": { en: "Archived", es: "Archivado" },
   "shell.wordmark": { en: "Effluz", es: "Effluz" },
   "shell.signed_in_as": { en: "Signed in as {name}", es: "Sesión iniciada como {name}" },
   "shell.skip_to_main": { en: "Skip to main content", es: "Saltar al contenido principal" },
@@ -169,6 +182,26 @@ export const copy = {
   "new.slug_taken": { en: "That link name is taken", es: "Ese nombre de enlace ya existe" },
   "new.copy_of": { en: "Copy of {title}", es: "Copia de {title}" },
   "new.create": { en: "Create", es: "Crear" },
+  "new.start": { en: "Start from", es: "Empezar desde" },
+  "new.source": { en: "Form to duplicate", es: "Formulario a duplicar" },
+  "new.source_missing": {
+    en: "Choose a form to duplicate",
+    es: "Elige un formulario para duplicar",
+  },
+  "new.title_en": { en: "Title in English", es: "Título en inglés" },
+  "new.title_es": { en: "Title in Spanish", es: "Título en español" },
+  "new.title_missing": {
+    en: "Enter a title in each language the form uses",
+    es: "Escribe un título en cada idioma que usa el formulario",
+  },
+  "new.slug_auto": {
+    en: "Optional. Left empty, it is made from the title.",
+    es: "Opcional. Si lo dejas vacío, se crea a partir del título.",
+  },
+  "new.slug_reserved": {
+    en: "That link name is reserved. Choose another.",
+    es: "Ese nombre de enlace está reservado. Elige otro.",
+  },
 } as const satisfies Record<string, Text>;
 
 /** One staff-facing text in both languages. */

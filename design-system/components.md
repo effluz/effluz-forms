@@ -137,6 +137,12 @@ with a 2 px offset.
 - Anchored to its button, min width 200 px, radius `radius.md`, shadow,
   items 40 px tall, destructive items in `text.error` separated by a
   divider, keyboard navigable with arrows and type-ahead.
+- No-JS first pass: a `<details>` disclosure whose `<summary>` is a
+  secondary button and whose items are links, reached with Tab rather than
+  arrows. When every row of a table has one, the summary also carries the
+  row's name for assistive technology. A divider separates the lifecycle
+  actions. Revisit with arrows and type-ahead once a client-side menu
+  exists.
 
 ## Table (staff)
 
