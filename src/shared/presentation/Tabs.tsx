@@ -7,7 +7,7 @@ export type TabItem = {
   href: string;
   count?: number;
   current: boolean;
-  /** A tab whose page does not exist yet: shown, but not a link. */
+  /** A tab whose page does not exist yet: shown, but not a link. `current` wins. */
   disabled?: boolean;
 };
 
@@ -22,7 +22,8 @@ export function Tabs(props: { items: TabItem[] }) {
       <ul>
         {props.items.map((item) => (
           <li key={item.key}>
-            {item.disabled ? (
+            {/* The page being shown exists, so a current tab is always a link. */}
+            {item.disabled && !item.current ? (
               // A placeholder until the page exists: without href it is not focusable.
               <a className={styles.tab} aria-disabled="true">
                 <TabLabel item={item} />

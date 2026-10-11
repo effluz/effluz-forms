@@ -10,7 +10,10 @@ describe("copy", () => {
     }
   });
 
-  it("holds only the sign-in pages' copy; the shell's is shared", () => {
-    for (const key of Object.keys(copy)) expect(key).toMatch(/^auth\./);
+  it("holds exactly the sign-in pages' copy; the shell's is shared", () => {
+    const authRows = [...specCopyRows("specs/ui-ux/manager.md").keys()].filter((key) =>
+      key.startsWith("auth."),
+    );
+    expect(Object.keys(copy).sort()).toEqual(authRows.sort());
   });
 });

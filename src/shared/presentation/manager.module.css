@@ -143,9 +143,15 @@ a.navLink[href]:hover {
   background: var(--surface-subtle);
 }
 
-/* The current section: 2 px color.action.primary.bg underline, as for Tabs. */
+/* The current section: 2 px color.action.primary.bg underline, as for Tabs. A real
+ * border (transparent elsewhere, so nothing shifts) survives forced-colors mode. */
+.navLink {
+  border-bottom: 2px solid transparent;
+  border-radius: 12px 12px 0 0;
+}
+
 .navLink[aria-current="page"] {
-  box-shadow: inset 0 -2px 0 var(--primary-bg);
+  border-bottom-color: var(--primary-bg);
 }
 
 /* A section that does not exist yet: color.action.disabledFg, not interactive. */
@@ -383,6 +389,8 @@ a.navLink[href]:hover {
   font-weight: 500;
   line-height: 1.4;
   text-decoration: none;
+  /* A real border survives forced-colors mode; transparent until current. */
+  border-bottom: 2px solid transparent;
 }
 
 a.tab[href]:hover {
@@ -390,7 +398,7 @@ a.tab[href]:hover {
 }
 
 .tab[aria-current="page"] {
-  box-shadow: inset 0 -2px 0 var(--primary-bg);
+  border-bottom-color: var(--primary-bg);
 }
 
 .tab[aria-disabled="true"] {
@@ -462,6 +470,18 @@ a.tab[href]:hover {
   inset: 0;
 }
 
+/* A cell holding its own controls sits above the row link, so they stay clickable. */
+.interactiveCell {
+  position: relative;
+  z-index: 1;
+}
+
+/* Numeric columns: right aligned with font.features.tabularNumbers. */
+.table .end {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* The column header repeated in each cell, only for the stacked layout below. */
 .cellLabel {
   display: none;
@@ -495,6 +515,10 @@ a.tab[href]:hover {
     border-top: 0;
   }
 
+  .table .end {
+    text-align: left;
+  }
+
   .cellLabel {
     display: block;
     color: var(--text-muted);
@@ -510,6 +534,8 @@ a.tab[href]:hover {
   gap: 4px;
   min-height: 24px;
   padding: 0 8px;
+  /* Transparent, so forced-colors mode still draws the badge's outline. */
+  border: 1px solid transparent;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
@@ -624,6 +650,18 @@ a.tab[href]:hover {
   font-size: 14px;
   font-weight: 500;
   line-height: 1.4;
+}
+
+/* The value to type in a typed confirmation: font.family.mono on color.surface.subtle,
+ * radius.sm, space.1 and space.2 padding. */
+.expected {
+  align-self: flex-start;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 15px;
+  overflow-wrap: anywhere;
 }
 
 /* Text input: staff height 40 px within a 44 px target, space.3 padding, radius.md,

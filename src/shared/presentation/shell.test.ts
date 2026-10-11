@@ -5,7 +5,8 @@ import { Badge } from "./Badge";
 import { Banner } from "./Banner";
 import { Bilingual } from "./Bilingual";
 import { Breadcrumbs } from "./Breadcrumbs";
-import { ConfirmForm } from "./ConfirmForm";
+import { ConfirmForm, literalPattern } from "./ConfirmForm";
+import { styles } from "./styles";
 import { ManagerShell } from "./ManagerShell";
 import { adminMetadata, pageMetadata } from "./metadata";
 import { Table } from "./Table";
@@ -193,6 +194,16 @@ describe("Tabs", () => {
     expect(disabled).toMatch(/<a [^>]*aria-disabled="true"[^>]*>Submissions/);
     expect(disabled).not.toContain('href="/x"');
   });
+
+  it("renders a tab that is both current and disabled as the current link", () => {
+    const both = renderToStaticMarkup(
+      createElement(Tabs, {
+        items: [{ key: "subs", label: "Submissions", href: "/x", current: true, disabled: true }],
+      }),
+    );
+    expect(both).toMatch(/<a [^>]*href="\/x"[^>]*aria-current="page"[^>]*>Submissions/);
+    expect(both).not.toContain("aria-disabled");
+  });
 });
 
 describe("Table", () => {
@@ -221,6 +232,28 @@ describe("Table", () => {
     expect(count(html.split("<tbody")[1] ?? "", /<tr\b/g)).toBe(2);
     expect(html).toMatch(/<a [^>]*href="\/admin\/forms\/f-1"[^>]*>Spring stories<\/a>/);
     expect(count(html, /<a\b/g)).toBe(1);
+  });
+
+  it("right-aligns end columns and lifts interactive cells above the row link", () => {
+    const aligned = renderToStaticMarkup(
+      createElement(Table, {
+        caption: "Forms",
+        columns: [
+          { key: "title", header: "Title" },
+          { key: "total", header: "Total", align: "end" },
+          { key: "actions", header: "Actions", interactive: true },
+        ],
+        rows: [{ key: "f-1", cells: ["Spring stories", "12", "menu"], href: "/admin/forms/f-1" }],
+      }),
+    );
+    const classOf = (tag: string) => /class="([^"]*)"/.exec(tag)?.[1]?.split(" ") ?? [];
+    const ths = aligned.match(/<th [^>]*>/g) ?? [];
+    const tds = aligned.match(/<td[^>]*>/g) ?? [];
+    expect(classOf(ths[0] ?? "")).not.toContain(styles.end);
+    expect(classOf(ths[1] ?? "")).toContain(styles.end);
+    expect(classOf(tds[1] ?? "")).toContain(styles.end);
+    expect(classOf(tds[2] ?? "")).toContain(styles.interactiveCell);
+    expect(classOf(tds[0] ?? "")).not.toContain(styles.interactiveCell);
   });
 });
 
@@ -297,6 +330,24 @@ describe("ConfirmForm", () => {
     expect(html).toMatch(new RegExp(`<label [^>]*for="${id ?? "-"}"[^>]*>Link name<span`));
   });
 
+  it("shows the value to type and links it, with the body, to the input", () => {
+    const input = /<input [^>]*name="slug"[^>]*>/.exec(html)?.[0] ?? "";
+    const describedBy = (/aria-describedby="([^"]+)"/.exec(input)?.[1] ?? "").split(" ");
+    expect(describedBy).toHaveLength(2);
+    const [expectedId, bodyId] = describedBy;
+    expect(html).toMatch(
+      new RegExp(`<code id="${expectedId ?? "-"}"[^>]*>spring.stories\\(2\\)</code>`),
+    );
+    expect(html).toMatch(new RegExp(`<p id="${bodyId ?? "-"}"[^>]*>This form has never`));
+  });
+
+  it("names the expected value in the input's title, for the browser's validation message", () => {
+    const input = /<input [^>]*name="slug"[^>]*>/.exec(html)?.[0] ?? "";
+    expect(input).toContain(
+      'title="Link name: spring.stories(2) / Nombre del enlace: spring.stories(2)"',
+    );
+  });
+
   it("offers the confirm button and a cancel link back", () => {
     expect(html).toMatch(/<button [^>]*type="submit"[^>]*>Delete form<span/);
     expect(html).toMatch(
@@ -318,5 +369,31 @@ describe("ConfirmForm", () => {
     );
     expect(count(plain, /<input\b/g)).toBe(2);
     expect(plain).not.toContain("pattern=");
+    expect(plain).not.toContain("<code");
+  });
+});
+
+describe("literalPattern", () => {
+  // Browsers compile `pattern` as ^(?:pattern)$ with the v flag.
+  const compile = (value: string) => new RegExp(`^(?:${literalPattern(value)})$`, "v");
+
+  it.each([
+    "back\\slash",
+    "^caret$",
+    "a|b",
+    "[brackets]",
+    "{braces}",
+    "path/to",
+    "spring-stories-2",
+    "a.b*c+d?(e)",
+  ])("matches %s exactly and nothing else", (value) => {
+    expect(compile(value).test(value)).toBe(true);
+    expect(compile(value).test(`${value}x`)).toBe(false);
+    expect(compile(value).test(value.slice(1))).toBe(false);
+  });
+
+  it("does not let a dot or a class match other characters", () => {
+    expect(compile("a.b").test("axb")).toBe(false);
+    expect(compile("[ab]").test("a")).toBe(false);
   });
 });
