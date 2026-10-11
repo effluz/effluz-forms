@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { buildDefaultRegistry, parseDraft, type Version } from "@/shared/domain/form-model";
+import type { Form } from "../domain/form";
 import { publishForm, publishPreview } from "./publish-form";
 import {
   DefinitionsStore,
   EDITOR,
+  fakeUuid,
   InMemoryVersionRepository,
   makeDefinitionsDeps,
   seedForm,
+  withConcurrentChange,
   type FakeDefinitionsDeps,
 } from "./testing/fakes";
 
@@ -315,5 +318,99 @@ describe("publishForm", () => {
     expect(deps.store.forms.get(formId)).toMatchObject({ status: "draft", currentVersionId: null });
     expect(deps.store.drafts.get(formId)).toEqual(draftBefore);
     expect(published(deps)).toHaveLength(0);
+  });
+
+  describe("when another actor commits between the read and the lock", () => {
+    /** Rewrites the stored form once, just before the use case locks it. */
+    function formChange(deps: FakeDefinitionsDeps, formId: string, patch: Partial<Form>) {
+      return withConcurrentChange(deps.forms, () => {
+        const stored = deps.store.forms.get(formId);
+        if (!stored) throw new Error("no form");
+        deps.store.forms.set(formId, { ...stored, ...patch });
+      });
+    }
+
+    function expectNothingWritten(
+      deps: FakeDefinitionsDeps,
+      formId: string,
+      draftBefore: unknown,
+    ): void {
+      expect(deps.store.versions.size).toBe(0);
+      expect(deps.store.forms.get(formId)?.currentVersionId).toBeNull();
+      expect(deps.store.drafts.get(formId)).toEqual(draftBefore);
+      expect(published(deps)).toHaveLength(0);
+    }
+
+    it("refuses with archived when the form was archived meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await publishableForm(deps);
+      const draftBefore = deps.store.drafts.get(formId);
+      const forms = formChange(deps, formId, { status: "archived", archivedAt: deps.clock.now() });
+
+      expect(await publishForm({ ...deps, forms }, EDITOR, { formId, expectedNumber: 1 })).toEqual({
+        ok: false,
+        code: "archived",
+      });
+      expectNothingWritten(deps, formId, draftBefore);
+      expect(deps.store.forms.get(formId)?.status).toBe("archived");
+    });
+
+    it("returns conflict when another publish moved the current version meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await publishableForm(deps);
+      const forms = formChange(deps, formId, {
+        status: "published",
+        currentVersionId: fakeUuid(901),
+        currentVersionNumber: 1,
+      });
+
+      expect(await publishForm({ ...deps, forms }, EDITOR, { formId, expectedNumber: 1 })).toEqual({
+        ok: false,
+        code: "conflict",
+      });
+      expect(deps.store.versions.size).toBe(0);
+      expect(published(deps)).toHaveLength(0);
+    });
+
+    it("returns conflict when an editor saved the draft meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await publishableForm(deps);
+      const drafts = withConcurrentChange(deps.drafts, () => {
+        const stored = deps.store.drafts.get(formId);
+        if (!stored) throw new Error("no draft");
+        deps.store.drafts.set(formId, {
+          ...stored,
+          revision: stored.revision + 1,
+          document: document([NAME, CITY]),
+        });
+      });
+      const draftBefore = structuredClone(deps.store.drafts.get(formId));
+
+      expect(await publishForm({ ...deps, drafts }, EDITOR, { formId, expectedNumber: 1 })).toEqual(
+        { ok: false, code: "conflict" },
+      );
+      expect(deps.store.versions.size).toBe(0);
+      expect(deps.store.drafts.get(formId)?.revision).toBe((draftBefore?.revision ?? 0) + 1);
+      expect(published(deps)).toHaveLength(0);
+    });
+
+    it("writes onto the fresh form row, keeping a retention change made meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await publishableForm(deps);
+      const settings = deps.store.forms.get(formId)?.settings;
+      if (!settings) throw new Error("no form");
+      const forms = formChange(deps, formId, { settings: { ...settings, retentionMonths: 24 } });
+      const revision = deps.store.drafts.get(formId)?.revision ?? 0;
+
+      const result = await publishForm({ ...deps, forms }, EDITOR, { formId, expectedNumber: 1 });
+
+      expect(result.ok).toBe(true);
+      expect(deps.store.forms.get(formId)).toMatchObject({
+        status: "published",
+        currentVersionNumber: 1,
+        settings: { retentionMonths: 24 },
+      });
+      expect(deps.store.drafts.get(formId)?.revision).toBe(revision + 1);
+    });
   });
 });

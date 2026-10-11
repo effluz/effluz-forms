@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { PgDraftRepository } from "@/modules/definitions/infrastructure/pg-draft-repository";
 import { PgFormRepository } from "@/modules/definitions/infrastructure/pg-form-repository";
 import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
-import { testPool, truncateAll } from "../db";
+import { testPool, truncateAll, waitForLockWaiters } from "../db";
 import { sampleDraft, sampleForm } from "./factories";
 
 describe("PgDraftRepository", () => {
@@ -59,22 +59,38 @@ describe("PgDraftRepository", () => {
     expect(await repo.find(draft.formId)).toEqual(draft);
   });
 
-  it("replaces the document after a publish and bumps the revision without expectation", async () => {
+  it("finds the draft for update inside a unit of work, or null", async () => {
     const { draft } = await formWithDraft();
-    const next = { ...draft, document: { ...draft.document, title: { en: "Published" } } };
-    await uowf.run((uow) => repo.replace(uow, next));
-    await uowf.run((uow) => repo.replace(uow, next));
-    const found = await repo.find(draft.formId);
-    expect(found?.revision).toBe(3);
-    expect(found?.document.title).toEqual({ en: "Published" });
+    expect(await uowf.run((uow) => repo.findForUpdate(uow, draft.formId))).toEqual(draft);
+    expect(await uowf.run((uow) => repo.findForUpdate(uow, randomUUID()))).toBeNull();
+    expect(await uowf.run((uow) => repo.findForUpdate(uow, "not-a-uuid"))).toBeNull();
   });
 
-  it("throws when replace finds no draft", async () => {
-    const form = sampleForm();
-    await uowf.run((uow) => forms.insert(uow, form));
-    await expect(uowf.run((uow) => repo.replace(uow, sampleDraft(form.id)))).rejects.toThrow(
-      /has no draft/,
-    );
+  it("holds the draft row until the locking unit of work commits", async () => {
+    const { draft } = await formWithDraft();
+    const first = await uowf.begin();
+    try {
+      await repo.findForUpdate(first, draft.formId);
+
+      let secondRead = false;
+      const second = uowf.run(async (uow) => {
+        const found = await repo.findForUpdate(uow, draft.formId);
+        secondRead = true;
+        return found;
+      });
+      await waitForLockWaiters(pool);
+      expect(secondRead).toBe(false);
+
+      const edited = { ...draft, document: { ...draft.document, title: { en: "Edited" } } };
+      expect(await repo.save(first, edited, draft.revision)).toBe("saved");
+      await first.commit();
+      const seen = await second;
+      expect(seen?.revision).toBe(draft.revision + 1);
+      expect(seen?.document.title).toEqual({ en: "Edited" });
+    } finally {
+      // A failed assertion must not leave the lock (and the next truncate) waiting.
+      await first.rollback().catch(() => undefined);
+    }
   });
 
   it("is removed with its form", async () => {

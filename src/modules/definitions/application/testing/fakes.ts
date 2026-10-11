@@ -9,14 +9,18 @@
  *   throws while it has versions.
  * - `InMemoryFormRepository`, `InMemoryDraftRepository`,
  *   `InMemoryVersionRepository`: mirror the Postgres adapters' results and
- *   throws (`slug_taken`, `stale`, `number_taken`, update and replace of a
- *   missing row throw, a non-UUID id names no row). Rows are deep-copied in
+ *   throws (`slug_taken`, `stale`, `number_taken`, update of a missing row
+ *   throws, a non-UUID id names no row). `findForUpdate` answers like the
+ *   plain read: one process needs no locks. Rows are deep-copied in
  *   and out, so a caller can never mutate what is stored; the version store
  *   offers no mutation at all. `update` stamps `updatedAt` from the clock, as
  *   the adapter stamps `now()`. `listCalls` records `list` arguments.
  * - `FakeSubmissionStats`: `receive(formId, ...dates)` records submissions,
  *   from which `summary`, `countReceivedAfter`, `countOlderThan` and `hasAny`
  *   answer; `setAnswerCounts(formId, counts)` scripts `answerCounts`.
+ * - `withConcurrentChange(repo, change)` returns a view of a form or draft
+ *   repository whose first `findForUpdate` runs `change` before reading, as
+ *   another actor committing between a use case's read and its lock would.
  * - `seedForm(deps, overrides?)` creates a form through `createForm` and
  *   returns its id; `overrides.patch` then rewrites form columns directly.
  * - Clock, ids, unit of work and audit fakes come from the shared kernel.
@@ -129,6 +133,10 @@ export class InMemoryFormRepository implements FormRepository {
     return Promise.resolve(form ? structuredClone(form) : null);
   }
 
+  findForUpdate(_uow: UnitOfWork, id: string): Promise<Form | null> {
+    return this.findById(id);
+  }
+
   findBySlug(slug: string): Promise<Form | null> {
     const id = this.slugOwner(slug);
     const form = id === undefined ? undefined : this.store.forms.get(id);
@@ -199,6 +207,10 @@ export class InMemoryDraftRepository implements DraftRepository {
     return Promise.resolve(draft ? structuredClone(draft) : null);
   }
 
+  findForUpdate(_uow: UnitOfWork, formId: string): Promise<Draft | null> {
+    return this.find(formId);
+  }
+
   save(_uow: UnitOfWork, draft: Draft, expectedRevision: number): Promise<"saved" | "stale"> {
     const stored = this.store.drafts.get(draft.formId);
     if (stored?.revision !== expectedRevision) return Promise.resolve("stale");
@@ -208,16 +220,26 @@ export class InMemoryDraftRepository implements DraftRepository {
     });
     return Promise.resolve("saved");
   }
+}
 
-  replace(_uow: UnitOfWork, draft: Draft): Promise<void> {
-    const stored = this.store.drafts.get(draft.formId);
-    if (!stored) throw new Error(`form ${draft.formId} has no draft`);
-    this.store.drafts.set(draft.formId, {
-      ...structuredClone(draft),
-      revision: stored.revision + 1,
-    });
-    return Promise.resolve();
-  }
+interface Lockable {
+  findForUpdate(uow: UnitOfWork, id: string): Promise<unknown>;
+}
+
+/** See the file header. `change` runs once, before the first locked read. */
+export function withConcurrentChange<R extends Lockable>(
+  repo: R,
+  change: () => void | Promise<void>,
+): R {
+  let pending = true;
+  const findForUpdate = async (uow: UnitOfWork, id: string): Promise<unknown> => {
+    if (pending) {
+      pending = false;
+      await change();
+    }
+    return repo.findForUpdate(uow, id);
+  };
+  return Object.assign(Object.create(repo) as R, { findForUpdate });
 }
 
 /** Versions are immutable: there is no way to change or remove one. */

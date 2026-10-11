@@ -10,8 +10,14 @@ export interface FormRepository {
   /** Writes the full row by id; `slug_taken` when the slug belongs to another form. */
   update(uow: UnitOfWork, form: Form): Promise<"updated" | "slug_taken">;
   delete(uow: UnitOfWork, id: string): Promise<void>;
-  /** Read path, no unit of work. */
+  /** Read path, no unit of work: for display and early refusals only. */
   findById(id: string): Promise<Form | null>;
+  /**
+   * Reads the form inside the unit of work and locks its row until the unit
+   * of work ends; null for a missing form or a malformed id.
+   * See specs/system/database.md, "The `UnitOfWork` port".
+   */
+  findForUpdate(uow: UnitOfWork, id: string): Promise<Form | null>;
   findBySlug(slug: string): Promise<Form | null>;
   /**
    * Forms of one tab, ordered by title (English, then Spanish) and slug. The

@@ -149,6 +149,16 @@ export class PgFormRepository implements FormRepository {
     return row ? toForm(row) : null;
   }
 
+  async findForUpdate(uow: UnitOfWork, id: string): Promise<Form | null> {
+    if (!isUuid(id)) return null;
+    const { rows } = await txOf(uow).client.query<FormRow>(
+      `select ${COLUMNS} from form where id = $1 for update`,
+      [id],
+    );
+    const row = rows[0];
+    return row ? toForm(row) : null;
+  }
+
   async findBySlug(slug: string): Promise<Form | null> {
     const { rows } = await this.pool.query<FormRow>(`select ${COLUMNS} from form where slug = $1`, [
       slug,

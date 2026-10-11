@@ -32,6 +32,9 @@ Rules:
   composition root (type only) and in the health route's pool probe.
 - Read-only queries for the admin page may bypass the unit of work but still go
   through a repository.
+- Mutating use cases re-read the aggregate inside the unit of work with a row
+  lock (`for update`) before writing; reads outside a unit of work are for
+  display and early refusals only.
 
 ## Connections
 

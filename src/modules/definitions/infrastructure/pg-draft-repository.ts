@@ -16,6 +16,9 @@ interface DraftRow {
   audited_at: Date | null;
 }
 
+const SELECT = `select form_id, revision, document, updated_by, updated_at, audited_by, audited_at
+  from form_draft`;
+
 function toDraft(row: DraftRow): Draft {
   // The application layer re-parses with the registry; this only guards the shape and
   // returns the stored object, so no key is dropped or defaulted on read.
@@ -59,9 +62,15 @@ export class PgDraftRepository implements DraftRepository {
 
   async find(formId: string): Promise<Draft | null> {
     if (!isUuid(formId)) return null;
-    const { rows } = await this.pool.query<DraftRow>(
-      `select form_id, revision, document, updated_by, updated_at, audited_by, audited_at
-         from form_draft where form_id = $1`,
+    const { rows } = await this.pool.query<DraftRow>(`${SELECT} where form_id = $1`, [formId]);
+    const row = rows[0];
+    return row ? toDraft(row) : null;
+  }
+
+  async findForUpdate(uow: UnitOfWork, formId: string): Promise<Draft | null> {
+    if (!isUuid(formId)) return null;
+    const { rows } = await txOf(uow).client.query<DraftRow>(
+      `${SELECT} where form_id = $1 for update`,
       [formId],
     );
     const row = rows[0];
@@ -86,23 +95,5 @@ export class PgDraftRepository implements DraftRepository {
       ],
     );
     return res.rowCount === 1 ? "saved" : "stale";
-  }
-
-  async replace(uow: UnitOfWork, draft: Draft): Promise<void> {
-    const res = await txOf(uow).client.query(
-      `update form_draft set
-         revision = revision + 1, document = $2::jsonb, updated_by = $3, audited_by = $4,
-         audited_at = $5, updated_at = $6
-       where form_id = $1`,
-      [
-        draft.formId,
-        JSON.stringify(draft.document),
-        draft.updatedBy,
-        draft.auditedBy,
-        draft.auditedAt,
-        draft.updatedAt,
-      ],
-    );
-    if (res.rowCount === 0) throw new Error(`form ${draft.formId} has no draft`);
   }
 }

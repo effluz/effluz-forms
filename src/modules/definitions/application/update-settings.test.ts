@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
+import type { Form } from "../domain/form";
 import { updateSettings } from "./update-settings";
-import { EDITOR, fakeUuid, makeDefinitionsDeps, seedForm } from "./testing/fakes";
+import {
+  EDITOR,
+  fakeUuid,
+  makeDefinitionsDeps,
+  seedForm,
+  withConcurrentChange,
+} from "./testing/fakes";
 
 type Deps = ReturnType<typeof makeDefinitionsDeps>;
 
@@ -116,7 +123,6 @@ describe("updateSettings", () => {
         digestHour: 24,
         referencePrefix: 7,
         timezone: 3,
-        opensAt: "tomorrow",
       },
     });
 
@@ -131,7 +137,6 @@ describe("updateSettings", () => {
       { code: "timezone_unknown", path: "timezone" },
       { code: "prefix_format", path: "referencePrefix" },
       { code: "retention_range", path: "retentionMonths", params: { min: 1, max: 36 } },
-      { code: "date_order", path: "opensAt" },
     ]);
   });
 
@@ -154,18 +159,58 @@ describe("updateSettings", () => {
     });
   });
 
-  it("throws on a malformed fixed control instead of inventing an issue code", async () => {
+  it("reports tampered fixed controls and dates as malformed at their paths", async () => {
     const deps = makeDefinitionsDeps();
     const formId = await seeded(deps);
     const before = await currentSettings(deps, formId);
 
-    await expect(
-      updateSettings(deps, EDITOR, {
-        formId,
-        settings: { ...before, notificationCadence: "hourly" },
-      }),
-    ).rejects.toThrow('malformed settings payload at "notificationCadence"');
+    const result = await updateSettings(deps, EDITOR, {
+      formId,
+      settings: {
+        ...before,
+        notificationCadence: "weekly",
+        botChallenge: "yes",
+        opensAt: "tomorrow",
+      },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "invalid",
+      issues: [
+        { code: "malformed", path: "notificationCadence" },
+        { code: "malformed", path: "opensAt" },
+        { code: "malformed", path: "botChallenge" },
+      ],
+    });
+    expect(await currentSettings(deps, formId)).toEqual(before);
     expect(deps.audit.entries).toEqual([]);
+  });
+
+  it("reports a non-numeric hour, a bad closing date and a non-object payload as malformed", async () => {
+    const deps = makeDefinitionsDeps();
+    const formId = await seeded(deps);
+    const before = await currentSettings(deps, formId);
+
+    expect(
+      await updateSettings(deps, EDITOR, {
+        formId,
+        settings: { ...before, digestHour: "nine", allowAnotherResponse: 1, closesAt: 5 },
+      }),
+    ).toEqual({
+      ok: false,
+      code: "invalid",
+      issues: [
+        { code: "malformed", path: "digestHour" },
+        { code: "malformed", path: "closesAt" },
+        { code: "malformed", path: "allowAnotherResponse" },
+      ],
+    });
+    expect(await updateSettings(deps, EDITOR, { formId, settings: "nope" })).toEqual({
+      ok: false,
+      code: "invalid",
+      issues: [{ code: "malformed", path: "" }],
+    });
   });
 
   it("saves a slug change on a never-published form and lists it in changed", async () => {
@@ -354,6 +399,93 @@ describe("updateSettings", () => {
 
       expect(result).toEqual({ ok: true, changed: ["retentionMonths"] });
       expect(deps.audit.entries.map((e) => e.entry.action)).toEqual(["form_settings_changed"]);
+    });
+  });
+
+  describe("when another actor commits between the read and the lock", () => {
+    /** Rewrites the stored form once, just before the use case locks it. */
+    function changeForm(deps: Deps, formId: string, patch: (form: Form) => Partial<Form>) {
+      return withConcurrentChange(deps.forms, () => {
+        const stored = deps.store.forms.get(formId);
+        if (!stored) throw new Error("no form");
+        deps.store.forms.set(formId, { ...stored, ...patch(stored) });
+      });
+    }
+
+    it("keeps a status change made meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await seeded(deps, true);
+      const before = await currentSettings(deps, formId);
+      const forms = changeForm(deps, formId, () => ({ status: "closed" }));
+
+      const result = await updateSettings({ ...deps, forms }, EDITOR, {
+        formId,
+        settings: { ...before, botChallenge: true },
+      });
+
+      expect(result).toEqual({ ok: true, changed: ["botChallenge"] });
+      expect(deps.store.forms.get(formId)).toMatchObject({
+        status: "closed",
+        settings: { botChallenge: true },
+      });
+    });
+
+    it("lists only the keys that differ from the fresh settings", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await seeded(deps);
+      const before = await currentSettings(deps, formId);
+      const forms = changeForm(deps, formId, (form) => ({
+        settings: { ...form.settings, botChallenge: true },
+      }));
+
+      const result = await updateSettings({ ...deps, forms }, EDITOR, {
+        formId,
+        settings: { ...before, botChallenge: true, allowAnotherResponse: true },
+      });
+
+      expect(result).toEqual({ ok: true, changed: ["allowAnotherResponse"] });
+      expect(deps.audit.entries.map((e) => e.entry.details)).toEqual([
+        { keys: "allowAnotherResponse" },
+      ]);
+    });
+
+    it("refuses a slug change with slug_locked when the form was published meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await seeded(deps);
+      const before = await currentSettings(deps, formId);
+      const forms = changeForm(deps, formId, () => ({
+        status: "published",
+        currentVersionId: VERSION_ID,
+        currentVersionNumber: 1,
+      }));
+
+      const result = await updateSettings({ ...deps, forms }, EDITOR, {
+        formId,
+        settings: before,
+        slug: "renamed-form",
+      });
+
+      expect(result).toEqual({ ok: false, code: "slug_locked" });
+      expect(deps.store.forms.get(formId)?.slug).toBe("sample-form");
+      expect(deps.audit.entries).toEqual([]);
+    });
+
+    it("returns not_found when the form was deleted meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await seeded(deps);
+      const before = await currentSettings(deps, formId);
+      const forms = withConcurrentChange(deps.forms, () => {
+        deps.store.forms.delete(formId);
+        deps.store.drafts.delete(formId);
+      });
+
+      const result = await updateSettings({ ...deps, forms }, EDITOR, {
+        formId,
+        settings: { ...before, botChallenge: true },
+      });
+
+      expect(result).toEqual({ ok: false, code: "not_found" });
+      expect(deps.audit.entries).toEqual([]);
     });
   });
 });

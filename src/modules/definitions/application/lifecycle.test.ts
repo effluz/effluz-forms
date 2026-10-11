@@ -4,11 +4,18 @@ import {
   FORM_STATUSES,
   LIFECYCLE_ACTIONS,
   nextStatus,
+  type Form,
   type FormStatus,
   type LifecycleAction,
 } from "../domain/form";
 import { applyLifecycle, deleteForm } from "./lifecycle";
-import { EDITOR, fakeUuid, makeDefinitionsDeps, seedForm } from "./testing/fakes";
+import {
+  EDITOR,
+  fakeUuid,
+  makeDefinitionsDeps,
+  seedForm,
+  withConcurrentChange,
+} from "./testing/fakes";
 
 const VERSION_ID = fakeUuid(900);
 
@@ -126,7 +133,52 @@ describe("applyLifecycle", () => {
     const after = await deps.forms.findById(formId);
     expect({ ...after, status: before?.status, updatedAt: before?.updatedAt }).toEqual(before);
   });
+
+  describe("when another actor commits between the read and the lock", () => {
+    it("returns invalid_transition when the form was already closed meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await seeded(deps, "published", true);
+      const forms = changeForm(deps, formId, { status: "closed" });
+
+      const result = await applyLifecycle({ ...deps, forms }, EDITOR, { formId, action: "close" });
+
+      expect(result).toEqual({ ok: false, code: "invalid_transition" });
+      expect(deps.audit.entries).toEqual([]);
+    });
+
+    it("keeps a settings change made meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await seeded(deps, "published", true);
+      const settings = deps.store.forms.get(formId)?.settings;
+      if (!settings) throw new Error("no form");
+      const forms = changeForm(deps, formId, { settings: { ...settings, botChallenge: true } });
+
+      const result = await applyLifecycle({ ...deps, forms }, EDITOR, {
+        formId,
+        action: "archive",
+      });
+
+      expect(result).toEqual({ ok: true, status: "archived" });
+      expect(deps.store.forms.get(formId)).toMatchObject({
+        status: "archived",
+        settings: { botChallenge: true },
+      });
+    });
+  });
 });
+
+/** Rewrites the stored form once, just before the use case locks it. */
+function changeForm(
+  deps: ReturnType<typeof makeDefinitionsDeps>,
+  formId: string,
+  patch: Partial<Form>,
+) {
+  return withConcurrentChange(deps.forms, () => {
+    const stored = deps.store.forms.get(formId);
+    if (!stored) throw new Error("no form");
+    deps.store.forms.set(formId, { ...stored, ...patch });
+  });
+}
 
 describe("deleteForm", () => {
   it("deletes an unpublished form without submissions, with its draft, and audits the slug", async () => {
@@ -204,4 +256,60 @@ describe("deleteForm", () => {
       expect(deps.audit.entries).toEqual([]);
     },
   );
+
+  describe("when another actor commits between the read and the lock", () => {
+    it("refuses with not_allowed when the form was published meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await seedForm(deps);
+      deps.audit.entries.length = 0;
+      const forms = changeForm(deps, formId, {
+        status: "published",
+        currentVersionId: VERSION_ID,
+        currentVersionNumber: 1,
+      });
+
+      const result = await deleteForm({ ...deps, forms }, EDITOR, {
+        formId,
+        slugConfirmation: "sample-form",
+      });
+
+      expect(result).toEqual({ ok: false, code: "not_allowed" });
+      expect(deps.store.forms.has(formId)).toBe(true);
+      expect(deps.audit.entries).toEqual([]);
+    });
+
+    it("refuses with slug_mismatch when the slug changed meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await seedForm(deps);
+      deps.audit.entries.length = 0;
+      const forms = changeForm(deps, formId, { slug: "renamed-form" });
+
+      const result = await deleteForm({ ...deps, forms }, EDITOR, {
+        formId,
+        slugConfirmation: "sample-form",
+      });
+
+      expect(result).toEqual({ ok: false, code: "slug_mismatch" });
+      expect(deps.store.forms.has(formId)).toBe(true);
+      expect(deps.audit.entries).toEqual([]);
+    });
+
+    it("returns not_found when the form was deleted meanwhile", async () => {
+      const deps = makeDefinitionsDeps();
+      const formId = await seedForm(deps);
+      deps.audit.entries.length = 0;
+      const forms = withConcurrentChange(deps.forms, () => {
+        deps.store.forms.delete(formId);
+        deps.store.drafts.delete(formId);
+      });
+
+      const result = await deleteForm({ ...deps, forms }, EDITOR, {
+        formId,
+        slugConfirmation: "sample-form",
+      });
+
+      expect(result).toEqual({ ok: false, code: "not_found" });
+      expect(deps.audit.entries).toEqual([]);
+    });
+  });
 });

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { PgDraftRepository } from "@/modules/definitions/infrastructure/pg-draft-repository";
 import { PgFormRepository } from "@/modules/definitions/infrastructure/pg-form-repository";
 import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
-import { testPool, truncateAll } from "../db";
+import { testPool, truncateAll, waitForLockWaiters } from "../db";
 import { sampleDraft, sampleForm, sampleVersion } from "./factories";
 import { PgVersionRepository } from "@/modules/definitions/infrastructure/pg-version-repository";
 
@@ -40,6 +40,37 @@ describe("PgFormRepository", () => {
     expect(await uowf.run((uow) => repo.insert(uow, second))).toBe("slug_taken");
     expect(await repo.findBySlug("open-day")).toEqual(first);
     expect(await repo.findById(second.id)).toBeNull();
+  });
+
+  it("finds a form for update inside a unit of work, or null", async () => {
+    const form = await insert();
+    expect(await uowf.run((uow) => repo.findForUpdate(uow, form.id))).toEqual(form);
+    expect(await uowf.run((uow) => repo.findForUpdate(uow, randomUUID()))).toBeNull();
+    expect(await uowf.run((uow) => repo.findForUpdate(uow, "not-a-uuid"))).toBeNull();
+  });
+
+  it("holds the form row until the locking unit of work commits", async () => {
+    const form = await insert();
+    const first = await uowf.begin();
+    try {
+      await repo.findForUpdate(first, form.id);
+
+      let secondRead = false;
+      const second = uowf.run(async (uow) => {
+        const found = await repo.findForUpdate(uow, form.id);
+        secondRead = true;
+        return found;
+      });
+      await waitForLockWaiters(pool);
+      expect(secondRead).toBe(false);
+
+      await repo.update(first, { ...form, status: "archived" });
+      await first.commit();
+      expect((await second)?.status).toBe("archived");
+    } finally {
+      // A failed assertion must not leave the lock (and the next truncate) waiting.
+      await first.rollback().catch(() => undefined);
+    }
   });
 
   it("updates the full row and bumps updated_at", async () => {

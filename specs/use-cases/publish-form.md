@@ -54,8 +54,10 @@ Each writes its audit entry.
   message. Dates narrow a `published` status, they never change it.
 - **Publishing with no changes since the last version.** Refused with a
   message; nothing to publish.
-- **Concurrent publish.** The second attempt fails on the version number
-  uniqueness constraint and is asked to reload.
+- **Concurrent publish.** A publish that finds, once it holds the form and
+  draft rows, that another publish or a draft save landed after its preview
+  is refused and asked to reload. The version number uniqueness constraint
+  backs this up.
 - **Publishing an archived form.** Refused; unarchive it first.
 - **Deleting a form.** Only a form with zero submissions and no published
   version can be deleted, from the manager, with confirmation and audit entry

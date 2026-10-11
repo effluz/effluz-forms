@@ -34,7 +34,8 @@ export type UpdateSettingsResult =
 /**
  * Saves a form's operational settings and, before the first publish, its slug.
  * Settings never create a version. The update and its audit entries are
- * written in one unit of work; nothing is written when nothing changed.
+ * written in one unit of work, decided again on the form row as re-read there
+ * with a lock; nothing is written when nothing changed.
  * See specs/use-cases/manage-form-settings.md.
  */
 export async function updateSettings(
@@ -53,35 +54,37 @@ export async function updateSettings(
   });
   if (issues.length > 0) return { ok: false, code: "invalid", issues };
 
-  const slug = input.slug ?? form.slug;
-  const slugChanged = slug !== form.slug;
-  if (slugChanged) {
-    if (!canEditSlug(form)) return { ok: false, code: "slug_locked" };
-    const slugIssue = checkSlug(slug);
-    if (slugIssue) return { ok: false, code: slugIssue };
-  }
+  let submissions: boolean | undefined;
+  const hasSubmissions = async (): Promise<boolean> =>
+    (submissions ??= await deps.stats.hasAny(form.id));
+  const plan = (current: Form) => planChange(current, settings, input.slug, hasSubmissions);
 
-  const before = form.settings;
-  if (settings.referencePrefix !== before.referencePrefix && (await deps.stats.hasAny(form.id))) {
-    return { ok: false, code: "prefix_locked" };
-  }
+  const early = await plan(form);
+  if (!early.ok) return early;
 
   const now = deps.clock.now();
+  // The purge count is advisory (submissions keep arriving), so it is taken
+  // once, before the unit of work.
   let purged = 0;
-  if (settings.retentionMonths < before.retentionMonths) {
+  if (settings.retentionMonths < form.settings.retentionMonths) {
     purged = await deps.stats.countOlderThan(form.id, settings.retentionMonths, now);
     if (purged > 0 && input.confirmRetentionPurge !== true) {
       return { ok: false, code: "retention_confirm", count: purged };
     }
   }
+  if (early.changed.length === 0) return { ok: true, changed: [] };
 
-  const changed: string[] = changedKeys(before, settings);
-  if (slugChanged) changed.push("slug");
-  if (changed.length === 0) return { ok: true, changed };
-
-  const next: Form = { ...form, slug, settings };
   return deps.uow.run(async (uow): Promise<UpdateSettingsResult> => {
-    if ((await deps.forms.update(uow, next)) === "slug_taken") {
+    // Decided again on the locked row, so a concurrent status change or
+    // publish is neither undone nor bypassed.
+    const fresh = await deps.forms.findForUpdate(uow, form.id);
+    if (!fresh) return { ok: false, code: "not_found" };
+    const decided = await plan(fresh);
+    if (!decided.ok) return decided;
+    const { slug, changed } = decided;
+    if (changed.length === 0) return { ok: true, changed };
+
+    if ((await deps.forms.update(uow, { ...fresh, slug, settings })) === "slug_taken") {
       return { ok: false, code: "slug_taken" };
     }
     const base = { actorEmail: actor.email, targetId: form.id, ip: actor.ip };
@@ -90,13 +93,14 @@ export async function updateSettings(
       { ...base, action: "form_settings_changed", details: { keys: changed.join(",") } },
       now,
     );
-    if (purged > 0) {
+    const from = fresh.settings.retentionMonths;
+    if (purged > 0 && settings.retentionMonths < from) {
       await deps.audit.record(
         uow,
         {
           ...base,
           action: "retention_shortened",
-          details: { from: before.retentionMonths, to: settings.retentionMonths, count: purged },
+          details: { from, to: settings.retentionMonths, count: purged },
         },
         now,
       );
@@ -105,13 +109,44 @@ export async function updateSettings(
   });
 }
 
+type PlanRefusal = Extract<
+  UpdateSettingsResult,
+  { code: "slug_locked" | "slug_format" | "slug_reserved" | "slug_taken" | "prefix_locked" }
+>;
+
+/**
+ * The slug to store and the keys that differ from `current`, or why the change
+ * is refused. Runs on the plain read and again on the locked row.
+ */
+async function planChange(
+  current: Form,
+  settings: FormSettings,
+  requestedSlug: string | undefined,
+  hasSubmissions: () => Promise<boolean>,
+): Promise<{ ok: true; slug: string; changed: string[] } | PlanRefusal> {
+  const slug = requestedSlug ?? current.slug;
+  const slugChanged = slug !== current.slug;
+  if (slugChanged) {
+    if (!canEditSlug(current)) return { ok: false, code: "slug_locked" };
+    const slugIssue = checkSlug(slug);
+    if (slugIssue) return { ok: false, code: slugIssue };
+  }
+  if (settings.referencePrefix !== current.settings.referencePrefix && (await hasSubmissions())) {
+    return { ok: false, code: "prefix_locked" };
+  }
+  const changed: string[] = changedKeys(current.settings, settings);
+  if (slugChanged) changed.push("slug");
+  return { ok: true, slug, changed };
+}
+
 type SchemaError = NonNullable<ReturnType<typeof settingsSchema.safeParse>["error"]>;
 type SchemaIssue = SchemaError["issues"][number];
 
 /**
- * The code a schema failure on each setting maps to. Cadence and the two
- * toggles come from fixed controls and have no user-facing code: a failure
- * there is a malformed request, not an editor's mistake.
+ * The code a schema failure on each setting maps to. Any other failure (the
+ * payload itself, cadence, the two toggles, a non-numeric hour, a date that
+ * is not an ISO datetime) is `malformed`: fixed controls cannot produce it, so
+ * it is a tampered or broken request, not an editor's mistake.
  */
 const CODE_FOR_KEY: Partial<Record<keyof FormSettings, SettingsCode>> = {
   notificationRecipients: "recipient_syntax",
@@ -119,8 +154,6 @@ const CODE_FOR_KEY: Partial<Record<keyof FormSettings, SettingsCode>> = {
   timezone: "timezone_unknown",
   referencePrefix: "prefix_format",
   retentionMonths: "retention_range",
-  opensAt: "date_order",
-  closesAt: "date_order",
 };
 
 function schemaIssues(error: SchemaError): SettingsIssue[] {
@@ -131,7 +164,9 @@ function toSettingsIssue(issue: SchemaIssue): SettingsIssue {
   const [key, index] = issue.path;
   const code = typeof key === "string" ? CODE_FOR_KEY[key as keyof FormSettings] : undefined;
   const path = issue.path.map(String).join(".");
-  if (code === undefined) throw new Error(`malformed settings payload at "${path}"`);
+  // The hour picker offers whole hours only; out of range is still `hour_range`.
+  const malformedHour = code === "hour_range" && issue.code === "invalid_type";
+  if (code === undefined || malformedHour) return { code: "malformed", path };
 
   if (key === "notificationRecipients") {
     if (typeof index === "number") return { code, path, params: { index } };

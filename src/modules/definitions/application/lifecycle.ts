@@ -2,6 +2,7 @@ import {
   AUDIT_FOR_ACTION,
   canDelete,
   nextStatus,
+  type Form,
   type FormStatus,
   type LifecycleAction,
 } from "../domain/form";
@@ -12,7 +13,8 @@ export type LifecycleResult =
 
 /**
  * Closes, reopens, archives or unarchives a form. The status change and its
- * audit entry are written in one unit of work.
+ * audit entry are written in one unit of work, decided on the form row as
+ * re-read there with a lock.
  * See specs/form-definition.md, "Lifecycle".
  */
 export async function applyLifecycle(
@@ -22,17 +24,19 @@ export async function applyLifecycle(
 ): Promise<LifecycleResult> {
   const form = await deps.forms.findById(input.formId);
   if (!form) return { ok: false, code: "not_found" };
-  const status = nextStatus(form.status, input.action, {
-    everPublished: form.currentVersionId !== null,
-  });
-  if (status === null) return { ok: false, code: "invalid_transition" };
+  if (nextStatusOf(form, input.action) === null) return { ok: false, code: "invalid_transition" };
 
   const now = deps.clock.now();
-  const archivedAt =
-    input.action === "archive" ? now : input.action === "unarchive" ? null : form.archivedAt;
-  await deps.uow.run(async (uow) => {
+  return deps.uow.run(async (uow): Promise<LifecycleResult> => {
+    // Decided again on the locked row: another actor may have acted meanwhile.
+    const fresh = await deps.forms.findForUpdate(uow, form.id);
+    if (!fresh) return { ok: false, code: "not_found" };
+    const status = nextStatusOf(fresh, input.action);
+    if (status === null) return { ok: false, code: "invalid_transition" };
+    const archivedAt =
+      input.action === "archive" ? now : input.action === "unarchive" ? null : fresh.archivedAt;
     // A status change never touches the slug, so `slug_taken` cannot happen.
-    await deps.forms.update(uow, { ...form, status, archivedAt });
+    await deps.forms.update(uow, { ...fresh, status, archivedAt });
     await deps.audit.record(
       uow,
       {
@@ -43,8 +47,12 @@ export async function applyLifecycle(
       },
       now,
     );
+    return { ok: true, status };
   });
-  return { ok: true, status };
+}
+
+function nextStatusOf(form: Form, action: LifecycleAction): FormStatus | null {
+  return nextStatus(form.status, action, { everPublished: form.currentVersionId !== null });
 }
 
 export type DeleteFormResult =
@@ -52,7 +60,8 @@ export type DeleteFormResult =
 
 /**
  * Deletes a form that was never published and has no submissions, together
- * with its draft. The editor confirms by typing the slug exactly.
+ * with its draft. The editor confirms by typing the slug exactly. The rules
+ * are checked again on the form row as re-read with a lock.
  * See specs/use-cases/publish-form.md.
  */
 export async function deleteForm(
@@ -62,23 +71,38 @@ export async function deleteForm(
 ): Promise<DeleteFormResult> {
   const form = await deps.forms.findById(input.formId);
   if (!form) return { ok: false, code: "not_found" };
-  if (!canDelete(form, await deps.stats.hasAny(form.id))) return { ok: false, code: "not_allowed" };
-  if (input.slugConfirmation !== form.slug) return { ok: false, code: "slug_mismatch" };
+  const hasSubmissions = await deps.stats.hasAny(form.id);
+  const refusal = deleteRefusal(form, hasSubmissions, input.slugConfirmation);
+  if (refusal) return { ok: false, code: refusal };
 
   const now = deps.clock.now();
-  await deps.uow.run(async (uow) => {
-    await deps.forms.delete(uow, form.id);
+  return deps.uow.run(async (uow): Promise<DeleteFormResult> => {
+    // Decided again on the locked row: a publish or a slug change may have landed.
+    const fresh = await deps.forms.findForUpdate(uow, form.id);
+    if (!fresh) return { ok: false, code: "not_found" };
+    const late = deleteRefusal(fresh, hasSubmissions, input.slugConfirmation);
+    if (late) return { ok: false, code: late };
+    await deps.forms.delete(uow, fresh.id);
     await deps.audit.record(
       uow,
       {
         action: "form_deleted",
         actorEmail: actor.email,
-        targetId: form.id,
+        targetId: fresh.id,
         ip: actor.ip,
-        details: { slug: form.slug },
+        details: { slug: fresh.slug },
       },
       now,
     );
+    return { ok: true };
   });
-  return { ok: true };
+}
+
+function deleteRefusal(
+  form: Form,
+  hasSubmissions: boolean,
+  slugConfirmation: string,
+): "not_allowed" | "slug_mismatch" | null {
+  if (!canDelete(form, hasSubmissions)) return "not_allowed";
+  return slugConfirmation === form.slug ? null : "slug_mismatch";
 }

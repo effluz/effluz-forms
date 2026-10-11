@@ -106,7 +106,9 @@ export async function publishPreview(
 /**
  * Publishes the draft as the next immutable version in one unit of work: the
  * version row, the form's current version and status, a fresh draft and the
- * `form_published` audit entry.
+ * `form_published` audit entry. The checks run on a plain read first; the unit
+ * of work re-reads the form and draft with row locks and refuses when either
+ * moved since.
  * See specs/use-cases/publish-form.md, "Main flow: publish", step 4, and
  * "Concurrent publish".
  */
@@ -137,23 +139,44 @@ export async function publishForm(
   };
 
   return deps.uow.run(async (uow): Promise<PublishResult> => {
+    // Form first, then draft: the lock order every use case follows.
+    const fresh = await deps.forms.findForUpdate(uow, form.id);
+    if (!fresh) return { ok: false, code: "not_found" };
+    const freshDraft = await deps.drafts.findForUpdate(uow, form.id);
+    if (!freshDraft) return { ok: false, code: "not_found" };
+    if (fresh.status === "archived") return { ok: false, code: "archived" };
+    // Another publish, or an editor's save, landed after our read: the
+    // previewed number or the checked document no longer holds.
+    const versionMoved =
+      fresh.currentVersionId !== form.currentVersionId ||
+      fresh.currentVersionNumber !== form.currentVersionNumber;
+    if (versionMoved || freshDraft.revision !== draft.revision) {
+      return { ok: false, code: "conflict" };
+    }
+
     if ((await deps.versions.insert(uow, version)) === "number_taken") {
       return { ok: false, code: "conflict" };
     }
     const updated = await deps.forms.update(uow, {
-      ...form,
+      ...fresh,
       currentVersionId: version.id,
       currentVersionNumber: number,
-      status: form.status === "draft" ? "published" : form.status,
+      status: fresh.status === "draft" ? "published" : fresh.status,
     });
     // The slug is unchanged, so another owner would mean corrupt data.
     if (updated === "slug_taken") throw new Error(`form ${form.id} lost its slug`);
-    await deps.drafts.replace(uow, {
-      ...draft,
-      document: structuredClone(draft.document),
-      updatedBy: actor.email,
-      updatedAt: now,
-    });
+    const saved = await deps.drafts.save(
+      uow,
+      {
+        ...freshDraft,
+        document: structuredClone(freshDraft.document),
+        updatedBy: actor.email,
+        updatedAt: now,
+      },
+      freshDraft.revision,
+    );
+    // The row is locked, so a stale save is a bug; throwing undoes the version.
+    if (saved === "stale") throw new Error(`draft of form ${form.id} changed while locked`);
     await deps.audit.record(
       uow,
       {
@@ -165,6 +188,6 @@ export async function publishForm(
       },
       now,
     );
-    return { ok: true, versionId: version.id, number, publicUrl: publicUrl(deps, form.slug) };
+    return { ok: true, versionId: version.id, number, publicUrl: publicUrl(deps, fresh.slug) };
   });
 }

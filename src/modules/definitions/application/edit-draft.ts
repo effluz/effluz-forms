@@ -21,8 +21,10 @@ function stale(draft: Draft): EditDraftResult {
 }
 
 /**
- * Applies a batch of builder commands to the draft in one unit of work. A
- * stale base revision or a rejected command changes nothing.
+ * Applies a batch of builder commands to the draft in one unit of work, which
+ * re-reads the draft (and, for a title or language change, the form) with a
+ * row lock before writing. A stale base revision or a rejected command
+ * changes nothing.
  * See specs/use-cases/create-and-edit-form.md, "Main flow: edit the draft" and
  * "Audit entries".
  */
@@ -55,15 +57,29 @@ export async function editDraft(
   };
   const renamed = commands.some((command) => command.kind === "rename_form");
   const languageChanges = commands.filter((command) => command.kind === "set_languages");
+  const mirrored = renamed || languageChanges.length > 0;
 
-  const saved = await deps.uow.run(async (uow) => {
-    if ((await deps.drafts.save(uow, next, baseRevision)) === "stale") return false;
+  return deps.uow.run(async (uow): Promise<EditDraftResult> => {
+    // Rows are locked form first, then draft, in every use case, so two units
+    // of work never wait on each other in opposite order.
+    const freshForm = mirrored ? await deps.forms.findForUpdate(uow, formId) : form;
+    if (!freshForm) return { ok: false, code: "not_found" };
+    const fresh = await deps.drafts.findForUpdate(uow, formId);
+    if (!fresh) return { ok: false, code: "not_found" };
+    // Another save landed after our read: hand back what is stored now.
+    if (fresh.revision !== baseRevision) return stale(fresh);
+    // The lock makes this unreachable in Postgres; the save is the first write,
+    // so answering stale here still commits nothing.
+    if ((await deps.drafts.save(uow, next, baseRevision)) === "stale") {
+      const current = await deps.drafts.findForUpdate(uow, formId);
+      return current ? stale(current) : { ok: false, code: "not_found" };
+    }
 
     // The document is the source of truth; the form row mirrors its title and
     // languages (a narrower mode also drops the other locale's title text).
-    if (renamed || languageChanges.length > 0) {
+    if (mirrored) {
       const result = await deps.forms.update(uow, {
-        ...form,
+        ...freshForm,
         title: applied.document.title,
         languages: applied.document.languages,
       });
@@ -95,20 +111,13 @@ export async function editDraft(
         now,
       );
     }
-    return true;
+    return {
+      ok: true,
+      revision: baseRevision + 1,
+      document: applied.document,
+      createdKeys: applied.createdKeys,
+    };
   });
-
-  if (!saved) {
-    // Lost a race with another save: hand back what is stored now.
-    const current = await deps.drafts.find(formId);
-    return current ? stale(current) : { ok: false, code: "not_found" };
-  }
-  return {
-    ok: true,
-    revision: baseRevision + 1,
-    document: applied.document,
-    createdKeys: applied.createdKeys,
-  };
 }
 
 /** The working copy of a form, or null. See specs/ui-ux/builder.md, "Loading". */

@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { Key } from "@/shared/domain/form-model";
 import type { DraftCommand } from "../domain/commands";
 import { editDraft, getDraft } from "./edit-draft";
-import { EDITOR, fakeUuid, makeDefinitionsDeps, seedForm } from "./testing/fakes";
+import {
+  EDITOR,
+  fakeUuid,
+  makeDefinitionsDeps,
+  seedForm,
+  withConcurrentChange,
+} from "./testing/fakes";
 
 const OTHER = { email: "other@example.com", ip: "203.0.113.8" };
 const MINUTE_MS = 60_000;
@@ -149,6 +155,64 @@ describe("editDraft", () => {
     expect(form?.slug).toBe("sample-form");
     expect(form?.languages).toBe("bilingual");
     expect((await deps.drafts.find(formId))?.document.title).toEqual(title);
+  });
+
+  describe("when another actor commits between the read and the lock", () => {
+    it("returns stale with the fresh draft and writes nothing", async () => {
+      const { deps, formId, revision } = await setup();
+      const theirs = { en: "Their title", es: "Su título" };
+      const drafts = withConcurrentChange(deps.drafts, () => {
+        const stored = deps.store.drafts.get(formId);
+        if (!stored) throw new Error("no draft");
+        deps.store.drafts.set(formId, {
+          ...stored,
+          revision: revision + 1,
+          document: { ...stored.document, title: theirs },
+          updatedBy: OTHER.email,
+        });
+      });
+
+      const result = await editDraft({ ...deps, drafts }, EDITOR, {
+        formId,
+        baseRevision: revision,
+        commands: [{ kind: "rename_form", title: { en: "Mine", es: "Mío" } }],
+      });
+
+      const current = await deps.drafts.find(formId);
+      expect(result).toEqual({
+        ok: false,
+        code: "stale",
+        revision: revision + 1,
+        document: current?.document,
+      });
+      expect(current?.document.title).toEqual(theirs);
+      expect((await deps.forms.findById(formId))?.title.en).toBe("Sample form");
+      expect(deps.audit.entries).toEqual([]);
+    });
+
+    it("mirrors a rename onto the fresh form row, keeping a status changed meanwhile", async () => {
+      const { deps, formId, revision } = await setup();
+      const archivedAt = new Date("2026-10-10T11:00:00Z");
+      const forms = withConcurrentChange(deps.forms, () => {
+        const stored = deps.store.forms.get(formId);
+        if (!stored) throw new Error("no form");
+        deps.store.forms.set(formId, { ...stored, status: "archived", archivedAt });
+      });
+      const title = { en: "Open day", es: "Día abierto" };
+
+      const result = await editDraft({ ...deps, forms }, EDITOR, {
+        formId,
+        baseRevision: revision,
+        commands: [{ kind: "rename_form", title }],
+      });
+
+      expect(result.ok).toBe(true);
+      expect(await deps.forms.findById(formId)).toMatchObject({
+        title,
+        status: "archived",
+        archivedAt,
+      });
+    });
   });
 
   it("does not touch the form row when neither title nor languages change", async () => {

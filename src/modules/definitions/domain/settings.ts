@@ -59,7 +59,9 @@ export type SettingsCode =
   | "retention_range"
   | "date_order"
   | "timezone_unknown"
-  | "hour_range";
+  | "hour_range"
+  /** A value no Settings control can produce: a tampered or broken request. */
+  | "malformed";
 
 export interface SettingsIssue {
   code: SettingsCode;
