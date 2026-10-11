@@ -15,3 +15,4 @@ export { stageFile } from "./stage-file";
 export { attachToSubmission } from "./attach";
 export { discardStaged, discardRecordFiles } from "./discard";
 export { MEDIA_JOB_TYPES } from "./job-types";
+export { createMediaUploadHandler, createMediaDeleteHandler } from "./jobs";
