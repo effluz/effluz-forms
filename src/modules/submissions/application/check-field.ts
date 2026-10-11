@@ -7,14 +7,14 @@ import {
 import { asKey } from "@/shared/domain/form-model";
 import { todayIn } from "../domain/dates";
 import { withFileAnswers } from "../domain/in-progress";
-import { omitKeys, pageInputKeys } from "./answers";
+import { pageInputKeys } from "./answers";
 import type { SubmissionsDeps } from "./deps";
 import type { OpenContext } from "./post-context";
 
 /**
  * The blur check: the server's own rules for one field, so the browser ships
- * none of them. The conditions are judged by the record's stored answers plus
- * this one answer. Null when the version has no such input field.
+ * none of them. The conditions are judged by the record's stored answers
+ * (same-page siblings included) plus this one answer. Null when the version has no such input field.
  * See specs/ui-ux/renderer.md, "Validation and errors".
  */
 export function checkField(
@@ -32,8 +32,9 @@ export function checkField(
 
     const record = context.record;
     const keys = pageInputKeys(document, deps.registry, page.key);
-    // Same-page siblings count as unanswered: only this field is under test.
-    const stored = omitKeys(record?.answers ?? {}, keys.answers);
+    // The stored answers (same-page siblings included) plus this one answer, as Next would see
+    // them, so a blur check reports what Next reports.
+    const stored = record?.answers ?? {};
     const body = withFileAnswers(
       keys.answers.includes(field.key) ? { ...stored, [field.key]: input.answer } : stored,
       record?.files ?? {},

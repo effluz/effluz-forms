@@ -14,12 +14,12 @@ import {
 } from "../domain/in-progress";
 import { localeFor, pickLocale } from "../domain/locale";
 import { firstPageKey, nextPageKey, pagePosition, previousPageKey } from "../domain/navigation";
-import { decoyReference, isHoneypotFilled, isSilentAccept } from "../domain/protection";
+import { decoyReference, isHoneypotFilled } from "../domain/protection";
 import { omitKeys, pageInputKeys, storePageAnswers } from "./answers";
 import type { SubmissionsDeps } from "./deps";
 import type { PagePost, PostOutcome } from "./fill-state";
 import type { OpenContext } from "./post-context";
-import { discardQuietly, mergeBatch, stageIncoming } from "./staging";
+import { discardQuietly, errorClass, mergeBatch, stageIncoming } from "./staging";
 
 interface Saved {
   outcome: PostOutcome;
@@ -27,14 +27,12 @@ interface Saved {
   discard: string[];
 }
 
-const pick = (source: Readonly<Record<string, unknown>>, keys: readonly string[]) =>
-  Object.fromEntries(keys.filter((k) => Object.hasOwn(source, k)).map((k) => [k, source[k]]));
-
-/** Typed text of the page's answer inputs only: never an upload input, never another page's key. */
-function pageRaw(raw: RawValues, keys: readonly string[]): RawValues {
-  return Object.fromEntries(
-    keys.filter((k) => Object.hasOwn(raw, k)).map((k) => [k, raw[k] ?? ""]),
-  );
+/** The entries of `source` whose key is one of `keys`: never a key of another page. */
+function pickKeys<T>(
+  source: Readonly<Record<string, T>>,
+  keys: readonly string[],
+): Record<string, T> {
+  return Object.fromEntries(Object.entries(source).filter(([k]) => keys.includes(k)));
 }
 
 /**
@@ -67,9 +65,9 @@ function withOverrides(
  * Saves one page post: Next, Back, the language switch or a Remove. Every
  * post stores the page's valid answers server-side, which lets Back, Next and
  * a refresh keep them (specs/ui-ux/renderer.md, "Navigation and state"). The
- * honeypot and the minimum fill time apply to every post and end in a silent
- * accept (specs/system/security.md, "Public form abuse protection"). Submit
- * never reaches here.
+ * honeypot applies to every post and ends in a silent accept; the minimum
+ * fill time is checked at Submit only (specs/system/security.md, "Public form
+ * abuse protection"). Submit never reaches here.
  */
 export async function savePage(
   deps: SubmissionsDeps,
@@ -88,7 +86,7 @@ export async function savePage(
       } catch (error) {
         deps.logger.warn("staged files not removed", {
           recordId: existing.id,
-          errorClass: error instanceof Error ? error.constructor.name : typeof error,
+          errorClass: errorClass(error),
         });
       }
     }
@@ -98,8 +96,6 @@ export async function savePage(
   if (isHoneypotFilled(post.honeypot)) return silentAccept();
   if (!doc.pages.some((p) => p.key === post.pageKey)) return { kind: "expired" };
   if (!existing && post.pageKey !== firstPageKey(doc, deps.registry)) return { kind: "expired" };
-  const startedAt = existing?.startedAt ?? clampStartedAt(post.renderedAt, now);
-  if (isSilentAccept({ honeypot: post.honeypot, startedAt, now })) return silentAccept();
 
   const recordId = existing?.id ?? deps.ids.newId();
   const batch = await stageIncoming(deps, {
@@ -131,7 +127,7 @@ export async function savePage(
               : pickLocale(doc.languages, post.acceptLanguage),
           pageKey: post.pageKey,
           submitToken: deps.ids.newId(),
-          startedAt,
+          startedAt: clampStartedAt(post.renderedAt, now),
           now,
         });
       }
@@ -164,7 +160,7 @@ export async function savePage(
       // a post cannot name an earlier page's key to steer a condition.
       const stored = omitKeys(record.answers, keys.answers);
       const body = withFileAnswers(
-        { ...stored, ...pick(post.answers, keys.answers) },
+        { ...stored, ...pickKeys(post.answers, keys.answers) },
         record.files,
       );
       const validation = validatePage(
@@ -192,36 +188,29 @@ export async function savePage(
         answers: storePageAnswers(record.answers, doc, deps.registry, post.pageKey, valid),
         updatedAt: now,
       };
-      const raw = pageRaw(post.raw, keys.answers);
+      const raw: RawValues = pickKeys(post.raw, keys.answers);
       const holdsPage = (pending: PendingPage): InProgress => ({
         ...record,
         pageKey: post.pageKey,
         pending,
       });
       const answersNow = () => withFileAnswers(record.answers, record.files);
+      const refusedOutcome = (r: InProgress): PostOutcome => ({
+        kind: "refused",
+        recordId: r.id,
+        locale: r.locale,
+        page: pagePosition(doc, answersNow(), deps.registry, r.pageKey).n,
+        refusedFiles,
+      });
       const refused = (r: InProgress): PostOutcome =>
-        refusedFiles.length === 0
-          ? { kind: "show", recordId: r.id }
-          : {
-              kind: "refused",
-              recordId: r.id,
-              locale: r.locale,
-              page: pagePosition(doc, answersNow(), deps.registry, r.pageKey).n,
-              refusedFiles,
-            };
+        refusedFiles.length === 0 ? { kind: "show", recordId: r.id } : refusedOutcome(r);
 
       let outcome: PostOutcome;
       switch (post.action.kind) {
         case "next": {
           if (issues.length > 0 || refusedFiles.length > 0) {
             record = holdsPage({ pageKey: post.pageKey, raw, issues });
-            outcome = {
-              kind: "refused",
-              recordId: record.id,
-              locale: record.locale,
-              page: pagePosition(doc, answersNow(), deps.registry, record.pageKey).n,
-              refusedFiles,
-            };
+            outcome = refusedOutcome(record);
           } else {
             const to = nextPageKey(doc, answersNow(), deps.registry, post.pageKey);
             record = { ...record, pageKey: to ?? post.pageKey, pending: null };

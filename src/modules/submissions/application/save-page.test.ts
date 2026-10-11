@@ -3,18 +3,7 @@ import { fakeImage } from "@/modules/media/application/testing/fakes";
 import { asKey } from "@/shared/domain/form-model";
 import { postContext } from "./post-context";
 import { savePage } from "./save-page";
-import {
-  makeSubmissionsDeps,
-  post as basePost,
-  publishStory,
-  type FakeSubmissionsDeps,
-} from "./testing/fakes";
-import type { PagePost } from "./fill-state";
-
-/** A post rendered 20 seconds ago, so the minimum fill time has passed. */
-function post(deps: FakeSubmissionsDeps, over: Partial<PagePost> = {}): PagePost {
-  return basePost({ renderedAt: new Date(deps.clock.now().getTime() - 20_000), ...over });
-}
+import { makeSubmissionsDeps, post, publishStory, type FakeSubmissionsDeps } from "./testing/fakes";
 
 async function context(
   deps: FakeSubmissionsDeps,
@@ -29,7 +18,7 @@ async function startOnPhotos(deps: FakeSubmissionsDeps): Promise<string> {
   const first = await savePage(
     deps,
     await context(deps),
-    post(deps, { answers: { f_name: "Ana Prueba", f_baby: "yes_opt" } }),
+    post({ answers: { f_name: "Ana Prueba", f_baby: "yes_opt" } }),
   );
   if (first.kind !== "show") throw new Error(first.kind);
   return first.recordId;
@@ -45,7 +34,7 @@ describe("savePage", () => {
     const out = await savePage(
       deps,
       await context(deps),
-      post(deps, {
+      post({
         answers: { f_name: " Ana Prueba ", f_baby: "no_opt" },
         renderedAt: rendered,
         acceptLanguage: "en",
@@ -66,9 +55,9 @@ describe("savePage", () => {
   it("refuses a later page without a record as expired", async () => {
     const deps = makeSubmissionsDeps();
     await publishStory(deps);
-    expect(
-      await savePage(deps, await context(deps), post(deps, { pageKey: "page_consent" })),
-    ).toEqual({ kind: "expired" });
+    expect(await savePage(deps, await context(deps), post({ pageKey: "page_consent" }))).toEqual({
+      kind: "expired",
+    });
     expect(deps.inProgress.rows.size).toBe(0);
   });
 
@@ -80,7 +69,7 @@ describe("savePage", () => {
       await savePage(
         deps,
         await context(deps, { kind: "record", id }),
-        post(deps, { pageKey: "page_nope" }),
+        post({ pageKey: "page_nope" }),
       ),
     ).toEqual({ kind: "expired" });
   });
@@ -94,7 +83,7 @@ describe("savePage", () => {
     const out = await savePage(
       deps,
       ctx,
-      post(deps, { pageKey: "page_baby", incoming: [photo("a.jpg")] }),
+      post({ pageKey: "page_baby", incoming: [photo("a.jpg")] }),
     );
     expect(out).toEqual({ kind: "expired" });
     expect(deps.media.staging.files.size).toBe(0);
@@ -106,7 +95,7 @@ describe("savePage", () => {
     const out = await savePage(
       deps,
       await context(deps),
-      post(deps, {
+      post({
         answers: { f_email: "nope" },
         raw: { f_name: "", f_email: "nope" },
         decodeIssues: [{ code: "invalid_shape", field: asKey("f_baby") }],
@@ -133,10 +122,50 @@ describe("savePage", () => {
     const back = await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, { pageKey: "page_baby", action: { kind: "back" } }),
+      post({ pageKey: "page_baby", action: { kind: "back" } }),
     );
     expect(back).toEqual({ kind: "show", recordId: id });
     expect(deps.inProgress.rows.get(id)).toMatchObject({ pageKey: "page_contact", pending: null });
+  });
+
+  it("skips on Back a page the stored answers hide", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishStory(deps);
+    const first = await savePage(
+      deps,
+      await context(deps),
+      post({ answers: { f_name: "Ana Prueba", f_baby: "no_opt" } }),
+    );
+    if (first.kind !== "show") throw new Error(first.kind);
+    const id = first.recordId;
+    expect(deps.inProgress.rows.get(id)?.pageKey).toBe("page_consent");
+    const back = await savePage(
+      deps,
+      await context(deps, { kind: "record", id }),
+      post({ pageKey: "page_consent", action: { kind: "back" } }),
+    );
+    expect(back).toEqual({ kind: "show", recordId: id });
+    expect(deps.inProgress.rows.get(id)?.pageKey).toBe("page_contact");
+  });
+
+  it("keeps the version, the submit token and the expiry of an existing record on a save", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishStory(deps);
+    const id = await startOnPhotos(deps);
+    const before = deps.inProgress.rows.get(id);
+    deps.clock.advance(60_000);
+    await savePage(
+      deps,
+      await context(deps, { kind: "record", id }),
+      post({ pageKey: "page_baby", action: { kind: "back" } }),
+    );
+    const after = deps.inProgress.rows.get(id);
+    expect(after).toMatchObject({
+      versionId: before?.versionId,
+      submitToken: before?.submitToken,
+      expiresAt: before?.expiresAt,
+    });
+    expect(after?.updatedAt).toEqual(deps.clock.now());
   });
 
   it("stores the valid answers of a page on Back and drops the invalid ones", async () => {
@@ -146,7 +175,7 @@ describe("savePage", () => {
     await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, {
+      post({
         pageKey: "page_contact",
         action: { kind: "back" },
         answers: { f_name: "Ana", f_email: "nope", f_baby: "yes_opt" },
@@ -162,7 +191,7 @@ describe("savePage", () => {
     await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, {
+      post({
         pageKey: "page_contact",
         action: { kind: "back" },
         answers: { f_baby: "yes_opt" },
@@ -180,7 +209,7 @@ describe("savePage", () => {
     const out = await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, { pageKey: "page_baby", answers: { f_baby: "no_opt", f_name: "Other" } }),
+      post({ pageKey: "page_baby", answers: { f_baby: "no_opt", f_name: "Other" } }),
     );
     expect(out.kind).toBe("refused");
     const record = deps.inProgress.rows.get(id);
@@ -195,7 +224,7 @@ describe("savePage", () => {
     const out = await savePage(
       deps,
       await context(deps),
-      post(deps, {
+      post({
         action: { kind: "language", locale: "en" },
         answers: { f_name: "Ana" },
         raw: { f_name: "Ana", f_email: "half@" },
@@ -217,7 +246,7 @@ describe("savePage", () => {
     await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, {
+      post({
         pageKey: "page_baby",
         action: { kind: "language", locale: "en" },
         raw: { f_photos: "holiday.jpg", f_name: "Other", stray: "x" },
@@ -233,9 +262,9 @@ describe("savePage", () => {
     const id = await startOnPhotos(deps);
     const ctx = await context(deps, { kind: "record", id });
     const four = Array.from({ length: 4 }, (_, i) => photo(`p${String(i)}.jpg`));
-    expect(
-      (await savePage(deps, ctx, post(deps, { pageKey: "page_baby", incoming: four }))).kind,
-    ).toBe("refused");
+    expect((await savePage(deps, ctx, post({ pageKey: "page_baby", incoming: four }))).kind).toBe(
+      "refused",
+    );
     expect(deps.inProgress.rows.get(id)?.pending?.issues).toEqual([
       { code: "files_max", field: "f_photos", params: { n: 3 } },
     ]);
@@ -244,7 +273,7 @@ describe("savePage", () => {
     await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, {
+      post({
         pageKey: "page_baby",
         action: { kind: "language", locale: "es" },
         incoming: four.slice(0, 2),
@@ -259,7 +288,7 @@ describe("savePage", () => {
     await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, { pageKey: "page_baby", action: { kind: "remove", fileId: removed.id } }),
+      post({ pageKey: "page_baby", action: { kind: "remove", fileId: removed.id } }),
     );
     expect(deps.inProgress.rows.get(id)?.files["f_photos"]?.map((f) => f.id)).toEqual([
       files[1]?.id,
@@ -275,7 +304,7 @@ describe("savePage", () => {
     await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, {
+      post({
         pageKey: "page_baby",
         action: lang,
         incoming: [photo("a.jpg"), photo("b.jpg")],
@@ -284,7 +313,7 @@ describe("savePage", () => {
     const out = await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, {
+      post({
         pageKey: "page_baby",
         action: lang,
         incoming: [photo("c.jpg"), photo("d.jpg")],
@@ -302,7 +331,7 @@ describe("savePage", () => {
     const out = await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, {
+      post({
         pageKey: "page_baby",
         action: { kind: "language", locale: "es" },
         incoming: [{ fieldKey: "f_photos", name: "", bytes: new Uint8Array() }],
@@ -319,7 +348,7 @@ describe("savePage", () => {
     const out = await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, {
+      post({
         pageKey: "page_baby",
         incoming: [
           { fieldKey: "f_photos", name: "notes.txt", bytes: new TextEncoder().encode("hello") },
@@ -343,7 +372,7 @@ describe("savePage", () => {
     const out = await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, {
+      post({
         pageKey: "page_baby",
         action: { kind: "language", locale: "en" },
         incoming: [{ fieldKey: "f_photos", name: "x.txt", bytes: new TextEncoder().encode("hi") }],
@@ -361,7 +390,7 @@ describe("savePage", () => {
     const out = await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, { pageKey: "page_baby", incoming: [photo("a.jpg")] }),
+      post({ pageKey: "page_baby", incoming: [photo("a.jpg")] }),
     );
     expect(out).toMatchObject({
       kind: "refused",
@@ -379,7 +408,7 @@ describe("savePage", () => {
       savePage(
         deps,
         await context(deps, { kind: "record", id }),
-        post(deps, { pageKey: "page_baby", incoming: [photo("a.jpg")] }),
+        post({ pageKey: "page_baby", incoming: [photo("a.jpg")] }),
       ),
     ).rejects.toThrow("database down");
     expect(deps.media.staging.files.size).toBe(0);
@@ -393,7 +422,7 @@ describe("savePage", () => {
       await savePage(
         deps,
         await context(deps, { kind: "record", id }),
-        post(deps, {
+        post({
           pageKey: "page_baby",
           action: { kind: "language", locale: "es" },
           incoming: [photo("a.jpg")],
@@ -403,7 +432,7 @@ describe("savePage", () => {
       const out = await savePage(
         deps,
         await context(deps, { kind: "record", id }),
-        post(deps, { pageKey: "page_baby", honeypot: "http://spam.example.com" }),
+        post({ pageKey: "page_baby", honeypot: "http://spam.example.com" }),
       );
       expect(out).toEqual({ kind: "decoy", reference: "ST-5500" });
       expect(deps.inProgress.rows.has(id)).toBe(false);
@@ -417,7 +446,7 @@ describe("savePage", () => {
       const out = await savePage(
         deps,
         await context(deps, { kind: "record", id }),
-        post(deps, {
+        post({
           pageKey: "page_baby",
           action: { kind: "language", locale: "en" },
           honeypot: "x",
@@ -433,7 +462,7 @@ describe("savePage", () => {
       const out = await savePage(
         deps,
         await context(deps),
-        post(deps, {
+        post({
           honeypot: "x",
           answers: { f_name: "Bot", f_baby: "no_opt" },
           incoming: [photo("a.jpg")],
@@ -444,50 +473,53 @@ describe("savePage", () => {
       expect(deps.media.staging.files.size).toBe(0);
     });
 
-    it("treats a first post faster than the minimum fill time as a decoy", async () => {
+    it("does not check the minimum fill time: a fast first post creates the record, started at the clamped render time", async () => {
+      const deps = makeSubmissionsDeps();
+      await publishStory(deps);
+      const rendered = new Date(deps.clock.now().getTime() - 1_000);
+      const out = await savePage(
+        deps,
+        await context(deps),
+        post({ renderedAt: rendered, answers: { f_name: "Ana", f_baby: "no_opt" } }),
+      );
+      if (out.kind !== "show") throw new Error(out.kind);
+      expect(deps.inProgress.rows.get(out.recordId)?.startedAt).toEqual(rendered);
+    });
+
+    it("starts a first post without a render time at the current time", async () => {
       const deps = makeSubmissionsDeps();
       await publishStory(deps);
       const out = await savePage(
         deps,
         await context(deps),
-        basePost({
-          renderedAt: new Date(deps.clock.now().getTime() - 1_000),
-          answers: { f_name: "Ana", f_baby: "no_opt" },
-        }),
+        post({ answers: { f_name: "Ana", f_baby: "no_opt" } }),
       );
-      expect(out.kind).toBe("decoy");
-      expect(deps.inProgress.rows.size).toBe(0);
+      if (out.kind !== "show") throw new Error(out.kind);
+      expect(deps.inProgress.rows.get(out.recordId)?.startedAt).toEqual(deps.clock.now());
     });
 
-    it("treats a first post without a render time as a decoy", async () => {
+    it("keeps the start of an existing record on a later post", async () => {
       const deps = makeSubmissionsDeps();
       await publishStory(deps);
-      const out = await savePage(
-        deps,
-        await context(deps),
-        basePost({ answers: { f_name: "Ana", f_baby: "no_opt" } }),
-      );
-      expect(out.kind).toBe("decoy");
-    });
-
-    it("measures the fill time of a later post from the record's start", async () => {
-      const deps = makeSubmissionsDeps();
-      await publishStory(deps);
+      const rendered = new Date(deps.clock.now().getTime() - 3_500);
       const first = await savePage(
         deps,
         await context(deps),
-        basePost({
-          renderedAt: new Date(deps.clock.now().getTime() - 3_500),
-          answers: { f_name: "Ana", f_baby: "no_opt" },
-        }),
+        post({ renderedAt: rendered, answers: { f_name: "Ana", f_baby: "no_opt" } }),
       );
       if (first.kind !== "show") throw new Error(first.kind);
+      deps.clock.advance(1_000);
       const out = await savePage(
         deps,
         await context(deps, { kind: "record", id: first.recordId }),
-        basePost({ pageKey: "page_consent", action: { kind: "back" } }),
+        post({
+          pageKey: "page_consent",
+          action: { kind: "back" },
+          renderedAt: deps.clock.now(),
+        }),
       );
       expect(out).toEqual({ kind: "show", recordId: first.recordId });
+      expect(deps.inProgress.rows.get(first.recordId)?.startedAt).toEqual(rendered);
     });
   });
 });
@@ -514,7 +546,7 @@ describe("savePage per-submission size", () => {
     const out = await savePage(
       deps,
       await context(deps, { kind: "record", id }),
-      post(deps, {
+      post({
         pageKey: "page_baby",
         incoming: [{ fieldKey: "f_photos", name: "b.jpg", bytes: fakeImage("image/jpeg", 3 * MB) }],
       }),
@@ -535,7 +567,7 @@ describe("savePage per-submission size", () => {
     const out = await savePage(
       deps,
       stale,
-      post(deps, {
+      post({
         pageKey: "page_baby",
         incoming: [{ fieldKey: "f_photos", name: "c.jpg", bytes: fakeImage("image/jpeg", 2 * MB) }],
       }),

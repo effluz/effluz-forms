@@ -44,7 +44,8 @@ const filesMax = (fieldKey: string, n: number): ValidationIssue => ({
   params: { n },
 });
 
-const errorClass = (error: unknown): string =>
+/** The class name of a caught value, for logs that must not carry its message. */
+export const errorClass = (error: unknown): string =>
   error instanceof Error ? error.constructor.name : typeof error;
 
 /**

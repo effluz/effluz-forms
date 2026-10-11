@@ -5,6 +5,7 @@ import {
   decoyReference,
   isHoneypotFilled,
   isSilentAccept,
+  isTooFast,
 } from "./protection";
 
 const startedAt = new Date("2026-10-10T12:00:00.000Z");
@@ -29,6 +30,11 @@ describe("public form abuse protection", () => {
     expect(
       isSilentAccept({ honeypot: "  ", startedAt, now: new Date("2026-10-10T12:00:03.000Z") }),
     ).toBe(false);
+  });
+
+  it("calls a fill too fast only below 3 seconds from the start", () => {
+    expect(isTooFast({ startedAt, now: new Date("2026-10-10T12:00:02.999Z") })).toBe(true);
+    expect(isTooFast({ startedAt, now: new Date("2026-10-10T12:00:03.000Z") })).toBe(false);
   });
 
   it("calls a honeypot filled only when it holds more than blanks", () => {
