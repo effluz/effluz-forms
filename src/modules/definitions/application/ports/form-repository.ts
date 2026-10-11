@@ -20,6 +20,12 @@ export interface FormRepository {
   findForUpdate(uow: UnitOfWork, id: string): Promise<Form | null>;
   findBySlug(slug: string): Promise<Form | null>;
   /**
+   * Takes the form's next reference number and advances the counter; the
+   * caller holds the form row lock. Never touches updated_at. Throws for a
+   * missing form.
+   */
+  takeReferenceNumber(uow: UnitOfWork, formId: string): Promise<number>;
+  /**
    * Forms of one tab, ordered by title (English, then Spanish) and slug. The
    * search matches the slug or either title, case-insensitively.
    */
