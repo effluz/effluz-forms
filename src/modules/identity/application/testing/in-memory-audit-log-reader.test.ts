@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
+import { AUDIT_PAGE_MAX } from "../ports/audit-log-reader";
 import { InMemoryAuditLog, InMemoryAuditLogReader } from "./fakes";
 
 describe("InMemoryAuditLogReader", () => {
@@ -59,6 +60,47 @@ describe("InMemoryAuditLogReader", () => {
     expect(first.map((r) => r.action)).toEqual(["c", "b"]);
     expect(next.map((r) => r.action)).toEqual(["a"]);
     expect(timestampOnly).toEqual([]);
+  });
+
+  it.each([
+    ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY],
+    ["a negative number", -5],
+    ["zero", 0],
+  ])("returns an empty page for a limit of %s", async (_name, limit) => {
+    const reader = await setup();
+    expect(await reader.listByTarget({ targetId: "form-1", limit })).toEqual([]);
+  });
+
+  it("treats a beforeId that is not an audit id as absent", async () => {
+    const reader = await setup();
+    const found = await reader.listByTarget({
+      targetId: "form-1",
+      before: t2,
+      beforeId: "not-an-id",
+      limit: 10,
+    });
+    expect(found.map((r) => r.action)).toEqual(["created"]);
+  });
+
+  it("treats a before that is an invalid Date as absent", async () => {
+    const reader = await setup();
+    const found = await reader.listByTarget({
+      targetId: "form-1",
+      before: new Date("not a date"),
+      limit: 10,
+    });
+    expect(found).toHaveLength(2);
+  });
+
+  it("caps a page at the maximum it was built with", async () => {
+    const log = new InMemoryAuditLog();
+    for (let i = 0; i < AUDIT_PAGE_MAX + 1; i += 1) {
+      await log.record(uow, { action: "a", actorEmail: null, targetId: "form-1", ip: null }, t1);
+    }
+    const reader = new InMemoryAuditLogReader(log);
+    const found = await reader.listByTarget({ targetId: "form-1", limit: 500 });
+    expect(found).toHaveLength(AUDIT_PAGE_MAX);
   });
 
   it("lists distinct actors sorted", async () => {

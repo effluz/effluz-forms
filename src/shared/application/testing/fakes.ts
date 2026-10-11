@@ -11,7 +11,8 @@
  *   structural twins of identity's `AuditEntry`, `AuditRecord` and `AuditQuery`,
  *   and the personal-data guard is passed in (identity's `assertNoPersonalData`).
  * - `InMemoryAuditLogReader`: reads the same `entries`; ids are `audit-<n>` by
- *   insertion order. Mirrors `PgAuditLogReader` ordering, filters (including the `(createdAt, id)` cursor) and cap.
+ *   insertion order. Mirrors `PgAuditLogReader` ordering, filters (including the `(createdAt, id)` cursor),
+ *   cap (given to the constructor) and handling of malformed limits and cursors.
  *
  * Synthetic data only. Not for production code.
  */
@@ -107,9 +108,6 @@ export interface FakeAuditQuery {
   limit: number;
 }
 
-/** Mirrors identity's `AUDIT_PAGE_MAX`; identity's reader test pins the cap. */
-const AUDIT_PAGE_MAX = 200;
-
 export class InMemoryAuditLog {
   readonly entries: { entry: FakeAuditEntry; at: Date }[] = [];
 
@@ -130,23 +128,40 @@ function fakeAuditOrdinal(id: string): number {
 }
 
 export class InMemoryAuditLogReader {
-  constructor(private readonly log: InMemoryAuditLog) {}
+  /**
+   * `pageMax` is identity's exported `AUDIT_PAGE_MAX`, passed in because shared
+   * code may not import identity.
+   */
+  constructor(
+    private readonly log: InMemoryAuditLog,
+    private readonly pageMax: number,
+  ) {}
 
   listByTarget(query: FakeAuditQuery): Promise<FakeAuditRecord[]> {
-    const limit = Math.min(Math.max(Math.floor(query.limit), 0), AUDIT_PAGE_MAX);
+    if (!Number.isFinite(query.limit) || query.limit <= 0) return Promise.resolve([]);
+    const limit = Math.min(Math.floor(query.limit), this.pageMax);
+    // Like the Postgres reader, an unusable cursor is no cursor.
+    const before =
+      query.before !== undefined && !Number.isNaN(query.before.getTime())
+        ? query.before
+        : undefined;
+    const beforeId =
+      query.beforeId !== undefined && /^audit-\d+$/.test(query.beforeId)
+        ? query.beforeId
+        : undefined;
     const found = this.log.entries
       .map(({ entry, at }, index) => ({ entry, at, index }))
       .filter(({ entry, at, index }) => {
         if (entry.targetId !== query.targetId) return false;
         if (query.action !== undefined && entry.action !== query.action) return false;
         if (query.actorEmail !== undefined && entry.actorEmail !== query.actorEmail) return false;
-        if (query.before !== undefined) {
-          const cut = query.before.getTime();
+        if (before !== undefined) {
+          const cut = before.getTime();
           if (at.getTime() > cut) return false;
           if (at.getTime() === cut) {
             // Same instant: with an id cursor keep only rows after it, otherwise none.
-            if (query.beforeId === undefined) return false;
-            if (index + 1 >= fakeAuditOrdinal(query.beforeId)) return false;
+            if (beforeId === undefined) return false;
+            if (index + 1 >= fakeAuditOrdinal(beforeId)) return false;
           }
         }
         return true;

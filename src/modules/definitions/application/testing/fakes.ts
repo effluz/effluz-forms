@@ -27,7 +27,7 @@
  *
  * Synthetic data only. Not for production code.
  */
-import { assertNoPersonalData } from "@/modules/identity/application";
+import { AUDIT_PAGE_MAX, assertNoPersonalData } from "@/modules/identity/application";
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 import {
   FakeUnitOfWorkFactory,
@@ -56,7 +56,7 @@ export {
 };
 export { fakeUuid } from "@/shared/application/testing/fakes";
 
-// Mirrors infrastructure/uuid.ts, which this layer may not import.
+// Mirrors shared/infrastructure/uuid.ts, which this layer may not import.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function requireUuid(id: string): void {
@@ -365,7 +365,7 @@ export function makeDefinitionsDeps(
     versions: overrides.versions ?? new InMemoryVersionRepository(store),
     stats: overrides.stats ?? new FakeSubmissionStats(),
     audit,
-    auditReader: overrides.auditReader ?? new InMemoryAuditLogReader(audit),
+    auditReader: overrides.auditReader ?? new InMemoryAuditLogReader(audit, AUDIT_PAGE_MAX),
     uow: overrides.uow ?? new FakeUnitOfWorkFactory(),
     clock,
     ids: overrides.ids ?? new SequentialIdGenerator(),

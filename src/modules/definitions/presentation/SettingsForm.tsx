@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { LIMITS } from "@/shared/domain/form-model/limits";
+import { LIMITS } from "@/shared/domain/form-model";
 import { Banner } from "@/shared/presentation/Banner";
 import { Bilingual } from "@/shared/presentation/Bilingual";
 import type { CopyKey } from "@/shared/presentation/copy";

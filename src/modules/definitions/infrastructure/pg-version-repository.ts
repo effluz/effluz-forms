@@ -3,7 +3,7 @@ import { versionSchema, type Version } from "@/shared/domain/form-model";
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 import { txOf } from "@/shared/infrastructure/postgres/tx";
 import type { FormVersion, VersionRepository } from "../application/ports/version-repository";
-import { isUuid } from "./uuid";
+import { isUuid } from "@/shared/infrastructure/uuid";
 
 const UNIQUE_VIOLATION = "23505";
 const NUMBER_CONSTRAINT = "form_version_form_id_number_key";

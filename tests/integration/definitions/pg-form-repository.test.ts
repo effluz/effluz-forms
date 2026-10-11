@@ -73,18 +73,19 @@ describe("PgFormRepository", () => {
     }
   });
 
-  it("updates the full row and bumps updated_at", async () => {
+  it("updates the full row and writes the updatedAt it is given", async () => {
     const form = await insert();
     const changed = {
       ...form,
       status: "published" as const,
       title: { en: "Renamed" },
+      updatedAt: new Date("2026-10-11T07:45:12.000Z"),
     };
     expect(await uowf.run((uow) => repo.update(uow, changed))).toBe("updated");
     const found = await repo.findById(form.id);
     expect(found?.status).toBe("published");
     expect(found?.title).toEqual({ en: "Renamed" });
-    expect(found?.updatedAt).not.toEqual(form.updatedAt);
+    expect(found?.updatedAt).toEqual(changed.updatedAt);
   });
 
   it("reports slug_taken when an update renames onto another form's slug", async () => {
@@ -168,6 +169,25 @@ describe("PgFormRepository", () => {
       (error: unknown) => error as Error,
     );
     expect(failure?.message).toBe(`stored settings of form ${form.id} are corrupt`);
+  });
+
+  it("throws on a corrupt title naming only the form id", async () => {
+    const form = await insert();
+    await pool.query(`update form set title = $2::jsonb where id = $1`, [
+      form.id,
+      JSON.stringify({ en: 42, es: "Titulo privado" }),
+    ]);
+    const failure = await repo.findById(form.id).then(
+      () => null,
+      (error: unknown) => error as Error,
+    );
+    expect(failure?.message).toBe(`stored title of form ${form.id} is corrupt`);
+  });
+
+  it("ignores markOpened for a malformed form id instead of failing", async () => {
+    await uowf.run((uow) => repo.markOpened(uow, "not-a-uuid", "staff@example.com", new Date()));
+    const { rows } = await pool.query("select 1 from form_visit");
+    expect(rows).toHaveLength(0);
   });
 
   describe("list and counts", () => {

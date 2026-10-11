@@ -111,6 +111,32 @@ describe("loadConfig", () => {
       ).toEqual(["effluz.com"]);
       expect(loadConfig(env).notificationAllowedDomains).toEqual(["effluz.com"]);
     });
+    it.each([
+      "partner",
+      "a.example.com/x",
+      "@partner.example",
+      "partner..example",
+      "par ty.example",
+    ])(
+      "fails to load on the malformed entry %j, naming the variable and not the value",
+      (entry) => {
+        const attempt = () =>
+          loadConfig({ ...env, NOTIFICATION_ALLOWED_DOMAINS: `ok.example,${entry}` });
+        expect(attempt).toThrow(/NOTIFICATION_ALLOWED_DOMAINS/);
+        expect(attempt).not.toThrow(entry);
+      },
+    );
+    it("accepts a list of well-formed domains with surrounding spaces and capitals", () => {
+      const c = loadConfig({
+        ...env,
+        NOTIFICATION_ALLOWED_DOMAINS: " Mail.Partner-One.example , two.example ",
+      });
+      expect(c.notificationAllowedDomains).toEqual([
+        "effluz.com",
+        "mail.partner-one.example",
+        "two.example",
+      ]);
+    });
     it("drops empty entries and duplicates, including the hosted domain", () => {
       const c = loadConfig({
         ...env,

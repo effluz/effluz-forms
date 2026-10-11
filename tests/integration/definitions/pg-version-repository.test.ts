@@ -52,6 +52,39 @@ describe("PgVersionRepository", () => {
     expect(stored?.currentVersionNumber).toBe(2);
   });
 
+  it("lets the form point at a version inserted later in the same unit of work", async () => {
+    const form = await aForm();
+    const v1 = sampleVersion(form.id, 1);
+    await uowf.run(async (uow) => {
+      await forms.update(uow, {
+        ...form,
+        status: "published",
+        currentVersionId: v1.id,
+        currentVersionNumber: 1,
+      });
+      await repo.insert(uow, v1);
+    });
+    expect((await forms.findById(form.id))?.currentVersionId).toBe(v1.id);
+    expect(await repo.findCurrent(form.id)).toEqual(v1);
+  });
+
+  it("rejects a pointer to a version that never appears, at commit", async () => {
+    const form = await aForm();
+    await expect(
+      uowf.run((uow) =>
+        forms.update(uow, {
+          ...form,
+          status: "published",
+          currentVersionId: randomUUID(),
+          currentVersionNumber: 1,
+        }),
+      ),
+    ).rejects.toThrow(/foreign key/);
+    const stored = await forms.findById(form.id);
+    expect(stored?.currentVersionId).toBeNull();
+    expect(stored?.status).toBe("draft");
+  });
+
   it("returns number_taken for a duplicate number and keeps the first", async () => {
     const form = await aForm();
     const first = sampleVersion(form.id, 1);

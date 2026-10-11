@@ -47,7 +47,7 @@ const moduleLayerPolicies = Object.entries(MODULE_DEPS).flatMap(([module, deps])
   })),
 );
 
-const frameworks = ["react", "react-dom", "next", "next/*"];
+const frameworks = ["react", "react/*", "react-dom", "react-dom/*", "next", "next/*"];
 // The Next entry files that must sit at the src root (src/proxy.ts and its test).
 const rootEntry = { file: { categories: "root-entry" } };
 
@@ -164,6 +164,28 @@ export default tseslint.config(
               from: [element("module-application"), element("shared-application")],
               disallow: { to: thirdParty(...frameworks) },
               message: "application is framework-free",
+            },
+            {
+              from: [element("module-infrastructure"), element("shared-infrastructure")],
+              disallow: { to: thirdParty(...frameworks) },
+              message: "infrastructure is framework-free",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // The form model has one entry point, so its internal layout can change (ADR 0022).
+    files: ["src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/shared/domain/form-model/*"],
+              message: "Import from @/shared/domain/form-model, the entry point (ADR 0022).",
             },
           ],
         },

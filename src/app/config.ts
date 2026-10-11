@@ -64,6 +64,12 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     throw new Error("Invalid configuration: PUBLIC_BASE_URL must be https in production");
   if (e.NODE_ENV === "production" && !e.GOOGLE_ISSUER.startsWith("https://"))
     throw new Error("Invalid configuration: GOOGLE_ISSUER must be https in production");
+  const notificationAllowedDomains = parseDomains(
+    e.GOOGLE_ALLOWED_HOSTED_DOMAIN,
+    e.NOTIFICATION_ALLOWED_DOMAINS,
+  );
+  if (notificationAllowedDomains === null)
+    throw new Error("Invalid configuration: NOTIFICATION_ALLOWED_DOMAINS");
   return {
     nodeEnv: e.NODE_ENV,
     service: e.SERVICE,
@@ -90,10 +96,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
       pollIntervalMs: e.WORKER_POLL_INTERVAL_MS,
       leaseSeconds: e.WORKER_LEASE_SECONDS,
     },
-    notificationAllowedDomains: parseDomains(
-      e.GOOGLE_ALLOWED_HOSTED_DOMAIN,
-      e.NOTIFICATION_ALLOWED_DOMAINS,
-    ),
+    notificationAllowedDomains,
   };
 }
 
@@ -107,8 +110,19 @@ function originOf(value: string): string | null {
   return url.origin;
 }
 
-/** Hosted domain first, then the comma-separated list: lowercased, trimmed, deduplicated, no blanks. */
-function parseDomains(hosted: string, list: string): string[] {
-  const all = [hosted, ...list.split(",")].map((d) => d.trim().toLowerCase());
+const DOMAIN_SHAPE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+
+/**
+ * Hosted domain first, then the comma-separated list: lowercased, trimmed,
+ * deduplicated, no blanks. Null when a list entry is not shaped like a domain
+ * (the hosted domain is Google's own value and is not shape-checked).
+ */
+function parseDomains(hosted: string, list: string): string[] | null {
+  const partners = list
+    .split(",")
+    .map((d) => d.trim().toLowerCase())
+    .filter((d) => d !== "");
+  if (partners.some((d) => !DOMAIN_SHAPE.test(d))) return null;
+  const all = [hosted.trim().toLowerCase(), ...partners];
   return [...new Set(all.filter((d) => d !== ""))];
 }

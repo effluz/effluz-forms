@@ -4,7 +4,7 @@ import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 import { txOf } from "@/shared/infrastructure/postgres/tx";
 import type { DraftRepository } from "../application/ports/draft-repository";
 import type { Draft } from "../domain/draft";
-import { isUuid } from "./uuid";
+import { isUuid } from "@/shared/infrastructure/uuid";
 
 interface DraftRow {
   form_id: string;

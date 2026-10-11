@@ -5,6 +5,7 @@ import {
   type AuditQuery,
   type AuditRecord,
 } from "../application/ports/audit-log-reader";
+import { isUuid } from "@/shared/infrastructure/uuid";
 
 interface Row {
   id: string;
@@ -21,7 +22,11 @@ export class PgAuditLogReader implements AuditLogReader {
   constructor(private readonly pool: Pool) {}
 
   async listByTarget(query: AuditQuery): Promise<AuditRecord[]> {
-    const limit = Math.min(Math.max(Math.floor(query.limit), 0), AUDIT_PAGE_MAX);
+    // A hand-edited activity URL can carry NaN, a negative limit, a bad cursor
+    // id or an invalid date: an unusable limit is an empty page, an unusable
+    // cursor is no cursor (specs/system/security.md, "Audit log", "Reading").
+    if (!Number.isFinite(query.limit) || query.limit <= 0) return [];
+    const limit = Math.min(Math.floor(query.limit), AUDIT_PAGE_MAX);
     if (limit === 0) return [];
     const params: unknown[] = [query.targetId];
     const where = ["target_id = $1"];
@@ -33,10 +38,10 @@ export class PgAuditLogReader implements AuditLogReader {
       params.push(query.actorEmail);
       where.push(`actor_email = $${String(params.length)}`);
     }
-    if (query.before !== undefined) {
+    if (query.before !== undefined && !Number.isNaN(query.before.getTime())) {
       params.push(query.before);
       const at = `$${String(params.length)}`;
-      if (query.beforeId === undefined) {
+      if (query.beforeId === undefined || !isUuid(query.beforeId)) {
         where.push(`created_at < ${at}`);
       } else {
         params.push(query.beforeId);

@@ -35,7 +35,7 @@ import type {
   SignInStart,
 } from "../ports/admin-identity";
 import type { AuditLog } from "../ports/audit-log";
-import type { AuditLogReader } from "../ports/audit-log-reader";
+import { AUDIT_PAGE_MAX, type AuditLogReader } from "../ports/audit-log-reader";
 import type { SessionRepository } from "../ports/session-repository";
 import type { SignInAttempt, SignInAttemptStore } from "../ports/sign-in-attempt-store";
 
@@ -43,7 +43,7 @@ import type { SignInAttempt, SignInAttemptStore } from "../ports/sign-in-attempt
 export { FakeUnitOfWorkFactory, FixedClock, SequentialIdGenerator };
 export { fakeUuid } from "@/shared/application/testing/fakes";
 
-// Mirrors infrastructure/uuid.ts, which this layer may not import.
+// Mirrors shared/infrastructure/uuid.ts, which this layer may not import.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function requireUuid(id: string): void {
@@ -109,10 +109,12 @@ export class InMemoryAuditLog extends SharedInMemoryAuditLog implements AuditLog
   }
 }
 
-/** The shared reader, checked against identity's port. */
-export class InMemoryAuditLogReader
-  extends SharedInMemoryAuditLogReader
-  implements AuditLogReader {}
+/** The shared reader with identity's page cap, checked against identity's port. */
+export class InMemoryAuditLogReader extends SharedInMemoryAuditLogReader implements AuditLogReader {
+  constructor(log: SharedInMemoryAuditLog) {
+    super(log, AUDIT_PAGE_MAX);
+  }
+}
 
 const ATTEMPT_TTL_MS = 10 * 60 * 1000;
 

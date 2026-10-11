@@ -162,6 +162,44 @@ describe("PgAuditLogReader", () => {
     expect(await reader.listByTarget({ targetId: "form-1", limit: 0 })).toEqual([]);
   });
 
+  it.each([
+    ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY],
+    ["a negative number", -5],
+  ])("returns an empty page for a limit of %s", async (_name, limit) => {
+    await seed();
+    expect(await reader.listByTarget({ targetId: "form-1", limit })).toEqual([]);
+  });
+
+  it("treats a beforeId that is not a UUID as absent instead of failing", async () => {
+    await seed();
+    const found = await reader.listByTarget({
+      targetId: "form-1",
+      before: t3,
+      beforeId: "not-a-uuid",
+      limit: 10,
+    });
+    expect(found.map((r) => r.action)).toEqual(["form_published", "form_created"]);
+  });
+
+  it("treats a before that is an invalid Date as absent instead of failing", async () => {
+    await seed();
+    const found = await reader.listByTarget({
+      targetId: "form-1",
+      before: new Date("not a date"),
+      beforeId: "not-a-uuid",
+      limit: 10,
+    });
+    expect(found).toHaveLength(3);
+  });
+
+  it("has an index that serves the per-target listing order", async () => {
+    const { rows } = await pool.query<{ indexdef: string }>(
+      "select indexdef from pg_indexes where tablename = 'audit_log' and indexname = 'audit_log_target_idx'",
+    );
+    expect(rows[0]?.indexdef).toContain("(target_id, created_at DESC, id DESC)");
+  });
+
   it("lists the distinct actors of a target, sorted, without nulls", async () => {
     await seed();
     await uowf.run((uow) =>

@@ -1,11 +1,11 @@
 import type { Pool } from "pg";
-import type { Languages, LocalizedText } from "@/shared/domain/localized-text";
+import { localizedTextSchema, type Languages } from "@/shared/domain/localized-text";
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 import { txOf } from "@/shared/infrastructure/postgres/tx";
 import type { FormRepository, FormTab } from "../application/ports/form-repository";
 import type { Form, FormStatus } from "../domain/form";
 import { settingsSchema } from "../domain/settings";
-import { isUuid } from "./uuid";
+import { isUuid } from "@/shared/infrastructure/uuid";
 
 const UNIQUE_VIOLATION = "23505";
 const SLUG_CONSTRAINT = "form_slug_key";
@@ -22,7 +22,7 @@ const COLUMNS = `id, slug, title, languages, status, settings, current_version_i
 interface FormRow {
   id: string;
   slug: string;
-  title: LocalizedText;
+  title: unknown;
   languages: Languages;
   status: FormStatus;
   settings: unknown;
@@ -34,14 +34,16 @@ interface FormRow {
 }
 
 function toForm(row: FormRow): Form {
+  // A stored row that fails is corruption. The messages name the form only:
+  // settings hold recipient addresses and titles are staff text.
+  const title = localizedTextSchema.safeParse(row.title);
+  if (!title.success) throw new Error(`stored title of form ${row.id} is corrupt`);
   const settings = settingsSchema.safeParse(row.settings);
-  // A stored row that fails is corruption. The message names the form only:
-  // settings hold recipient addresses.
   if (!settings.success) throw new Error(`stored settings of form ${row.id} are corrupt`);
   return {
     id: row.id,
     slug: row.slug,
-    title: row.title,
+    title: title.data,
     languages: row.languages,
     status: row.status,
     settings: settings.data,
@@ -111,7 +113,7 @@ export class PgFormRepository implements FormRepository {
         `update form set
            slug = $2, title = $3::jsonb, languages = $4, status = $5, settings = $6::jsonb,
            current_version_id = $7, current_version_number = $8, archived_at = $9,
-           updated_at = now()
+           updated_at = $10
          where id = $1`,
         [
           form.id,
@@ -123,6 +125,7 @@ export class PgFormRepository implements FormRepository {
           form.currentVersionId,
           form.currentVersionNumber,
           form.archivedAt,
+          form.updatedAt,
         ],
       );
       if (res.rowCount === 0) throw new Error(`form ${form.id} does not exist`);
@@ -196,6 +199,7 @@ export class PgFormRepository implements FormRepository {
   }
 
   async markOpened(uow: UnitOfWork, formId: string, email: string, at: Date): Promise<void> {
+    if (!isUuid(formId)) return;
     await txOf(uow).client.query(
       `insert into form_visit (form_id, email, last_opened_at, created_at, updated_at)
        values ($1, $2, $3, now(), now())

@@ -88,8 +88,10 @@ Rules:
 - `answers` is personal data as a whole. Retention and export treat the
   document, never individual keys.
 - Indexes: `submission (form_id, received_at desc)` for review listing;
-  `form (slug)` unique (`form_slug_key`) and `form (status)`; GIN on `answers`
-  only if a real query needs it.
+  `form (slug)` unique (`form_slug_key`) and `form (status)`;
+  `audit_log (target_id, created_at desc, id desc)` (`audit_log_target_idx`)
+  for the per-target activity listing and its `(created_at, id)` cursor; GIN
+  on `answers` only if a real query needs it.
 - No soft deletes for submissions. Retention means the row is gone. A form
   that has been published or has submissions is archived, never deleted; one
   that never was and has none can be deleted (audited), which removes its
