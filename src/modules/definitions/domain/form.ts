@@ -31,10 +31,17 @@ const TRANSITIONS: Record<LifecycleAction, Partial<Record<FormStatus, FormStatus
 
 /**
  * The status a lifecycle action leads to, or null when the action is not
- * allowed from the current status.
+ * allowed from the current status. Unarchive returns a never-published form
+ * to `draft`, since it has no version to be closed on.
  * See specs/form-definition.md, "Lifecycle".
  */
-export function nextStatus(status: FormStatus, action: LifecycleAction): FormStatus | null {
+export function nextStatus(
+  status: FormStatus,
+  action: LifecycleAction,
+  ctx: { everPublished: boolean },
+): FormStatus | null {
+  if (action === "unarchive" && status === "archived")
+    return ctx.everPublished ? "closed" : "draft";
   return TRANSITIONS[action][status] ?? null;
 }
 

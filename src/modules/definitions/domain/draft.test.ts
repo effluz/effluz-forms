@@ -185,6 +185,11 @@ describe("shouldAuditSave", () => {
     expect(shouldAuditSave(draft({ auditedAt: old }), "staff@example.com", now)).toBe(true);
   });
 
+  it("audits at exactly the window length", () => {
+    const edge = new Date(now.getTime() - DRAFT_AUDIT_WINDOW_MS);
+    expect(shouldAuditSave(draft({ auditedAt: edge }), "staff@example.com", now)).toBe(true);
+  });
+
   it("skips the same actor inside the window", () => {
     expect(shouldAuditSave(draft(), "staff@example.com", now)).toBe(false);
   });

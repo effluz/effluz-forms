@@ -31,7 +31,10 @@ export type KeyPrefix = "p" | "f" | "o";
 
 const KEY_HEX_LENGTH = 8;
 
-/** A page, field or option key: the prefix plus 8 hex characters of a fresh uuid. */
+/**
+ * A page, field or option key: the prefix plus 8 hex characters of a fresh uuid.
+ * The space is 32 bits; a collision surfaces as a parse error from parseOrThrow.
+ */
 export function newKey(ids: IdSource, prefix: KeyPrefix): Key {
   const hex = ids.newId().replaceAll("-", "").toLowerCase().slice(0, KEY_HEX_LENGTH);
   return asKey(`${prefix}_${hex}`);

@@ -165,7 +165,8 @@ draft --publish--> published --close--> closed --archive--> archived
 - `published`: the current version is live at `/f/<slug>`. Open and close
   dates can narrow that window.
 - `closed`: public URL shows a closed message. Submissions remain reviewable.
-- `archived`: hidden from the default manager list. Reversible.
+- `archived`: hidden from the default manager list. Reversible: unarchive
+  returns the form to `closed`, or to `draft` when it was never published.
 - A form with submissions cannot be deleted, only archived. Submissions are
   removed by retention or explicit, audited deletion.
 

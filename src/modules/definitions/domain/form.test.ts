@@ -48,13 +48,18 @@ describe("nextStatus", () => {
     unarchive: { archived: "closed" },
   };
 
-  for (const action of LIFECYCLE_ACTIONS)
-    for (const status of FORM_STATUSES) {
-      const expected = matrix[action][status] ?? null;
-      it(`${action} from ${status} gives ${String(expected)}`, () => {
-        expect(nextStatus(status, action)).toBe(expected);
-      });
-    }
+  for (const everPublished of [true, false])
+    for (const action of LIFECYCLE_ACTIONS)
+      for (const status of FORM_STATUSES) {
+        const unarchived = everPublished ? "closed" : "draft";
+        const expected =
+          action === "unarchive" && status === "archived"
+            ? unarchived
+            : (matrix[action][status] ?? null);
+        it(`${action} from ${status} gives ${String(expected)} (everPublished ${String(everPublished)})`, () => {
+          expect(nextStatus(status, action, { everPublished })).toBe(expected);
+        });
+      }
 
   it("maps every lifecycle action to its audit action", () => {
     expect(AUDIT_FOR_ACTION).toEqual({
@@ -113,6 +118,17 @@ describe("reachability", () => {
   it("reports past_close after closesAt", () => {
     const form = makeForm({ settings: withSettings({ closesAt: "2026-06-01T00:00:00.000Z" }) });
     expect(reachability(form, NOW)).toEqual({ reachable: false, reason: "past_close" });
+  });
+
+  it("opens exactly at opensAt and closes exactly at closesAt", () => {
+    const at = "2026-06-15T12:00:00.000Z";
+    expect(reachability(makeForm({ settings: withSettings({ opensAt: at }) }), NOW)).toEqual({
+      reachable: true,
+    });
+    expect(reachability(makeForm({ settings: withSettings({ closesAt: at }) }), NOW)).toEqual({
+      reachable: false,
+      reason: "past_close",
+    });
   });
 
   it("is reachable inside the window", () => {

@@ -42,7 +42,8 @@ manager (close, reopen, archive, unarchive).
 - **Archive**: hidden from the default manager list. Allowed from any status;
   closes the form first if it was published. Submissions remain reviewable
   and still subject to retention.
-- **Unarchive**: returns to `closed`.
+- **Unarchive**: returns to `closed`, or to `draft` when the form was never
+  published.
 
 Each writes its audit entry.
 
