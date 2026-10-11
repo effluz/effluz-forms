@@ -179,6 +179,32 @@ discard warning on navigation:
 Each field has a help line. Save confirms in a toast and writes the audit
 entry.
 
+First pass, without JavaScript:
+
+- The tab is one form posted to a server action, which always redirects
+  back to the tab (Post/Redirect/Get). A refused save keeps the values as
+  submitted and the reasons in a cookie scoped to the tab's path, httpOnly,
+  for ten minutes, and returns with `refused` set to the save's time; the
+  tab shows that state only for that value. A save that goes through clears
+  the cookie and returns with `saved`.
+- After a refusal each issue sits under its field, linked with
+  `aria-describedby`, the field marked `aria-invalid`. An issue with no
+  field of its own (`set.err_malformed` on the whole payload,
+  `set.err_stale`) is a banner above the sections.
+- Recipients are a text area, one address per line; blank lines are
+  ignored. The empty list shows `set.no_recipients`.
+- The time zone sits in Availability with `set.timezone_hint`, since the
+  open and close times are entered in it; the daily summary hour uses it
+  too. Each set time also shows in UTC.
+- Shortening retention below existing submissions shows `set.retention_warn`
+  in a warning banner with a second Save button that confirms the purge.
+- A save that succeeds returns to the tab with a success banner,
+  `set.saved`, in place of the toast. `set.discard_warn` shows beside Save
+  after a refused save. The warning on navigating away with unsaved edits
+  needs JavaScript and is not built yet.
+- The reference prefix and the slug are disabled, not hidden, once locked;
+  their hints say why.
+
 ## Share tab
 
 Public URL in a read-only, selectable field. Its Copy button needs script
@@ -484,6 +510,24 @@ wrong CSRF token.
 | set.save | Save settings | Guardar configuración |
 | set.saved | Settings saved | Configuración guardada |
 | set.discard_warn | You have unsaved changes. | Tienes cambios sin guardar. |
+| set.recipients_lines | One address per line. | Una dirección por línea. |
+| set.no_recipients | No one will get an email about new submissions. They still appear here. | Nadie recibirá un correo sobre las nuevas respuestas. Seguirán apareciendo aquí. |
+| set.timezone_hint | Used for the open and close times and the daily summary. | Se usa para las horas de apertura y cierre y para el resumen diario. |
+| set.err_recipient_domain | {address} is not on an allowed domain. | {address} no es de un dominio permitido. |
+| set.err_recipient_syntax | {address} is not an email address. | {address} no es una dirección de correo. |
+| set.err_too_many_recipients | Enter at most {max} addresses. | Escribe como máximo {max} direcciones. |
+| set.err_prefix_format | Use 2 to 6 capital letters or digits. | Usa de 2 a 6 letras mayúsculas o dígitos. |
+| set.err_retention_range | Enter a whole number from {min} to {max}. | Escribe un número entero de {min} a {max}. |
+| set.err_date_order | The close time must be after the open time. | La hora de cierre debe ser posterior a la de apertura. |
+| set.err_timezone_unknown | Choose a time zone from the list. | Elige una zona horaria de la lista. |
+| set.err_hour_range | Choose an hour from the list. | Elige una hora de la lista. |
+| set.err_malformed | This value could not be read. Check it and save again. | No se pudo leer este valor. Revísalo y vuelve a guardar. |
+| set.err_slug_locked | The link name cannot change after publishing. | El nombre del enlace no se puede cambiar después de publicar. |
+| set.err_prefix_locked | The prefix cannot change after the first submission. | El prefijo no se puede cambiar después de la primera respuesta. |
+| set.err_slug_taken | That link name is taken. | Ese nombre de enlace ya existe. |
+| set.err_slug_format | Use 3 to 64 lowercase letters, numbers and hyphens. | Usa de 3 a 64 minúsculas, números y guiones. |
+| set.err_slug_reserved | That link name is reserved. Choose another. | Ese nombre de enlace está reservado. Elige otro. |
+| set.err_stale | This page was out of date, so nothing was saved. Reload it and try again. | Esta página estaba desactualizada, así que no se guardó nada. Recárgala e inténtalo otra vez. |
 | sh.url | Public link | Enlace público |
 | sh.copy | Copy | Copiar |
 | sh.copied | Copied | Copiado |

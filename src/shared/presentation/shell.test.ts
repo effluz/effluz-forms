@@ -6,7 +6,7 @@ import { Banner } from "./Banner";
 import { Bilingual } from "./Bilingual";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { ConfirmForm, literalPattern } from "./ConfirmForm";
-import { styles } from "./styles";
+import { cx, styles } from "./styles";
 import { ManagerShell } from "./ManagerShell";
 import { adminMetadata, pageMetadata } from "./metadata";
 import { Table } from "./Table";
@@ -278,6 +278,14 @@ describe("Banner", () => {
     expect(html).toMatch(/^<div [^>]*role="status"/);
     expect(html).toContain("Background jobs are not running.");
     expect(html).toMatch(/<a [^>]*href="\/admin\/operations"[^>]*>See Operations<\/a>/);
+  });
+
+  it("confirms a success as a status in the success tone", () => {
+    const html = renderToStaticMarkup(
+      createElement(Banner, { tone: "success", children: "Settings saved" }),
+    );
+    expect(html).toMatch(/^<div [^>]*role="status"/);
+    expect(html).toContain(`class="${cx(styles.banner, styles.success)}"`);
   });
 
   it("is an alert when it reports danger", () => {

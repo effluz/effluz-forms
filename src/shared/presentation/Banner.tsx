@@ -7,7 +7,7 @@ import { cx, styles } from "./styles";
  * banner", and specs/ui-ux/manager.md, "States".
  */
 export function Banner(props: {
-  tone: "info" | "warning" | "danger";
+  tone: "info" | "success" | "warning" | "danger";
   children: ReactNode;
   action?: { label: ReactNode; href: string };
 }) {

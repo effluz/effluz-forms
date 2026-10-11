@@ -161,6 +161,69 @@ export const copy = {
   "set.save": { en: "Save settings", es: "Guardar configuración" },
   "set.saved": { en: "Settings saved", es: "Configuración guardada" },
   "set.discard_warn": { en: "You have unsaved changes.", es: "Tienes cambios sin guardar." },
+  "set.recipients_lines": { en: "One address per line.", es: "Una dirección por línea." },
+  "set.no_recipients": {
+    en: "No one will get an email about new submissions. They still appear here.",
+    es: "Nadie recibirá un correo sobre las nuevas respuestas. Seguirán apareciendo aquí.",
+  },
+  "set.timezone_hint": {
+    en: "Used for the open and close times and the daily summary.",
+    es: "Se usa para las horas de apertura y cierre y para el resumen diario.",
+  },
+  "set.err_recipient_domain": {
+    en: "{address} is not on an allowed domain.",
+    es: "{address} no es de un dominio permitido.",
+  },
+  "set.err_recipient_syntax": {
+    en: "{address} is not an email address.",
+    es: "{address} no es una dirección de correo.",
+  },
+  "set.err_too_many_recipients": {
+    en: "Enter at most {max} addresses.",
+    es: "Escribe como máximo {max} direcciones.",
+  },
+  "set.err_prefix_format": {
+    en: "Use 2 to 6 capital letters or digits.",
+    es: "Usa de 2 a 6 letras mayúsculas o dígitos.",
+  },
+  "set.err_retention_range": {
+    en: "Enter a whole number from {min} to {max}.",
+    es: "Escribe un número entero de {min} a {max}.",
+  },
+  "set.err_date_order": {
+    en: "The close time must be after the open time.",
+    es: "La hora de cierre debe ser posterior a la de apertura.",
+  },
+  "set.err_timezone_unknown": {
+    en: "Choose a time zone from the list.",
+    es: "Elige una zona horaria de la lista.",
+  },
+  "set.err_hour_range": { en: "Choose an hour from the list.", es: "Elige una hora de la lista." },
+  "set.err_malformed": {
+    en: "This value could not be read. Check it and save again.",
+    es: "No se pudo leer este valor. Revísalo y vuelve a guardar.",
+  },
+  "set.err_slug_locked": {
+    en: "The link name cannot change after publishing.",
+    es: "El nombre del enlace no se puede cambiar después de publicar.",
+  },
+  "set.err_prefix_locked": {
+    en: "The prefix cannot change after the first submission.",
+    es: "El prefijo no se puede cambiar después de la primera respuesta.",
+  },
+  "set.err_slug_taken": { en: "That link name is taken.", es: "Ese nombre de enlace ya existe." },
+  "set.err_slug_format": {
+    en: "Use 3 to 64 lowercase letters, numbers and hyphens.",
+    es: "Usa de 3 a 64 minúsculas, números y guiones.",
+  },
+  "set.err_slug_reserved": {
+    en: "That link name is reserved. Choose another.",
+    es: "Ese nombre de enlace está reservado. Elige otro.",
+  },
+  "set.err_stale": {
+    en: "This page was out of date, so nothing was saved. Reload it and try again.",
+    es: "Esta página estaba desactualizada, así que no se guardó nada. Recárgala e inténtalo otra vez.",
+  },
   "sh.url": { en: "Public link", es: "Enlace público" },
   "sh.copy": { en: "Copy", es: "Copiar" },
   "sh.copied": { en: "Copied", es: "Copiado" },
