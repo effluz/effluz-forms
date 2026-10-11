@@ -28,3 +28,43 @@ describe("richTextToHtml", () => {
     expect(escapeHtml("<'>")).toBe("&lt;&#39;&gt;");
   });
 });
+
+describe("hostile hrefs and styles", () => {
+  const hostile = 'https://example.com/?q="><script>x</script>&x=<b>';
+
+  it("escapes quotes and angle brackets in an https href in both renderings", () => {
+    const blocks = parseRichText(`[go](${hostile})`);
+    expect(JSON.stringify(blocks)).toContain('"link"');
+    const react = renderToStaticMarkup(createElement(RichText, { source: `[go](${hostile})` }));
+    const html = richTextToHtml(blocks, { link: "color:#372549", paragraph: "margin:0" });
+    for (const out of [react, html]) {
+      expect(out).not.toContain("<script");
+      expect(out).toContain("&quot;&gt;&lt;script&gt;");
+    }
+  });
+
+  it("keeps non-https, uppercase, credentialed and nested javascript links inert", () => {
+    for (const source of [
+      "[x](HTTPS://example.com/)",
+      "[x](https://user:pw@example.com/)",
+      "**[x](javascript:alert(1))**",
+      "_[x](javascript:alert(1))_",
+    ]) {
+      const react = renderToStaticMarkup(createElement(RichText, { source }));
+      const html = richTextToHtml(parseRichText(source), { link: "c:d", paragraph: "m:0" });
+      expect(react).not.toContain("<a ");
+      expect(html).not.toContain("<a ");
+    }
+  });
+
+  it("escapes the caller's styles so the function is string-safe on its own", () => {
+    const html = richTextToHtml(parseRichText("[a](https://example.com)\n\n- b"), {
+      link: 'x" onclick="evil',
+      paragraph: 'y"><i',
+    });
+    expect(html).not.toContain('" onclick="');
+    expect(html).not.toContain('"><i');
+    expect(html).toContain('style="x&quot; onclick=&quot;evil"');
+    expect(html).toContain('<p style="y&quot;&gt;&lt;i">');
+  });
+});

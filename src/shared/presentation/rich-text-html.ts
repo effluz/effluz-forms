@@ -15,7 +15,7 @@ export function escapeHtml(text: string): string {
 
 /**
  * The blocks as an HTML string for email. Every text node and `href` is escaped. The styles
- * are fixed strings from the email layout, never staff input; links carry no `target`, mail
+ * are fixed strings from the email layout, never staff input, and are escaped anyway; links carry no `target`, mail
  * clients open them themselves. See specs/system/email.md and specs/system/security.md,
  * "Staff-authored content".
  */
@@ -36,7 +36,7 @@ export function richTextToHtml(
           case "italic":
             return `<em>${inline(node.children)}</em>`;
           case "link":
-            return `<a href="${escapeHtml(node.href)}" style="${style.link}">${inline(node.children)}</a>`;
+            return `<a href="${escapeHtml(node.href)}" style="${escapeHtml(style.link)}">${inline(node.children)}</a>`;
         }
       })
       .join("");
@@ -47,11 +47,11 @@ export function richTextToHtml(
     .map((block) => {
       switch (block.kind) {
         case "paragraph":
-          return `<p style="${style.paragraph}">${inline(block.children)}</p>`;
+          return `<p style="${escapeHtml(style.paragraph)}">${inline(block.children)}</p>`;
         case "bullets":
-          return `<ul style="${style.paragraph}">${items(block.items)}</ul>`;
+          return `<ul style="${escapeHtml(style.paragraph)}">${items(block.items)}</ul>`;
         case "numbers":
-          return `<ol style="${style.paragraph}">${items(block.items)}</ol>`;
+          return `<ol style="${escapeHtml(style.paragraph)}">${items(block.items)}</ol>`;
       }
     })
     .join("");

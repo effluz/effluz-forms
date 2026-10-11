@@ -42,8 +42,72 @@ describe("parseRichText", () => {
     expect(JSON.stringify(block)).not.toMatch(/"link".*"link"/);
   });
 
+  it("keeps credentialed, uppercase-scheme and nested javascript links literal", () => {
+    // A link with embedded credentials is read as literal text: the address would display one host
+    // while the browser signs in with the other, so staff cannot publish it by accident.
+    for (const source of [
+      "[x](https://user:pw@example.com/)",
+      "[x](HTTPS://example.com/)",
+      "**[x](javascript:alert(1))**",
+      "_[x](javascript:alert(1))_",
+    ]) {
+      expect(JSON.stringify(parseRichText(source))).not.toContain('"link"');
+    }
+    expect(parseRichText("**[x](javascript:alert(1))**")).toEqual([
+      {
+        kind: "paragraph",
+        children: [{ kind: "bold", children: [t("[x](javascript:alert(1))")] }],
+      },
+    ]);
+  });
+
   it("normalizes CRLF and drops leading and trailing blank lines", () => {
     expect(parseRichText("\r\n\r\nHi\r\n")).toEqual([{ kind: "paragraph", children: [t("Hi")] }]);
+  });
+});
+
+describe("parseRichText on pathological input", () => {
+  const BOUND_MS = 200;
+  const REPEATS = 20_000;
+
+  it.each([
+    ["repeated italic openers with letters after", "(_a".repeat(REPEATS)],
+    ["repeated link openers", "[".repeat(REPEATS)],
+    ["repeated link openers and one closer", `${"[".repeat(REPEATS)}]`],
+  ])("stays linear and literal on %s", (_name, source) => {
+    const started = performance.now();
+    const blocks = parseRichText(source);
+    const elapsed = performance.now() - started;
+    expect(elapsed).toBeLessThan(BOUND_MS);
+    expect(blocks).toEqual([{ kind: "paragraph", children: [t(source)] }]);
+  });
+
+  it("starts a link at the innermost bracket instead of reading past the next opener", () => {
+    expect(parseRichText("[a [b](https://example.com/b)](https://example.com/a)")).toEqual([
+      {
+        kind: "paragraph",
+        children: [
+          t("[a "),
+          { kind: "link", href: "https://example.com/b", children: [t("b")] },
+          t("](https://example.com/a)"),
+        ],
+      },
+    ]);
+  });
+
+  it("still reads italics when earlier openers did find a closer", () => {
+    expect(parseRichText("(_a_ and (_b_)")).toEqual([
+      {
+        kind: "paragraph",
+        children: [
+          t("("),
+          { kind: "italic", children: [t("a")] },
+          t(" and ("),
+          { kind: "italic", children: [t("b")] },
+          t(")"),
+        ],
+      },
+    ]);
   });
 });
 

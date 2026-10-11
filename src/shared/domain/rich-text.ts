@@ -18,7 +18,7 @@ export type Block =
 
 const BULLET = /^- (.*)$/;
 const NUMBER = /^\d{1,3}\. (.*)$/;
-const LINK = /\[([^\]]+)\]\((https:\/\/[^\s()]+)\)/y;
+const LINK = /\[([^\][]+)\]\((https:\/\/[^\s()]+)\)/y;
 const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
 
 /** Parses the subset into blocks. Anything outside the subset stays literal text. */
@@ -96,9 +96,14 @@ function inlineToPlain(nodes: readonly Inline[]): string {
     .join("");
 }
 
+/**
+ * Only plain https addresses become links. An address with embedded credentials stays literal:
+ * it would display one host while the browser signs in to another.
+ */
 function isHttps(url: string): boolean {
   try {
-    return new URL(url).protocol === "https:";
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && parsed.username === "" && parsed.password === "";
   } catch {
     return false;
   }
@@ -116,6 +121,10 @@ function parseInline(source: string, allowLinks: boolean): Inline[] {
     literal = "";
   };
 
+  // Whether a closer is eligible does not depend on the opener, so once one scan finds none, no
+  // later opener in this call can find one: skip the rescans that would make this quadratic.
+  let noItalicCloser = false;
+
   let i = 0;
   while (i < source.length) {
     if (source.startsWith("**", i)) {
@@ -127,12 +136,13 @@ function parseInline(source: string, allowLinks: boolean): Inline[] {
         continue;
       }
     }
-    if (source[i] === "_" && !isWordChar(source[i - 1])) {
+    if (source[i] === "_" && !noItalicCloser && !isWordChar(source[i - 1])) {
       let end = source.indexOf("_", i + 1);
       while (end !== -1 && (end === i + 1 || isWordChar(source[end + 1]))) {
         end = source.indexOf("_", end + 1);
       }
-      if (end !== -1) {
+      if (end === -1) noItalicCloser = true;
+      else {
         flush();
         nodes.push({ kind: "italic", children: parseInline(source.slice(i + 1, end), allowLinks) });
         i = end + 1;
