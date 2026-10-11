@@ -16,13 +16,12 @@ const thirdParty = (...source) => ({ module: { origin: ["external", "core"], sou
 // public entry point (application/index.ts) of the modules listed here; modules absent
 // from the table get none.
 const MODULE_DEPS = {
-  "form-model": [],
   identity: [],
   media: [],
   notifications: [],
-  definitions: ["form-model", "identity"],
-  submissions: ["form-model", "definitions", "media", "notifications"],
-  review: ["form-model", "definitions", "submissions", "media", "identity"],
+  definitions: ["identity"],
+  submissions: ["definitions", "media", "notifications"],
+  review: ["definitions", "submissions", "media", "identity"],
 };
 const moduleOf = (type, module) => ({ element: { type, captured: { module } } });
 // A module's single public entry point: its application/index.ts file.

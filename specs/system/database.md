@@ -66,8 +66,9 @@ Rules:
   | `sign_in_attempt` | `identity` | `state`, `nonce`, `code_verifier`, `return_to`, `expires_at`. Single use: deleted when consumed, or by `identity.cleanup` once expired. Holds short-lived secrets, so it is never logged. See `security.md`. |
   | `audit_log` | `identity` | `action`, `actor_email`, `target_id`, `ip`, `details` (jsonb), `created_at`. **Append-only**: the trigger `audit_log_no_update` rejects every `UPDATE` and `DELETE`. See `security.md`. |
 
-- Definitions and answers are jsonb documents validated by `form-model`
-  before they are written. The database does not know field types.
+- Definitions and answers are jsonb documents validated by the form model
+  (`shared/domain/form-model`) before they are written. The database does
+  not know field types.
 - `answers` is personal data as a whole. Retention and export treat the
   document, never individual keys.
 - Indexes: `submission (form_id, received_at desc)` for review listing;

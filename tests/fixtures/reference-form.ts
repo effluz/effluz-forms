@@ -1,4 +1,4 @@
-import { consentItems, consentTextVersion } from "@/modules/form-model/application";
+import { consentItems, consentTextVersion } from "@/shared/domain/form-model";
 
 // Encodes specs/use-cases/reference-form-preemie-stories.md as a draft input object.
 // Spanish single-language, like the original. All names and values are synthetic.

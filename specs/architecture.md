@@ -72,18 +72,23 @@ this table and go through each module's public application API.
 
 | Module | Responsibility | May depend on |
 |---|---|---|
-| `form-model` | The contract in `form-definition.md`: field type registry, validation rules, condition evaluation, publish validation. Pure domain, no I/O. | `shared` |
 | `identity` | Staff sign-in, sessions, audit log | `shared` |
 | `media` | `MediaStorage` port and adapters, photo processing, media records | `shared` |
 | `notifications` | Email templates and the `EmailSender` port; job handlers for email | `shared` |
-| `definitions` | Forms, drafts, versions, lifecycle, operational settings, QR codes, translation suggestions | `form-model`, `identity` |
-| `submissions` | Public rendering of a published version, server validation, intake transaction, enqueuing jobs | `form-model`, `definitions`, `media`, `notifications` |
-| `review` | Listing, viewing, exporting, downloading and deleting submissions; curation status and text edits; dead job retry | `form-model`, `definitions`, `submissions`, `media`, `identity` |
+| `definitions` | Forms, drafts, versions, lifecycle, operational settings, QR codes, translation suggestions | `identity` |
+| `submissions` | Public rendering of a published version, server validation, intake transaction, enqueuing jobs | `definitions`, `media`, `notifications` |
+| `review` | Listing, viewing, exporting, downloading and deleting submissions; curation status and text edits; dead job retry | `definitions`, `submissions`, `media`, `identity` |
 
 `shared/` holds the kernel: `LocalizedText`, ids, `Clock`, `UnitOfWork`,
 `JobQueue`, logging, and nothing that belongs to one module.
 
 Adding a module or an edge to this table requires an ADR.
+
+The form model is the contract in `form-definition.md` (field type registry,
+validation rules, condition evaluation, publish validation; pure domain, no
+I/O). It lives in the shared kernel at `src/shared/domain/form-model/`, with
+`@/shared/domain/form-model` as its entry point, and every layer of every
+module may import it, `domain/` included (ADR 0022).
 
 ## Ports
 
@@ -101,7 +106,7 @@ or a module's public API:
 | `AuditLog` | Append one entry to the audit log inside the current unit of work. Owned by `identity`, which exports it and the audit action list for other modules | Postgres (`audit_log`, append-only by trigger) | `system/security.md` |
 | `AuditLogReader` | List audit entries for a target, newest first and capped, plus the distinct actors for a filter menu. Owned by `identity`, which exports it for other modules' activity views | Postgres (`audit_log`) | `system/security.md` |
 | `Clock`, `IdGenerator`, `Logger` | Determinism in tests; structured logging with defensive redaction | System clock, random UUIDs, pino | `system/observability.md` (`Logger`) |
-| `FieldTypeRegistry` | Look up a field type's validator, normalizer, exporter | In-code registry in `form-model` | `form-definition.md` |
+| `FieldTypeRegistry` | Look up a field type's validator, normalizer, exporter | In-code registry in `shared/domain/form-model` | `form-definition.md` |
 | `Translator` | Suggest a translation of staff-authored text; available to `definitions` only | DeepL API | `decisions/0010` |
 | `TextCorrector` | Suggest spelling and grammar corrections for one text answer; available to `review` only | DeepL Write | `decisions/0011` |
 
@@ -130,7 +135,7 @@ React or Next.js import may appear in `domain/`, `application/`, or
 ## Publishing data flow
 
 1. Staff edit the draft in the builder. Every save is validated structurally
-   by `form-model` and written to the draft row.
+   by the form model and written to the draft row.
 2. Publish runs the full publish validation (labels, translations, consent,
    retention, condition references). Failures are returned as a list the
    builder shows inline.
@@ -143,7 +148,7 @@ React or Next.js import may appear in `domain/`, `application/`, or
 
 1. The browser requests `/f/<slug>`. `submissions` loads the published version
    and renders page one in the chosen locale.
-2. Each page posts to `app`. Server-side, `form-model` evaluates conditions
+2. Each page posts to `app`. Server-side, the form model evaluates conditions
    and validation rules against the version. Answers to hidden fields are
    discarded. Photos are written to the local staging directory under random
    names with metadata (EXIF, including GPS) stripped.

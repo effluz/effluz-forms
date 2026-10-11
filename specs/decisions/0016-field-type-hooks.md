@@ -2,6 +2,7 @@
 
 Status: accepted
 Date: 2026-10-10
+Amended 2026-10-10: the form model moved to the shared kernel, ADR 0022
 
 ## Context
 
