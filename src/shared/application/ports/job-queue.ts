@@ -24,10 +24,23 @@ export interface JobQueue {
 export interface JobHandlerContext {
   jobId: string;
   attempt: number;
+  /** The job's attempt limit; `attempt >= maxAttempts` means this is the last run. */
+  maxAttempts: number;
   logger: Logger;
   uow: UnitOfWorkFactory;
   queue: JobQueue;
   clock: Clock;
+}
+
+/**
+ * Thrown by a handler for a failure no retry can fix: the job becomes dead at
+ * once. See specs/system/jobs.md, "Failure and retry".
+ */
+export class PermanentJobError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PermanentJobError";
+  }
 }
 
 export type JobHandler = (payload: JobPayload, ctx: JobHandlerContext) => Promise<void>;
