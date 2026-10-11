@@ -143,6 +143,7 @@ export default tseslint.config(
                 to: [
                   element("app"),
                   rootEntry,
+                  element("shared-domain"),
                   element("shared-application"),
                   element("shared-infrastructure"),
                   element("shared-presentation"),

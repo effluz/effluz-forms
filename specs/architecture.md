@@ -126,11 +126,12 @@ from the module's public API solely so the composition root can assemble
 because Next requires that file at the `src` root; the same rules apply to it
 as to `src/app/`. ESLint admits exactly that file (and its test) through the
 `root-entry` file category, and any other file outside a layer still fails
-the boundaries check. Route handlers and server actions are thin: parse input,
-call a use case, map the result to a response. A use case must be callable
-from a test, from the worker, and from a route handler without change. No
-React or Next.js import may appear in `domain/`, `application/`, or
-`infrastructure/`.
+the boundaries check. The composition root may also import the shared domain,
+to wire registries such as `buildDefaultRegistry()`. Route handlers and server
+actions are thin: parse input, call a use case, map the result to a response.
+A use case must be callable from a test, from the worker, and from a route
+handler without change. No React or Next.js import may appear in `domain/`,
+`application/`, or `infrastructure/`.
 
 ## Publishing data flow
 

@@ -13,6 +13,7 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
   GOOGLE_ALLOWED_HOSTED_DOMAIN: z.string().min(1),
+  NOTIFICATION_ALLOWED_DOMAINS: z.string().default(""),
   GOOGLE_ISSUER: z.url().default("https://accounts.google.com"),
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(4),
   WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(100).default(1000),
@@ -41,6 +42,8 @@ export interface AppConfig {
     issuer: string;
   };
   worker: { concurrency: number; pollIntervalMs: number; leaseSeconds: number };
+  /** Domains notification recipients may use; the Workspace hosted domain is always first. */
+  notificationAllowedDomains: string[];
 }
 
 /**
@@ -87,6 +90,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
       pollIntervalMs: e.WORKER_POLL_INTERVAL_MS,
       leaseSeconds: e.WORKER_LEASE_SECONDS,
     },
+    notificationAllowedDomains: parseDomains(
+      e.GOOGLE_ALLOWED_HOSTED_DOMAIN,
+      e.NOTIFICATION_ALLOWED_DOMAINS,
+    ),
   };
 }
 
@@ -98,4 +105,10 @@ function originOf(value: string): string | null {
   const url = new URL(value);
   if (url.pathname !== "/" || /[?#]/.test(value)) return null;
   return url.origin;
+}
+
+/** Hosted domain first, then the comma-separated list: lowercased, trimmed, deduplicated, no blanks. */
+function parseDomains(hosted: string, list: string): string[] {
+  const all = [hosted, ...list.split(",")].map((d) => d.trim().toLowerCase());
+  return [...new Set(all.filter((d) => d !== ""))];
 }

@@ -5,11 +5,16 @@ import {
   InMemoryAuditLogReader,
   makeDeps,
 } from "@/modules/identity/application/testing/fakes";
+import { NullSubmissionStats } from "@/modules/definitions/infrastructure/null-submission-stats";
+import { PgDraftRepository } from "@/modules/definitions/infrastructure/pg-draft-repository";
+import { PgFormRepository } from "@/modules/definitions/infrastructure/pg-form-repository";
+import { PgVersionRepository } from "@/modules/definitions/infrastructure/pg-version-repository";
 import { GoogleOidcAdmin } from "@/modules/identity/infrastructure/google-oidc";
 import { PgAuditLog } from "@/modules/identity/infrastructure/pg-audit-log";
 import { PgAuditLogReader } from "@/modules/identity/infrastructure/pg-audit-log-reader";
 import { PgSessionRepository } from "@/modules/identity/infrastructure/pg-session-repository";
 import { PgSignInAttemptStore } from "@/modules/identity/infrastructure/pg-sign-in-attempt-store";
+import { buildDefaultRegistry } from "@/shared/domain/form-model";
 import { systemClock } from "@/shared/infrastructure/clock";
 import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
 import { loadConfig } from "./config";
@@ -55,6 +60,7 @@ describe("buildContainer", () => {
       queue: undefined,
       jobStore: undefined,
       identity: undefined,
+      definitions: undefined,
       auditReader: undefined,
     };
     const c = buildContainer(config, overrides as unknown as Partial<Container>);
@@ -91,6 +97,29 @@ describe("buildContainer", () => {
     expect(buildContainer(config, { pool }).auditReader).toBeInstanceOf(PgAuditLogReader);
     const auditReader = new InMemoryAuditLogReader(new InMemoryAuditLog());
     expect(buildContainer(config, { pool, auditReader }).auditReader).toBe(auditReader);
+  });
+
+  it("wires definitions to the Postgres adapters, null stats and the configured domains", () => {
+    const pool = {} as unknown as Pool;
+    const c = buildContainer(config, { pool });
+    expect(c.definitions.forms).toBeInstanceOf(PgFormRepository);
+    expect(c.definitions.drafts).toBeInstanceOf(PgDraftRepository);
+    expect(c.definitions.versions).toBeInstanceOf(PgVersionRepository);
+    expect(c.definitions.stats).toBeInstanceOf(NullSubmissionStats);
+    expect(c.definitions.audit).toBeInstanceOf(PgAuditLog);
+    expect(c.definitions.auditReader).toBeInstanceOf(PgAuditLogReader);
+    expect(c.definitions.uow).toBe(c.uow);
+    expect(c.definitions.clock).toBe(systemClock);
+    expect(c.definitions.ids).toBe(systemIdGenerator);
+    expect(c.definitions.registry.list().length).toBe(buildDefaultRegistry().list().length);
+    expect(c.definitions.allowedRecipientDomains).toEqual(["example.com"]);
+    expect(c.definitions.publicBaseUrl).toBe("http://localhost:3000");
+  });
+
+  it("lets an override replace definitions", () => {
+    const definitions = {} as unknown as Container["definitions"];
+    const c = buildContainer(config, { pool: {} as unknown as Pool, definitions });
+    expect(c.definitions).toBe(definitions);
   });
 
   it("builds everything from an overriding config", () => {

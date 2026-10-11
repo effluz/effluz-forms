@@ -201,6 +201,19 @@ describe("files outside a layer folder", () => {
     expect(boundaryRules(rules)).not.toEqual([]);
   });
 
+  it("lets the composition root import the shared domain but keeps module domains off other modules", async () => {
+    const ok = await lintVirtual(
+      "src/app/boundary-probe-registry.ts",
+      `import { buildDefaultRegistry } from "@/shared/domain/form-model";\nexport const r = buildDefaultRegistry;\n`,
+    );
+    expect(boundaryRules(ok)).toEqual([]);
+    const bad = await lintVirtual(
+      "src/modules/definitions/domain/boundary-probe-identity.ts",
+      `import { sanitizeReturnTo } from "@/modules/identity/application";\nexport const s = sanitizeReturnTo;\n`,
+    );
+    expect(boundaryRules(bad)).toContain("boundaries/dependencies");
+  });
+
   it("refuses a stray shared file importing a module", async () => {
     const rules = await lintVirtual(
       "src/shared/boundary-probe-stray.ts",

@@ -90,4 +90,34 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...base, SERVICE: "cron" })).toThrow(/SERVICE/);
     expect(() => loadConfig({ ...base, LOG_LEVEL: "verbose" })).toThrow(/LOG_LEVEL/);
   });
+
+  describe("notificationAllowedDomains", () => {
+    const env = { ...base, GOOGLE_ALLOWED_HOSTED_DOMAIN: "effluz.com" };
+
+    it("puts the hosted domain first, then the cleaned partner list", () => {
+      const c = loadConfig({
+        ...env,
+        NOTIFICATION_ALLOWED_DOMAINS: "Partner.Example, other.example",
+      });
+      expect(c.notificationAllowedDomains).toEqual([
+        "effluz.com",
+        "partner.example",
+        "other.example",
+      ]);
+    });
+    it("is just the hosted domain when the variable is empty or absent", () => {
+      expect(
+        loadConfig({ ...env, NOTIFICATION_ALLOWED_DOMAINS: "" }).notificationAllowedDomains,
+      ).toEqual(["effluz.com"]);
+      expect(loadConfig(env).notificationAllowedDomains).toEqual(["effluz.com"]);
+    });
+    it("drops empty entries and duplicates, including the hosted domain", () => {
+      const c = loadConfig({
+        ...env,
+        GOOGLE_ALLOWED_HOSTED_DOMAIN: "Effluz.com",
+        NOTIFICATION_ALLOWED_DOMAINS: " ,EFFLUZ.com,a.example,,A.example , ",
+      });
+      expect(c.notificationAllowedDomains).toEqual(["effluz.com", "a.example"]);
+    });
+  });
 });
