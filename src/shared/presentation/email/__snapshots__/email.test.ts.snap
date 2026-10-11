@@ -1,0 +1,97 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderStaffNotification > renders the English notification with no answers 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New submission to Stories: HP-0001</title>
+</head>
+<body style="margin:0;padding:0;background:#FFF3EF">
+<span style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">Stories received submission HP-0001</span>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFF3EF"><tr><td align="center" style="padding:24px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;background:#FFFFFF;border:1px solid #EFF0F5;border-radius:12px"><tr><td style="padding:32px 24px">
+<p style="margin:0 0 16px;font:17px/1.6 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#372549">Stories received a new submission.</p><p style="margin:0 0 16px;font:17px/1.6 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#372549">Reference: HP-0001</p><p style="margin:0 0 16px;font:17px/1.6 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#372549">Received: 2026-10-10 09:00 America/Panama, 14:00 UTC</p><p style="margin:0 0 16px;font:17px/1.6 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#372549">Open it in the manager: <a href="https://forms.example.com/admin/forms/f1" style="color:#372549;text-decoration:underline">https://forms.example.com/admin/forms/f1</a></p>
+<div style="margin-top:24px;padding-top:16px;border-top:1px solid #EFF0F5"><p style="margin:0 0 8px;font:15px/1.5 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#774C60">This email carries no answers or files. Sign in to the manager to see them.</p></div>
+</td></tr></table>
+</td></tr></table>
+</body>
+</html>",
+  "subject": "New submission to Stories: HP-0001",
+  "text": "Stories received a new submission.
+Reference: HP-0001
+Received: 2026-10-10 09:00 America/Panama, 14:00 UTC
+Open it in the manager: https://forms.example.com/admin/forms/f1
+
+--
+This email carries no answers or files. Sign in to the manager to see them.",
+}
+`;
+
+exports[`renderSubmitterConfirmation > renders the en message, text and HTML with the same words 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gracias Bcc: someone@example.com</title>
+</head>
+<body style="margin:0;padding:0;background:#FFF3EF">
+<span style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">Your response to Historias &lt;de prueba&gt; was received</span>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFF3EF"><tr><td align="center" style="padding:24px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;background:#FFFFFF;border:1px solid #EFF0F5;border-radius:12px"><tr><td style="padding:32px 24px">
+<p style="margin:0 0 16px;font:17px/1.6 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#372549">Recibimos tu historia.</p><ul style="margin:0 0 16px;font:17px/1.6 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#372549"><li>Revisaremos las <strong>fotos</strong></li><li><a href="https://example.com/post" style="color:#372549;text-decoration:underline">Ejemplo</a></li></ul>
+<div style="margin-top:24px;padding-top:16px;border-top:1px solid #EFF0F5"><p style="margin:0 0 8px;font:15px/1.5 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#774C60">You received this email because you submitted &quot;Historias &lt;de prueba&gt;&quot; on 10 de octubre de 2026. Reference HP-0001.</p><p style="margin:0 0 8px;font:15px/1.5 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#774C60">Effluz stores your answers in the United States for 12 months. To ask for earlier deletion, reply to this email or write to privacy@example.com.</p></div>
+</td></tr></table>
+</td></tr></table>
+</body>
+</html>",
+  "subject": "Gracias Bcc: someone@example.com",
+  "text": "Your response to Historias <de prueba> was received
+
+Recibimos tu historia.
+
+- Revisaremos las fotos
+- Ejemplo (https://example.com/post)
+
+--
+You received this email because you submitted "Historias <de prueba>" on 10 de octubre de 2026. Reference HP-0001.
+Effluz stores your answers in the United States for 12 months. To ask for earlier deletion, reply to this email or write to privacy@example.com.",
+}
+`;
+
+exports[`renderSubmitterConfirmation > renders the es message, text and HTML with the same words 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gracias Bcc: someone@example.com</title>
+</head>
+<body style="margin:0;padding:0;background:#FFF3EF">
+<span style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">Recibimos tu respuesta a Historias &lt;de prueba&gt;</span>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFF3EF"><tr><td align="center" style="padding:24px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;background:#FFFFFF;border:1px solid #EFF0F5;border-radius:12px"><tr><td style="padding:32px 24px">
+<p style="margin:0 0 16px;font:17px/1.6 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#372549">Recibimos tu historia.</p><ul style="margin:0 0 16px;font:17px/1.6 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#372549"><li>Revisaremos las <strong>fotos</strong></li><li><a href="https://example.com/post" style="color:#372549;text-decoration:underline">Ejemplo</a></li></ul>
+<div style="margin-top:24px;padding-top:16px;border-top:1px solid #EFF0F5"><p style="margin:0 0 8px;font:15px/1.5 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#774C60">Recibes este correo porque enviaste &quot;Historias &lt;de prueba&gt;&quot; el 10 de octubre de 2026. Referencia HP-0001.</p><p style="margin:0 0 8px;font:15px/1.5 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#774C60">Effluz guarda tus respuestas en Estados Unidos durante 12 meses. Para pedir que se eliminen antes, responde a este correo o escribe a privacy@example.com.</p></div>
+</td></tr></table>
+</td></tr></table>
+</body>
+</html>",
+  "subject": "Gracias Bcc: someone@example.com",
+  "text": "Recibimos tu respuesta a Historias <de prueba>
+
+Recibimos tu historia.
+
+- Revisaremos las fotos
+- Ejemplo (https://example.com/post)
+
+--
+Recibes este correo porque enviaste "Historias <de prueba>" el 10 de octubre de 2026. Referencia HP-0001.
+Effluz guarda tus respuestas en Estados Unidos durante 12 meses. Para pedir que se eliminen antes, responde a este correo o escribe a privacy@example.com.",
+}
+`;
