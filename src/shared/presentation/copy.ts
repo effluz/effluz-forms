@@ -99,6 +99,23 @@ export const copy = {
     en: "The builder is coming soon. Settings and sharing already work.",
     es: "El constructor llegará pronto. La configuración y el enlace ya funcionan.",
   },
+  "life.unarchive_body": {
+    en: "The form moves back to Closed, or to Draft if it was never published.",
+    es: "El formulario vuelve a Cerrado, o a Borrador si nunca se publicó.",
+  },
+  "form.url_hint": { en: "Select the link and copy it.", es: "Selecciona el enlace y cópialo." },
+  "form.error_slug_mismatch": {
+    en: "The link name did not match. Nothing was deleted.",
+    es: "El nombre del enlace no coincide. No se eliminó nada.",
+  },
+  "form.error_not_allowed": {
+    en: "This form can no longer be deleted because it was published or has submissions. Archive it instead.",
+    es: "Este formulario ya no se puede eliminar porque se publicó o tiene respuestas. Archívalo en su lugar.",
+  },
+  "form.submissions_soon": {
+    en: "Submission review is coming soon. Received so far: {count}.",
+    es: "La revisión de respuestas llegará pronto. Recibidas hasta ahora: {count}.",
+  },
   "set.notifications": { en: "Notifications", es: "Notificaciones" },
   "set.recipients": { en: "Recipients", es: "Destinatarios" },
   "set.recipients_hint": { en: "Only Effluz addresses", es: "Solo correos de Effluz" },

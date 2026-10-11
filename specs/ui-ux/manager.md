@@ -67,6 +67,28 @@ sentence, for example "People with the link will see that the form is
 closed. Submissions already received are kept." Delete is offered only when
 the use case allows it and requires typing the slug.
 
+First pass, without JavaScript:
+
+- The public URL is a read-only input labelled `sh.url`, with
+  `form.url_hint` beneath it. There is no Copy button until the page has a
+  script; Content Security Policy rules out an inline one.
+- The language mode uses the `new.*` names. Open and close dates use
+  `set.opens` and `set.closes`, shown in the form's time zone and in UTC.
+- The lifecycle menu is a disclosure of links named `home.actions`. Each
+  link opens its confirmation on the overview (`?action=close`, `reopen`,
+  `archive`, `unarchive` or `delete`). The confirmation is a page section
+  that posts to `/admin/forms/<id>/lifecycle` or `/admin/forms/<id>/delete`.
+  An action the form no longer allows shows `form.error_transition`.
+- A closed or archived form shows its banner with the Reopen or Unarchive
+  action.
+- A refused deletion returns with `form.error_slug_mismatch`, with the
+  confirmation open again, or `form.error_not_allowed`.
+- Submissions is the only tab without a page of its own: the overview shows
+  `form.submissions_soon` until review exists, and the tab is shown, not
+  linked, from the other tabs.
+- Edit in builder leads to a placeholder page with the form's title,
+  `builder.placeholder`, and links to Settings and Share.
+
 ## Submissions tab
 
 ### List
@@ -340,6 +362,11 @@ wrong CSRF token.
 | life.banner_archived | This form is archived. | Este formulario está archivado. |
 | form.error_transition | That action is no longer available for this form. Reload to see its current status. | Esa acción ya no está disponible para este formulario. Recarga para ver su estado actual. |
 | builder.placeholder | The builder is coming soon. Settings and sharing already work. | El constructor llegará pronto. La configuración y el enlace ya funcionan. |
+| life.unarchive_body | The form moves back to Closed, or to Draft if it was never published. | El formulario vuelve a Cerrado, o a Borrador si nunca se publicó. |
+| form.url_hint | Select the link and copy it. | Selecciona el enlace y cópialo. |
+| form.error_slug_mismatch | The link name did not match. Nothing was deleted. | El nombre del enlace no coincide. No se eliminó nada. |
+| form.error_not_allowed | This form can no longer be deleted because it was published or has submissions. Archive it instead. | Este formulario ya no se puede eliminar porque se publicó o tiene respuestas. Archívalo en su lugar. |
+| form.submissions_soon | Submission review is coming soon. Received so far: {count}. | La revisión de respuestas llegará pronto. Recibidas hasta ahora: {count}. |
 
 ### Submissions list
 
