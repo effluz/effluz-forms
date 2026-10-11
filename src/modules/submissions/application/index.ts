@@ -28,6 +28,8 @@ export type { Submission } from "../domain/submission";
 export { VersionCache } from "./version-cache";
 export { postContext } from "./post-context";
 export { viewForm } from "./view-form";
+export { savePage } from "./save-page";
+export { checkField } from "./check-field";
 export { HONEYPOT_FIELD, MIN_FILL_MS } from "../domain/protection";
 export { uploadFields } from "../domain/intake";
 export { withFileAnswers } from "../domain/in-progress";
