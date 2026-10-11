@@ -62,16 +62,22 @@ All routes sit under `/admin`, which the proxy gates (`src/proxy.ts`).
 | `GET /admin/forms/[id]/qr.png?size=1024\|2048`, `qr.svg` | QR downloads (`?download=1` makes the SVG an attachment; without it the SVG is the preview) |
 | Settings server action | `saveSettings` in `(gated)/forms/[id]/settings/actions.ts`, posted by the Settings tab |
 
-Every handler that changes data answers a form post with a 303 (Post/
-Redirect/Get). `src/app/admin/_lib/request.ts` holds the guards:
-`requireSession` returns the active session or a redirect to sign-in, and
-`requireCsrf` adds the check of the form's `csrf` field against the session
-token (a mismatch is the `auth.stale_*` page with status 403). Both take the page to return to after
-sign-in, since sign-in returns with a GET. Pages read the session through
-`pageSession` (`_lib/page.ts`), and every page or layout that does so exports
-`instant = false`, which lets it block on the session and the database under
-Cache Components. The QR routes need a session but no CSRF token, as they
-change nothing.
+Every handler that changes data answers a handled form post with a 303 (Post/
+Redirect/Get). A request without a session gets the sign-in redirect (302), a
+stale or missing token the `auth.stale_*` page (403), and a tampered body a bare
+400. `src/app/admin/_lib/request.ts` holds the guards: `requireSession` returns
+the active session or a redirect to sign-in, and `requireCsrf` adds the check of
+the form's `csrf` field against the session token. Both take the page to return
+to after sign-in, since sign-in returns with a GET. The proxy does the same for
+a POST that arrives without a session: it returns to the page that posted
+(`create` to the New form page, `lifecycle` and `delete` to the overview), never
+to the route and never with a query. Bare 400 and 404 answers carry
+`Cache-Control: no-store` (`plain` in `request.ts`). Pages read the session
+through `pageSession` (`_lib/page.ts`), and every page or layout that does so
+exports `instant = false`, which lets it block on the session and the database
+under Cache Components. The QR routes need a session but no CSRF token, as they
+change nothing; their answers are `private, no-cache`, so a draft's new slug
+shows at once.
 
 ## Forms list (home)
 
@@ -311,6 +317,11 @@ explains that entries are kept for one year.
 
 - **Loading**: skeleton rows, never a spinner on a blank page.
 - **Errors**: inline, with Retry; the shell stays usable.
+- **Not found**: a form route for an unknown form shows, inside the shell,
+  a breadcrumb back to Forms, the `<h1>` `shell.not_found_title`, one
+  sentence (`shell.not_found_body`) and one link (`shell.not_found_back`) to
+  the Forms list, with status 404. The lifecycle and delete routes send an
+  unknown form to its overview, which shows this page.
 - **Closed or archived form**: a banner in the overview explaining what
   the public sees and how to reopen.
 - **Submission deleted while open**: the drawer shows "This submission was
@@ -395,10 +406,14 @@ builder (status names, New form dialog).
 | shell.main_nav | Main navigation | Navegación principal |
 | shell.breadcrumb | Breadcrumb | Ruta de navegación |
 | shell.cancel | Cancel | Cancelar |
+| shell.not_found_title | Form not found | Formulario no encontrado |
+| shell.not_found_body | It may have been deleted, or the link is out of date. The forms list shows what exists today. | Puede haber sido eliminado o el enlace está desactualizado. La lista de formularios muestra lo que existe hoy. |
+| shell.not_found_back | Back to forms | Volver a los formularios |
 
 `shell.main_nav` and `shell.breadcrumb` name the two navigation landmarks
 for assistive technology. `shell.cancel` is the cancel link of every
-confirmation dialog.
+confirmation dialog. `shell.not_found_*` is the page a form route shows for
+an unknown form (see "States").
 
 ### Sign-in and access
 

@@ -1,4 +1,4 @@
-import { actorOf, requireCsrf, seeOther, text } from "@/app/admin/_lib/request";
+import { actorOf, plain, requireCsrf, seeOther, text } from "@/app/admin/_lib/request";
 import { applyLifecycle, LIFECYCLE_ACTIONS } from "@/modules/definitions/application";
 import { formHref } from "@/modules/definitions/presentation/view-models";
 
@@ -22,7 +22,7 @@ export async function POST(
 
   // The confirmation offers only the lifecycle actions; anything else is a tampered request.
   const action = LIFECYCLE_ACTIONS.find((known) => known === text(form, "action"));
-  if (action === undefined) return new Response(null, { status: 400 });
+  if (action === undefined) return plain(400);
 
   const result = await applyLifecycle(container.definitions, actorOf(session, request), {
     formId: id,

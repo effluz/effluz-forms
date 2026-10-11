@@ -7,9 +7,6 @@ import { cx, styles } from "@/shared/presentation/styles";
 import local from "./tabs.module.css";
 import { formatDate, formHref } from "./view-models";
 
-/** Entries on one page; `formActivity` reports whether older ones exist. */
-export const ACTIVITY_PAGE_SIZE = 50;
-
 const ACTOR_ID = "activity-actor";
 const ACTION_ID = "activity-action";
 
@@ -62,7 +59,10 @@ const COLUMNS: TableColumn[] = [
 
 function detailsText(details: AuditRecord["details"]): string | null {
   if (details === null) return null;
-  const parts = Object.entries(details).map(([key, value]) => `${key}: ${String(value)}`);
+  // Stored as JSON, so a value can be an object or a list despite its declared type.
+  const shown = (value: string | number | boolean | object | null): string =>
+    typeof value === "object" ? JSON.stringify(value) : String(value);
+  const parts = Object.entries(details).map(([key, value]) => `${key}: ${shown(value)}`);
   return parts.length === 0 ? null : parts.join(", ");
 }
 

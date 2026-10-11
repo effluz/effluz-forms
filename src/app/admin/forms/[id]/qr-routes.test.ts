@@ -78,6 +78,7 @@ describe("GET /admin/forms/[id]/qr.png", () => {
   it("answers 404 for an unknown form", async () => {
     const res = await call(getPng, "qr.png?size=1024", fakeUuid(99));
     expect(res.status).toBe(404);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
   });
 
   it("answers 404 for an id that is not a form id", async () => {
@@ -93,6 +94,7 @@ describe("GET /admin/forms/[id]/qr.png", () => {
   it("refuses a missing size with 400", async () => {
     const res = await call(getPng, "qr.png");
     expect(res.status).toBe(400);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
   });
 
   it.each([1024, 2048])("returns a %i px PNG as a download", async (size) => {
@@ -102,7 +104,7 @@ describe("GET /admin/forms/[id]/qr.png", () => {
     expect(res.headers.get("Content-Disposition")).toBe(
       `attachment; filename="spring-stories-qr-${String(size)}.png"`,
     );
-    expect(res.headers.get("Cache-Control")).toBe("private, max-age=3600");
+    expect(res.headers.get("Cache-Control")).toBe("private, no-cache");
     const bytes = new Uint8Array(await res.arrayBuffer());
     expect([...bytes.slice(0, 4)]).toEqual(PNG_SIGNATURE);
     // The PNG header holds the width as a big-endian integer at byte 16.
@@ -126,7 +128,7 @@ describe("GET /admin/forms/[id]/qr.svg", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("image/svg+xml");
     expect(res.headers.get("Content-Disposition")).toBeNull();
-    expect(res.headers.get("Cache-Control")).toBe("private, max-age=3600");
+    expect(res.headers.get("Cache-Control")).toBe("private, no-cache");
     expect(await res.text()).toContain("<svg");
   });
 

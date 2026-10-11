@@ -64,8 +64,8 @@ export function formHref(id: string, tab?: FormSection): string {
   return tab === undefined ? base : `${base}/${tab}`;
 }
 
-/** The overview with the confirmation for `action` open. */
-export function lifecycleHref(id: string, action: LifecycleAction): string {
+/** The overview with the confirmation for `action`, or for deleting, open. */
+export function lifecycleHref(id: string, action: LifecycleAction | "delete"): string {
   return `${formHref(id)}?action=${action}`;
 }
 

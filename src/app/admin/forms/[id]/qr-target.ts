@@ -1,4 +1,4 @@
-import { requireSession } from "@/app/admin/_lib/request";
+import { plain, requireSession } from "@/app/admin/_lib/request";
 import { shareInfo } from "@/modules/definitions/application";
 
 export interface QrTarget {
@@ -18,7 +18,7 @@ export async function qrTarget(request: Request, id: string): Promise<QrTarget |
   const guarded = await requireSession(request);
   if (guarded instanceof Response) return guarded;
   const info = await shareInfo(guarded.container.definitions, id);
-  if (info === null) return new Response(null, { status: 404 });
+  if (info === null) return plain(404);
   const slug = new URL(info.url).pathname.split("/").pop() || "form";
   return { url: info.url, slug };
 }

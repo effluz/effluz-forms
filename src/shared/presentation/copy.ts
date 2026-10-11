@@ -59,6 +59,12 @@ export const copy = {
   "shell.main_nav": { en: "Main navigation", es: "Navegación principal" },
   "shell.breadcrumb": { en: "Breadcrumb", es: "Ruta de navegación" },
   "shell.cancel": { en: "Cancel", es: "Cancelar" },
+  "shell.not_found_title": { en: "Form not found", es: "Formulario no encontrado" },
+  "shell.not_found_body": {
+    en: "It may have been deleted, or the link is out of date. The forms list shows what exists today.",
+    es: "Puede haber sido eliminado o el enlace está desactualizado. La lista de formularios muestra lo que existe hoy.",
+  },
+  "shell.not_found_back": { en: "Back to forms", es: "Volver a los formularios" },
   "form.edit": { en: "Edit in builder", es: "Editar en el constructor" },
   "form.share": { en: "Share", es: "Compartir" },
   "form.closing_in": { en: "Closing in {n} days", es: "Cierra en {n} días" },

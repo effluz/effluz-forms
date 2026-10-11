@@ -16,7 +16,7 @@ export async function GET(
   const svg = await renderQrSvg(target.url);
   const headers: Record<string, string> = {
     "Content-Type": "image/svg+xml",
-    "Cache-Control": "private, max-age=3600",
+    "Cache-Control": "private, no-cache",
   };
   if (new URL(request.url).searchParams.get("download") === "1") {
     headers["Content-Disposition"] = `attachment; filename="${target.slug}-qr.svg"`;

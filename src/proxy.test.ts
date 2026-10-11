@@ -60,10 +60,10 @@ function seedSession(lastSeenAt = deps.clock.now()) {
 /** The origin the app sees behind the reverse proxy, unlike the public one. */
 const INTERNAL = "http://10.0.0.5:3000";
 
-function request(path: string, cookie?: string, origin = BASE): NextRequest {
+function request(path: string, cookie?: string, origin = BASE, method = "GET"): NextRequest {
   const headers = new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.1" });
   if (cookie !== undefined) headers.set("cookie", cookie);
-  return new NextRequest(`${origin}${path}`, { headers });
+  return new NextRequest(`${origin}${path}`, { headers, method });
 }
 
 /** Proxy passes the request on with this internal header. */
@@ -109,6 +109,38 @@ describe("admin proxy gate", () => {
     expect(dotted.headers.get("location")).toBe(
       `${BASE}/admin/auth/signin?returnTo=${encodeURIComponent("/admin/forms")}`,
     );
+  });
+
+  it.each([
+    ["/admin/forms/create", "/admin/forms/new"],
+    ["/admin/forms/create?title=x", "/admin/forms/new"],
+    [
+      "/admin/forms/00000001-0000-4000-8000-000000000001/lifecycle",
+      "/admin/forms/00000001-0000-4000-8000-000000000001",
+    ],
+    [
+      "/admin/forms/00000001-0000-4000-8000-000000000001/delete?x=1",
+      "/admin/forms/00000001-0000-4000-8000-000000000001",
+    ],
+    [
+      "/admin/forms/00000001-0000-4000-8000-000000000001/settings?tab=x",
+      "/admin/forms/00000001-0000-4000-8000-000000000001/settings",
+    ],
+  ])("returns a POST to %s to the GET page %s after sign-in", async (path, page) => {
+    const res = await proxy(request(path, undefined, BASE, "POST"));
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(
+      `${BASE}/admin/auth/signin?returnTo=${encodeURIComponent(page)}`,
+    );
+  });
+
+  it("keeps the query for GET and HEAD requests to the same paths", async () => {
+    for (const method of ["GET", "HEAD"]) {
+      const res = await proxy(request("/admin/forms/create?title=x", undefined, BASE, method));
+      expect(res.headers.get("location")).toBe(
+        `${BASE}/admin/auth/signin?returnTo=${encodeURIComponent("/admin/forms/create?title=x")}`,
+      );
+    }
   });
 
   it("redirects when the cookie names no session", async () => {

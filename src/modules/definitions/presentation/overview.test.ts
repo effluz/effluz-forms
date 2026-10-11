@@ -218,7 +218,13 @@ describe("FormOverview", () => {
     const html = render({ dialog: "reopen" });
     expect(html).not.toContain('role="dialog"');
     expect(html).toContain("That action is no longer available for this form.");
-    expect(render({ dialog: "delete" })).not.toContain('role="dialog"');
+  });
+
+  it("explains a delete confirmation on a form that cannot be deleted as not allowed", () => {
+    const html = render({ dialog: "delete" });
+    expect(html).not.toContain('role="dialog"');
+    expect(html).toContain("This form can no longer be deleted");
+    expect(html).not.toContain("That action is no longer available");
   });
 
   it("shows the refusals coming back from the routes as alerts", () => {

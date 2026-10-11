@@ -1,3 +1,4 @@
+import { plain } from "@/app/admin/_lib/request";
 import { QR_SIZES, renderQrPng, type QrSize } from "@/modules/definitions/infrastructure/qr";
 import { qrTarget } from "../qr-target";
 
@@ -17,13 +18,13 @@ export async function GET(
   const target = await qrTarget(request, id);
   if (target instanceof Response) return target;
   const size = sizeOf(new URL(request.url).searchParams.get("size"));
-  if (size === undefined) return new Response(null, { status: 400 });
+  if (size === undefined) return plain(400);
   const png = await renderQrPng(target.url, size);
   return new Response(new Uint8Array(png), {
     headers: {
       "Content-Type": "image/png",
       "Content-Disposition": `attachment; filename="${target.slug}-qr-${String(size)}.png"`,
-      "Cache-Control": "private, max-age=3600",
+      "Cache-Control": "private, no-cache",
     },
   });
 }

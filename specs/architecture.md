@@ -137,8 +137,8 @@ to wire registries such as `buildDefaultRegistry()`. Route handlers and server
 actions are thin: parse input, call a use case, map the result to a response.
 Server actions live only in `src/app/**/actions.ts`; today that is the
 Settings tab's save. A use case must be callable from a test, from the
-worker, and from a route handler without change. No React or Next.js import may appear in `domain/`,
-`application/`, or `infrastructure/`.
+worker, and from a route handler without change. No React or Next.js import
+may appear in `domain/`, `application/`, or `infrastructure/`.
 
 ## Publishing data flow
 

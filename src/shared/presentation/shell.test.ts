@@ -10,6 +10,7 @@ import { cx, styles } from "./styles";
 import { ManagerShell } from "./ManagerShell";
 import { adminMetadata, pageMetadata } from "./metadata";
 import { Table } from "./Table";
+import { NotFoundPage } from "./NotFoundPage";
 import { Tabs } from "./Tabs";
 
 const count = (html: string, re: RegExp) => html.match(re)?.length ?? 0;
@@ -403,5 +404,24 @@ describe("literalPattern", () => {
   it("does not let a dot or a class match other characters", () => {
     expect(compile("a.b").test("axb")).toBe(false);
     expect(compile("[ab]").test("a")).toBe(false);
+  });
+});
+
+describe("NotFoundPage", () => {
+  const html = renderToStaticMarkup(createElement(NotFoundPage, { formsHref: "/admin/forms" }));
+
+  it("has one h1 and no shell of its own, since the gated layout provides the shell", () => {
+    expect(count(html, /<h1[ >]/g)).toBe(1);
+    expect(html).not.toMatch(/<main|<header|<nav[^>]*Main navigation/);
+  });
+
+  it("says in both languages what happened, with a breadcrumb and a link back to the list", () => {
+    expect(html).toMatch(/<h1[^>]*>Form not found<span lang="es"[^>]*>Formulario no encontrado</);
+    expect(html).toContain("It may have been deleted, or the link is out of date.");
+    expect(html).toContain("Puede haber sido eliminado o el enlace está desactualizado.");
+    expect(html).toMatch(/<nav aria-label="Breadcrumb \/ Ruta de navegación"/);
+    expect(html).toMatch(/<li>.*<a href="\/admin\/forms"[^>]*>Forms/);
+    const back = tags(html, /<a [^>]*href="\/admin\/forms"[^>]*>(?=Back to forms)/g);
+    expect(back).toHaveLength(1);
   });
 });

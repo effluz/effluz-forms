@@ -9,7 +9,7 @@ vi.mock("@/app/container", async (importOriginal) => ({
 import { loadConfig } from "@/app/config";
 import { buildContainer, getContainer } from "@/app/container";
 import { makeDeps, type FakeIdentityDeps } from "@/modules/identity/application/testing/fakes";
-import { actorOf, localized, requireCsrf, requireSession, seeOther, text } from "./request";
+import { actorOf, localized, plain, requireCsrf, requireSession, seeOther, text } from "./request";
 
 const BASE = "https://forms.example.com";
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
@@ -108,6 +108,22 @@ describe("seeOther", () => {
     expect(res.status).toBe(303);
     expect(res.headers.get("Location")).toBe("/admin/forms/abc");
     expect(res.headers.get("Cache-Control")).toBe("no-store");
+  });
+});
+
+describe("plain", () => {
+  it("is an uncached response with the status and no body by default", async () => {
+    const res = plain(404);
+    expect(res.status).toBe(404);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(await res.text()).toBe("");
+  });
+
+  it("carries a text body when given one", async () => {
+    const res = plain(400, "Bad request");
+    expect(res.status).toBe(400);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(await res.text()).toBe("Bad request");
   });
 });
 

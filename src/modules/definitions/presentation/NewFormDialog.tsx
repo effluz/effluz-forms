@@ -3,6 +3,7 @@ import type { LocalizedText } from "@/shared/domain/localized-text";
 import { Bilingual } from "@/shared/presentation/Bilingual";
 import type { CopyKey } from "@/shared/presentation/copy";
 import { cx, styles } from "@/shared/presentation/styles";
+import { FORMS_PATH } from "./FormsList";
 import local from "./forms.module.css";
 import type { CreateFormError, NewFormValues } from "./new-form-values";
 import { titleText } from "./view-models";
@@ -189,7 +190,7 @@ export function NewFormDialog(props: {
         </div>
 
         <div className={styles.actions}>
-          <a className={styles.button} href="/admin/forms">
+          <a className={styles.button} href={FORMS_PATH}>
             <Bilingual k="shell.cancel" />
           </a>
           <button className={styles.primary} type="submit">

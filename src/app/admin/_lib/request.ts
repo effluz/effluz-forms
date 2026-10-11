@@ -92,3 +92,12 @@ export function seeOther(location: string): Response {
     headers: { Location: location, "Cache-Control": "no-store" },
   });
 }
+
+/**
+ * A bare, uncached answer for a request that cannot be served (400, 404): the
+ * status and, optionally, a text body. Never cached, since the same URL may be
+ * valid a moment later.
+ */
+export function plain(status: number, body?: string): Response {
+  return new Response(body ?? null, { status, headers: { "Cache-Control": "no-store" } });
+}

@@ -123,6 +123,18 @@ describe("ActivityList", () => {
     expect(html).toContain("&lt;img");
   });
 
+  it("shows a stored object or list as JSON, not as [object Object]", () => {
+    // The column is JSON; a value the writer typed as a primitive may not be one.
+    const details = { changed: { retentionMonths: 24 }, keys: ["slug", "title"], none: null };
+    const html = list({
+      entries: [record({ details: details as unknown as Record<string, string> })],
+    });
+    expect(html).toContain("changed: {&quot;retentionMonths&quot;:24}");
+    expect(html).toContain("keys: [&quot;slug&quot;,&quot;title&quot;]");
+    expect(html).toContain("none: null");
+    expect(html).not.toContain("[object Object]");
+  });
+
   it("shows an empty row, not an empty table, when nothing matches", () => {
     const html = list({ entries: [] });
     expect(html).toContain("No activity matches.");

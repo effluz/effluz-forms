@@ -13,7 +13,7 @@ import menu from "./forms.module.css";
 import { FormTitle } from "./FormTitle";
 import { LifecycleDialog, type OverviewDialog } from "./LifecycleDialog";
 import local from "./overview.module.css";
-import { formatDate, formHref, statusText, statusTone } from "./view-models";
+import { formatDate, formHref, lifecycleHref, statusText, statusTone } from "./view-models";
 
 export type { OverviewDialog } from "./LifecycleDialog";
 
@@ -34,11 +34,6 @@ export function overviewDialog(value: unknown): OverviewDialog | undefined {
 /** The `?error=` query value as a known refusal, or undefined for anything else. */
 export function overviewError(value: unknown): OverviewError | undefined {
   return OVERVIEW_ERRORS.find((error) => error === value);
-}
-
-/** The overview with the confirmation of `dialog` open. */
-export function dialogHref(formId: string, dialog: OverviewDialog): string {
-  return `${formHref(formId)}?action=${dialog}`;
 }
 
 const ERROR_COPY: Record<OverviewError, CopyKey> = {
@@ -90,10 +85,16 @@ export function FormOverview(props: {
       : props.dialog === "delete"
         ? overview.canDelete
         : overview.allowedActions.includes(props.dialog);
-  // An action the form no longer allows reads as the same refusal the route gives.
-  const error =
-    props.error ??
-    (props.dialog !== undefined && !dialogAllowed ? "invalid_transition" : undefined);
+  // An action the form no longer allows reads as the same refusal the route gives:
+  // deleting a form that cannot be deleted is `not_allowed`, any other action is
+  // `invalid_transition`.
+  const refusedDialog: OverviewError | undefined =
+    props.dialog === undefined || dialogAllowed
+      ? undefined
+      : props.dialog === "delete"
+        ? "not_allowed"
+        : "invalid_transition";
+  const error = props.error ?? refusedDialog;
 
   return (
     <>
@@ -197,7 +198,7 @@ function LifecycleMenu({ overview }: { overview: Overview }) {
               cx(dialog === "delete" && dialogs.length > 1 && menu.menuDivider) || undefined
             }
           >
-            <a className={menu.menuLink} href={dialogHref(form.id, dialog)}>
+            <a className={menu.menuLink} href={lifecycleHref(form.id, dialog)}>
               <Bilingual k={`life.${dialog}`} />
             </a>
           </li>
@@ -225,7 +226,7 @@ function StatusBanner({ overview }: { overview: Overview }) {
         ? {
             action: {
               label: <Bilingual k={`life.${banner.undo}`} />,
-              href: dialogHref(form.id, banner.undo),
+              href: lifecycleHref(form.id, banner.undo),
             },
           }
         : {})}

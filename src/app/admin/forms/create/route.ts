@@ -1,4 +1,4 @@
-import { actorOf, localized, requireCsrf, seeOther, text } from "@/app/admin/_lib/request";
+import { actorOf, localized, plain, requireCsrf, seeOther, text } from "@/app/admin/_lib/request";
 import { createForm } from "@/modules/definitions/application";
 import {
   refusedCreateLocation,
@@ -38,7 +38,7 @@ export async function POST(request: Request): Promise<Response> {
   // The dialog offers only the three modes; anything else is a tampered request.
   const languages = languagesSchema.safeParse(text(form, "languages"));
   if (!languages.success) {
-    return new Response(null, { status: 400, headers: { "Cache-Control": "no-store" } });
+    return plain(400);
   }
   // A title typed for a language the mode does not use is dropped here, so it is
   // neither saved nor carried back to the dialog.

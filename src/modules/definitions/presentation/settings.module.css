@@ -25,9 +25,9 @@
   min-width: 0;
   margin: 0 0 24px;
   padding: 24px;
-  border: 1px solid #eff0f5;
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--surface-card);
 }
 
 /* The legend holds the section heading; floated so it sits inside the card. */
@@ -105,8 +105,8 @@
 
 /* A disabled control: color.surface.subtle with color.action.disabledFg. */
 .section :disabled {
-  background: #eff0f5;
-  color: #774c60;
+  background: var(--surface-subtle);
+  color: var(--text-muted);
   cursor: not-allowed;
 }
 
@@ -125,7 +125,7 @@
   width: 24px;
   height: 24px;
   margin: 0;
-  accent-color: #372549;
+  accent-color: var(--primary-bg);
 }
 
 /* A time in UTC under its field: font.features.tabularNumbers. */

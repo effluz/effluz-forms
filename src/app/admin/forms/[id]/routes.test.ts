@@ -130,6 +130,7 @@ describe("POST /admin/forms/[id]/lifecycle", () => {
     const id = await seedPublished();
     const res = await lifecycle(id, { csrf: CSRF, action: "publish" });
     expect(res.status).toBe(400);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
     expect(definitions.store.forms.get(id)?.status).toBe("published");
   });
 
