@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
+import { PgDraftRepository } from "@/modules/definitions/infrastructure/pg-draft-repository";
 import { PgFormRepository } from "@/modules/definitions/infrastructure/pg-form-repository";
 import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
 import { testPool, truncateAll } from "../db";
-import { sampleForm } from "./factories";
+import { sampleDraft, sampleForm, sampleVersion } from "./factories";
+import { PgVersionRepository } from "@/modules/definitions/infrastructure/pg-version-repository";
 
 describe("PgFormRepository", () => {
   const pool = testPool();
@@ -72,6 +74,69 @@ describe("PgFormRepository", () => {
   it("rethrows errors that are not a unique violation", async () => {
     const form = sampleForm({ status: "bogus" as never });
     await expect(uowf.run((uow) => repo.insert(uow, form))).rejects.toThrow();
+  });
+
+  it("keeps the unit of work usable after an insert reports slug_taken", async () => {
+    await insert(sampleForm({ slug: "taken" }));
+    const other = sampleForm({ slug: "free" });
+    await uowf.run(async (uow) => {
+      expect(await repo.insert(uow, sampleForm({ slug: "taken" }))).toBe("slug_taken");
+      expect(await repo.insert(uow, other)).toBe("inserted");
+    });
+    expect(await repo.findById(other.id)).toEqual(other);
+  });
+
+  it("keeps the unit of work usable after an update reports slug_taken", async () => {
+    await insert(sampleForm({ slug: "taken" }));
+    const other = await insert(sampleForm({ slug: "free" }));
+    await uowf.run(async (uow) => {
+      expect(await repo.update(uow, { ...other, slug: "taken" })).toBe("slug_taken");
+      expect(await repo.update(uow, { ...other, title: { en: "Changed" } })).toBe("updated");
+    });
+    const found = await repo.findById(other.id);
+    expect(found?.slug).toBe("free");
+    expect(found?.title).toEqual({ en: "Changed" });
+  });
+
+  it("throws when an update matches no row", async () => {
+    await expect(uowf.run((uow) => repo.update(uow, sampleForm()))).rejects.toThrow(
+      /does not exist/,
+    );
+  });
+
+  it("removes a never-published form with its draft and visits", async () => {
+    const drafts = new PgDraftRepository(pool);
+    const form = sampleForm();
+    await uowf.run(async (uow) => {
+      await repo.insert(uow, form);
+      await drafts.insert(uow, sampleDraft(form.id));
+      await repo.markOpened(uow, form.id, "staff@example.com", new Date());
+    });
+    await uowf.run((uow) => repo.delete(uow, form.id));
+    for (const table of ["form", "form_draft", "form_visit"]) {
+      const { rows } = await pool.query(`select 1 from ${table}`);
+      expect(rows).toHaveLength(0);
+    }
+  });
+
+  it("refuses to delete a form that has a version", async () => {
+    const form = await insert();
+    await uowf.run((uow) => new PgVersionRepository(pool).insert(uow, sampleVersion(form.id, 1)));
+    await expect(uowf.run((uow) => repo.delete(uow, form.id))).rejects.toThrow(/foreign key/);
+    expect(await repo.findById(form.id)).not.toBeNull();
+  });
+
+  it("throws on corrupt settings naming only the form id", async () => {
+    const form = await insert();
+    await pool.query(`update form set settings = $2::jsonb where id = $1`, [
+      form.id,
+      JSON.stringify({ notificationRecipients: ["leak@example.com"], retentionMonths: "x" }),
+    ]);
+    const failure = await repo.findById(form.id).then(
+      () => null,
+      (error: unknown) => error as Error,
+    );
+    expect(failure?.message).toBe(`stored settings of form ${form.id} are corrupt`);
   });
 
   describe("list and counts", () => {

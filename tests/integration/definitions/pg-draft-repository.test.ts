@@ -69,6 +69,14 @@ describe("PgDraftRepository", () => {
     expect(found?.document.title).toEqual({ en: "Published" });
   });
 
+  it("throws when replace finds no draft", async () => {
+    const form = sampleForm();
+    await uowf.run((uow) => forms.insert(uow, form));
+    await expect(uowf.run((uow) => repo.replace(uow, sampleDraft(form.id)))).rejects.toThrow(
+      /has no draft/,
+    );
+  });
+
   it("is removed with its form", async () => {
     const { form } = await formWithDraft();
     await uowf.run((uow) => forms.delete(uow, form.id));

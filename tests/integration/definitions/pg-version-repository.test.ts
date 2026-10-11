@@ -62,6 +62,17 @@ describe("PgVersionRepository", () => {
     expect(await repo.findById(first.id)).toEqual(first);
   });
 
+  it("keeps the unit of work usable after an insert reports number_taken", async () => {
+    const form = await aForm();
+    await uowf.run((uow) => repo.insert(uow, sampleVersion(form.id, 1)));
+    const next = sampleVersion(form.id, 2);
+    await uowf.run(async (uow) => {
+      expect(await repo.insert(uow, sampleVersion(form.id, 1))).toBe("number_taken");
+      expect(await repo.insert(uow, next)).toBe("inserted");
+    });
+    expect(await repo.findById(next.id)).toEqual(next);
+  });
+
   it("refuses to update or delete a stored version", async () => {
     const form = await aForm();
     const v1 = sampleVersion(form.id, 1);

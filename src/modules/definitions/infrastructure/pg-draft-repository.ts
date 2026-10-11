@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { versionSchema } from "@/shared/domain/form-model";
+import { versionSchema, type Version } from "@/shared/domain/form-model";
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 import { txOf } from "@/shared/infrastructure/postgres/tx";
 import type { DraftRepository } from "../application/ports/draft-repository";
@@ -17,13 +17,14 @@ interface DraftRow {
 }
 
 function toDraft(row: DraftRow): Draft {
-  // The application layer re-parses with the registry; this only guards the shape.
+  // The application layer re-parses with the registry; this only guards the shape and
+  // returns the stored object, so no key is dropped or defaulted on read.
   const document = versionSchema.safeParse(row.document);
   if (!document.success) throw new Error(`stored draft of form ${row.form_id} is corrupt`);
   return {
     formId: row.form_id,
     revision: row.revision,
-    document: document.data,
+    document: row.document as Version,
     updatedBy: row.updated_by,
     updatedAt: row.updated_at,
     auditedBy: row.audited_by,

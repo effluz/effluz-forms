@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { versionSchema } from "@/shared/domain/form-model";
+import { versionSchema, type Version } from "@/shared/domain/form-model";
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 import { txOf } from "@/shared/infrastructure/postgres/tx";
 import type { FormVersion, VersionRepository } from "../application/ports/version-repository";
@@ -20,14 +20,15 @@ interface VersionRow {
 const COLUMNS = "v.id, v.form_id, v.number, v.document, v.published_at, v.published_by";
 
 function toVersion(row: VersionRow): FormVersion {
-  // The application layer re-parses with the registry; this only guards the shape.
+  // The application layer re-parses with the registry; this only guards the shape and
+  // returns the stored object, so no key is dropped or defaulted on read.
   const document = versionSchema.safeParse(row.document);
   if (!document.success) throw new Error(`stored version ${row.id} is corrupt`);
   return {
     id: row.id,
     formId: row.form_id,
     number: row.number,
-    document: document.data,
+    document: row.document as Version,
     publishedAt: row.published_at,
     publishedBy: row.published_by,
   };
