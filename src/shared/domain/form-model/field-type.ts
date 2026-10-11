@@ -51,6 +51,13 @@ export interface ExclusiveRole {
   params?: IssueParams;
 }
 
+/** Which fields take files, and their limits: a type hook, so no consumer tests a type id. */
+export interface UploadLimits {
+  kinds: readonly ("image" | "video")[];
+  maxFiles: number;
+  maxSizeMb: number;
+}
+
 export interface FieldTypeFixtures<S, A> {
   settings: S[];
   validAnswers: A[];
@@ -104,6 +111,8 @@ export interface FieldTypeDefinition<S = unknown, A = unknown> {
   neverHidden?: true;
   /** Extracts the consent record from a normalized answer. */
   consentRecord?(answer: A): { textVersion: string };
+  /** The field takes files: accepted kinds and limits, read by the renderer and the intake. */
+  uploadLimits?(settings: S): UploadLimits;
 }
 
 export function defineFieldType<S, A>(def: FieldTypeDefinition<S, A>): FieldTypeDefinition<S, A> {

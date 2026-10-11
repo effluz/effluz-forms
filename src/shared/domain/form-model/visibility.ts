@@ -1,6 +1,6 @@
 import { evaluateCondition } from "./condition";
 import type { FieldTypeRegistry } from "./registry";
-import type { Version } from "./version";
+import type { Page, Version } from "./version";
 
 export interface Visibility {
   pages: ReadonlyMap<string, boolean>;
@@ -37,4 +37,14 @@ export function evaluateVisibility(
     }
   }
   return { pages, fields, visibleAnswers };
+}
+
+/** The pages the conditions show, in document order (`specs/form-definition.md`, "Conditional logic"). */
+export function visiblePages(
+  version: Version,
+  answers: Readonly<Record<string, unknown>>,
+  registry: FieldTypeRegistry,
+): Page[] {
+  const { pages } = evaluateVisibility(version, answers, registry);
+  return version.pages.filter((p) => pages.get(p.key) === true);
 }
