@@ -203,7 +203,10 @@ With script, the same input is enhanced:
   change once the field has an error, and for the whole page on Next or
   Submit. Never on first focus or while typing in a clean field. With script,
   the field is checked by the server on blur (`POST /f/<slug>/check`), so the
-  browser applies exactly the server's rules and ships none of them.
+  browser applies exactly the server's rules and ships none of them. While a
+  field shows an error, typing is checked after a 300 ms pause, not on every
+  keystroke. After the route answers 429, no check is sent for 10 seconds; the
+  page post still validates everything.
 - **Where.** Below the control, in the error slot, in red with an icon and
   the message. The field's border changes too; color is never the only cue.
 - **Page errors.** If Next or Submit finds errors, an error summary renders

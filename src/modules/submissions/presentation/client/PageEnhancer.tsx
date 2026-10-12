@@ -22,6 +22,7 @@ import {
   recordStateFor,
   resetRowsFor,
 } from "./bus";
+import { createCheckScheduler } from "./check-schedule";
 import {
   applyDraft,
   draftKey,
@@ -252,14 +253,23 @@ export function PageEnhancer(props: PageEnhancerProps): ReactElement {
     [send, post],
   );
 
+  const scheduler = useMemo(() => createCheckScheduler(), []);
+
+  /** One blur check, reading the field's values when it leaves. */
   const check = useCallback(
-    (form: HTMLFormElement, key: string): void => {
+    (key: string): void => {
+      const form = pageForm();
+      if (form === null) return;
       const { slug, locale, renderId } = live.current;
       const body = fieldFormData(form, key);
       body.set("_locale", locale);
       const id = send({ type: "check", key }).checks[key] ?? 0;
       fetch(`/f/${encodeURIComponent(slug)}/check`, { method: "POST", body })
-        .then((response) => (response.ok ? (response.json() as Promise<unknown>) : null))
+        .then((response) => {
+          // Rate limited: the server checks the page again on Next; send nothing for a while.
+          if (response.status === 429) scheduler.rateLimited();
+          return response.ok ? (response.json() as Promise<unknown>) : null;
+        })
         .then((answer) => {
           if (typeof answer !== "object" || answer === null || !("message" in answer)) return;
           const message =
@@ -277,7 +287,7 @@ export function PageEnhancer(props: PageEnhancerProps): ReactElement {
         // A failed check is ignored: the server checks the whole page again on Next.
         .catch(() => undefined);
     },
-    [send],
+    [send, scheduler],
   );
 
   // Every server render: focus, the posted page's draft, and this page's draft.
@@ -285,6 +295,7 @@ export function PageEnhancer(props: PageEnhancerProps): ReactElement {
     const { slug, pageKey, navigated, locale, hasRecord } = live.current;
     recordStateFor(props.renderId, hasRecord);
     touched.current.clear();
+    scheduler.clear();
     const summary = document.getElementById("error-summary-heading");
     const next = send({ type: "loaded", hasSummary: summary !== null, navigated });
     const heading = document.querySelector("[data-page-heading]");
@@ -301,7 +312,7 @@ export function PageEnhancer(props: PageEnhancerProps): ReactElement {
     const draft = summary === null ? loadDraft(slug, pageKey) : null;
     if (draft !== null) applyDraft(form, draft, "empty_text");
     refreshTextareas(form, locale);
-  }, [props.renderId, send]);
+  }, [props.renderId, send, scheduler]);
 
   useEffect(() => {
     if (!navigator.onLine) send({ type: "offline" });
@@ -326,7 +337,10 @@ export function PageEnhancer(props: PageEnhancerProps): ReactElement {
       touched.current.add(key);
       writeStored(draftKey(slug, pageKey), JSON.stringify(readDraft(form)));
       if (target instanceof HTMLTextAreaElement) refreshTextarea(target, locale);
-      if (isInput && fieldShowsError(key)) check(form, key);
+      if (isInput && fieldShowsError(key))
+        scheduler.debounce(key, () => {
+          check(key);
+        });
     };
     const onInput = (event: Event): void => {
       onField(event, true);
@@ -346,7 +360,9 @@ export function PageEnhancer(props: PageEnhancerProps): ReactElement {
       if (event.relatedTarget instanceof Node && wrapper?.contains(event.relatedTarget)) return;
       // An upload field reports through its own rows.
       if (wrapper?.querySelector('input[type="file"]')) return;
-      check(form, key);
+      scheduler.now(key, () => {
+        check(key);
+      });
     };
 
     const onOnline = (): void => {
@@ -385,8 +401,9 @@ export function PageEnhancer(props: PageEnhancerProps): ReactElement {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
       offUploads();
+      scheduler.clear();
     };
-  }, [send, post, check, submit]);
+  }, [send, post, check, submit, scheduler]);
 
   const failedSubmitter = useRef<HTMLButtonElement | null>(null);
   const posting = useCallback(() => current.current.phase === "submitting", []);
