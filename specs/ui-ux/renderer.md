@@ -111,6 +111,9 @@ As built:
   `form post failed` with the slug and the error class and redirects (303)
   to `GET /f/<slug>?error=1`, which renders the error screen. The cookies
   are left as they were, so "Try again" returns to the same page.
+  With script, the error screen moves focus to its heading and drops the
+  posted marker of the form in session storage (never the drafts), so "Try
+  again" restores the page's unsent edits.
 - Accepted limit: a page post whose body is above 101 MB (several large
   files chosen without script) is refused by Next before the action runs,
   so the visitor gets the error screen instead of `submission too large`

@@ -6,6 +6,7 @@ import { parseRichText, richTextToPlain } from "@/shared/domain/rich-text";
 import { RichBlocks } from "@/shared/presentation/RichText";
 import type { ViewResult } from "../application";
 import { ClearDrafts } from "./client/ClearDrafts";
+import { ClearPostedMarker } from "./client/ClearPostedMarker";
 import { FocusTitle } from "./client/FocusTitle";
 import { t, type ChromeKey } from "./copy";
 import { FormPage } from "./FormPage";
@@ -208,11 +209,15 @@ export function NotFoundScreen(): ReactElement {
   );
 }
 
-/** The 500 page: nothing is known about the form, so both languages and no footer. */
-export function ErrorScreen(props: { tryAgainHref: string }): ReactElement {
+/**
+ * The 500 page: nothing is known about the form, so both languages and no footer. With the
+ * form's `slug` it also drops that form's posted marker, so Try again after a failed scripted
+ * post restores the page's edits. See specs/ui-ux/renderer.md, "Navigation and state".
+ */
+export function ErrorScreen(props: { tryAgainHref: string; slug?: string }): ReactElement {
   return (
     <PublicShell locale="es">
-      <h1 className={styles.title}>
+      <h1 id="page-title" tabIndex={-1} className={styles.title}>
         <Both k="error_title" locale="es" languages="bilingual" />
       </h1>
       <p>
@@ -223,6 +228,8 @@ export function ErrorScreen(props: { tryAgainHref: string }): ReactElement {
           <Both k="try_again" locale="es" languages="bilingual" />
         </a>
       </p>
+      {props.slug === undefined ? null : <ClearPostedMarker slug={props.slug} />}
+      <FocusTitle />
     </PublicShell>
   );
 }

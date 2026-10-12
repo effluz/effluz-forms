@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyDraftTo,
   clearDrafts,
+  clearPostedMarker,
   counterText,
   type DraftControl,
   dropEmptyFiles,
@@ -110,6 +111,40 @@ describe("focus after a failed post", () => {
     const { all } = page();
     expect(focusSubmitterAfterFailure(form, null, all)).toBeNull();
     for (const button of all) expect(button.focused).toBe(0);
+  });
+});
+
+describe("clearPostedMarker", () => {
+  it("removes the form's posted marker and keeps its drafts and other forms' markers", () => {
+    const items = new Map([
+      ["effluz:story-form:page_1", "{}"],
+      ["effluz:story-form:posted", "page_2"],
+      ["effluz:story-form:page_2", "{}"],
+      ["effluz:story-form-2:posted", "page_1"],
+    ]);
+    clearPostedMarker("story-form", {
+      removeItem: (key: string) => {
+        items.delete(key);
+      },
+    });
+    expect([...items.keys()]).toEqual([
+      "effluz:story-form:page_1",
+      "effluz:story-form:page_2",
+      "effluz:story-form-2:posted",
+    ]);
+  });
+
+  it("ignores blocked storage", () => {
+    expect(() => {
+      clearPostedMarker("story-form", null);
+    }).not.toThrow();
+    expect(() => {
+      clearPostedMarker("story-form", {
+        removeItem: () => {
+          throw new Error("blocked");
+        },
+      });
+    }).not.toThrow();
   });
 });
 

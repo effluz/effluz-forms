@@ -93,7 +93,7 @@ export default async function RendererPage(props: { params: Params; searchParams
   // document and the screen only in the RSC payload, so without script the visitor would see a
   // blank page. Rendered here it is real HTML; the status stays 200 and the metadata keeps it
   // out of search indexes.
-  if (one(query.error) === "1") return <ErrorScreen tryAgainHref={formPath(slug)} />;
+  if (one(query.error) === "1") return <ErrorScreen tryAgainHref={formPath(slug)} slug={slug} />;
   let loaded: Awaited<ReturnType<typeof loadView>>;
   let stateCookie: string | undefined;
   try {
@@ -103,7 +103,7 @@ export default async function RendererPage(props: { params: Params; searchParams
     // Next's own control flow (a prerender bailout, a redirect) is not a failure.
     unstable_rethrow(error);
     rendererLogger().error("form render failed", { slug, error: errorClass(error) });
-    return <ErrorScreen tryAgainHref={formPath(slug)} />;
+    return <ErrorScreen tryAgainHref={formPath(slug)} slug={slug} />;
   }
   const { view, container } = loaded;
   if (view.screen === "not_found") return <NotFoundScreen />;

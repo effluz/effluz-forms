@@ -196,6 +196,22 @@ export function writeStored(key: string, value: string | null): void {
 }
 
 /**
+ * Forgets that a form's page was posted, and keeps every draft. The error screen of a failed
+ * scripted post calls it, so Try again restores that page's unsent edits instead of treating
+ * the page as sent.
+ */
+export function clearPostedMarker(
+  slug: string,
+  store: Pick<Storage, "removeItem"> | null = storage(),
+): void {
+  try {
+    store?.removeItem(postedKey(slug));
+  } catch {
+    // Blocked storage holds no marker.
+  }
+}
+
+/**
  * Removes every draft and the posted marker of a form from session storage, once the form is
  * submitted, so no answer stays in the tab.
  */
