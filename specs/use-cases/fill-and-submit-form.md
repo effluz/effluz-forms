@@ -38,7 +38,8 @@ code.
    passes the check. The file is written to staging under a random key, linked
    to the in-progress record.
 6. The last page shows "Submit" instead of Next. If the form enables the bot
-   challenge it appears here.
+   challenge it appears here (not built yet: a form with it enabled renders
+   without it, `ui-ux/renderer.md`).
 7. On submit, the server re-validates the entire submission against the
    version, discards answers to hidden fields, and in one transaction writes
    the submission, its media rows and its jobs as described in
