@@ -3,7 +3,7 @@ export const MEDIA_JOB_TYPES = { upload: "media.upload", delete: "media.delete" 
 
 /**
  * Attempt limit for every `media.*` job: with the backoff of 2^attempt seconds
- * capped at one hour, 16 attempts cover about five hours of provider outage. See
+ * capped at one hour, 36 attempts cover about a day of provider outage. See
  * specs/system/jobs.md, "Job types in the first release".
  */
-export const MEDIA_JOB_MAX_ATTEMPTS = 16;
+export const MEDIA_JOB_MAX_ATTEMPTS = 36;

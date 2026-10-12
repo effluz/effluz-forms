@@ -15,10 +15,10 @@ export const EMAIL_JOB_TYPES = {
 
 /**
  * Attempt limit for every `email.*` job: with the backoff of 2^attempt seconds
- * capped at one hour, 16 attempts cover about five hours of provider outage. See
+ * capped at one hour, 36 attempts cover about a day of provider outage. See
  * specs/system/jobs.md, "Job types in the first release".
  */
-export const EMAIL_JOB_MAX_ATTEMPTS = 16;
+export const EMAIL_JOB_MAX_ATTEMPTS = 36;
 
 function submissionIdOf(payload: JobPayload): string {
   const id = payload.submissionId;

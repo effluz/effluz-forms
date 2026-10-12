@@ -170,10 +170,10 @@ counts.
 | `jobs.cleanup` | Daily schedule | Prune old succeeded jobs, expired in-progress records and their staged files |
 | `identity.cleanup` | Daily schedule | Delete expired sign-in attempts and expired admin sessions, no audit entries |
 
-Every `media.*` and `email.*` job is enqueued with `max_attempts` 16 instead of
+Every `media.*` and `email.*` job is enqueued with `max_attempts` 36 instead of
 the default 8. With the backoff above (2^attempt seconds, capped at one hour),
-16 attempts keep retrying for about five hours (the waits reach the cap from
-the twelfth attempt), so an outage of Dropbox or the email provider of a few
-hours does not leave dead jobs that nothing re-runs.
+the waits reach the cap from the twelfth attempt, and 36 attempts keep retrying
+for about a day, so an outage of Dropbox or the email provider that lasts most
+of a day does not leave dead jobs that nothing re-runs.
 
 Payloads: `media.*` carry `{ mediaId }`, `email.*` carry `{ submissionId }`.

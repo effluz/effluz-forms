@@ -15,7 +15,7 @@ describe("enqueueSubmissionEmails", () => {
       {
         type: "email.staff_notification",
         payload: { submissionId: "s1" },
-        opts: { maxAttempts: 16 },
+        opts: { maxAttempts: 36 },
       },
     ]);
   });
@@ -42,7 +42,7 @@ describe("enqueueSubmissionEmails", () => {
       submitterConfirmation: true,
       staffNotification: true,
     });
-    expect(queue.enqueued.map((j) => j.opts.maxAttempts)).toEqual([16, 16]);
+    expect(queue.enqueued.map((j) => j.opts.maxAttempts)).toEqual([36, 36]);
   });
 
   it("enqueues nothing when neither is asked for", async () => {
