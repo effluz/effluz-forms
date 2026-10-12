@@ -111,7 +111,7 @@
   padding-inline: var(--gutter);
 }
 
-/* Header: flex row, space between, min-height space.8 (64 px); wordmark 24 px, font.weight.semibold. */
+/* Header: flex row, space between, min-height space.8 (64 px); wordmark font.size.public.wordmark (24), font.weight.semibold. */
 .header {
   display: flex;
   align-items: center;
@@ -259,7 +259,7 @@
   color: var(--text-muted);
 }
 
-/* Text controls: full width, 48 px high, space.3 padding, 17 px (above font.size.public.inputMin), card, 1 px border.input, radius.md. */
+/* Text controls: full width, size.controlHeight (48) high,space.3 padding, 17 px (above font.size.public.inputMin), card, 1 px border.input, radius.md. */
 .input,
 .textarea,
 .select {
@@ -276,9 +276,17 @@
   border-radius: 12px;
 }
 
+/* Long text: at least size.textareaMin (144), resized vertically only. */
 .textarea {
   min-height: 144px;
   resize: vertical;
+}
+
+/* Placeholders in color.text.muted (7:1 on surface.card), never the browser's faint default. */
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
 }
 
 /* Focus: 2 px border.inputFocus, padding 11 px so the box does not move. */
@@ -296,7 +304,9 @@
   border-color: var(--border-error);
 }
 
-/* Error slot: color.text.error, 15 px, flex with space.2 gap; empty, it takes no room. */
+/* Error slot: color.text.error, 15 px, flex with space.2 gap. An assertive live region, so
+   it stays in the accessibility tree when empty; it then has no height and gives back the
+   space.2 gap before it with a negative margin, so field spacing is unchanged. */
 .error {
   display: flex;
   align-items: flex-start;
@@ -308,7 +318,7 @@
 }
 
 .error:empty {
-  display: none;
+  margin-top: -8px;
 }
 
 .error:has(.errorLine) {
@@ -338,7 +348,7 @@
   color: var(--text-muted);
 }
 
-/* Date: space.3 gap; parts 5.5 rem, the year 7 rem; sub-labels 15 px. */
+/* Date: space.3 gap; parts size.datePart (88), the year size.datePartYear (112); sub-labels 15 px. */
 .dateParts,
 .dateRow {
   display: flex;
@@ -350,11 +360,11 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  width: 5.5rem;
+  width: 88px;
 }
 
 .datePart:last-child {
-  width: 7rem;
+  width: 112px;
 }
 
 .dateLabel,
@@ -461,7 +471,7 @@
 }
 
 /* Its label is the visible control: a secondary button (action.secondary bg, plum border,
-   hoverBg), 48 px high, 0 / space.4 padding, radius.md, font.size.public.button, medium. */
+   hoverBg), size.controlHeight (48) high, 0 / space.4 padding, radius.md, font.size.public.button, medium. */
 .chooseButton {
   display: inline-flex;
   align-items: center;
@@ -495,7 +505,7 @@
   color: var(--text-muted);
 }
 
-/* Staged files: a reset list, space.2 gap; each row is a grid of 56 px thumbnail, name, action. */
+/* Staged files: a reset list, space.2 gap; each row is a grid of size.thumbnail (56) thumbnail, name, action. */
 .fileList,
 .fileRows {
   display: flex;
@@ -521,7 +531,7 @@
   grid-template-columns: 56px 1fr auto;
 }
 
-/* Thumbnail: 56 px, radius.sm (8 px), surface.subtle. */
+/* Thumbnail: size.thumbnail (56), radius.sm (8 px), surface.subtle. */
 .thumb {
   width: 56px;
   height: 56px;
@@ -634,7 +644,11 @@
   padding-left: 24px;
 }
 
+/* Each link a size.touchTarget (44) high target, space.2 above and below its text. */
 .summaryList a {
+  display: inline-block;
+  min-height: 44px;
+  padding-block: 8px;
   color: var(--error);
 }
 
@@ -651,6 +665,7 @@
     justify-content: space-between;
   }
 
+  /* size.buttonMinWidth (160). */
   .navigation > * {
     min-width: 160px;
   }
@@ -660,7 +675,7 @@
   }
 }
 
-/* Buttons: 48 px high, 0 / 16 px padding, radius.md, font.size.public.button (16), medium, centered. */
+/* Buttons: size.controlHeight (48) high,0 / 16 px padding, radius.md, font.size.public.button (16), medium, centered. */
 .primary,
 .primaryLink,
 .secondary,
@@ -820,7 +835,8 @@
   clip: rect(0 0 0 0);
 }
 
-/* Spinner: a 16 px ring that turns in 800 ms. */
+/* Spinner: a size.spinner (16) ring of border.width.focus (2) that turns in
+   motion.duration.spinner (800 ms). */
 .spinner {
   display: inline-block;
   width: 16px;

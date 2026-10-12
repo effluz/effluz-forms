@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { asKey, consentTextVersion, type Field } from "@/shared/domain/form-model";
+import { styles } from "../styles";
 import { type FieldInput, type FieldProps, fieldRenderers } from "./index";
 
 const FILE_ID = "00000000-0000-4000-8000-000000000001";
@@ -150,6 +151,9 @@ describe("field renderers", () => {
     });
     const html = render(limited, { values: { f_probe: "abc" } });
     expect(html).toContain("3 of 500 characters");
+    // The textarea style (its minimum height), not the single-line input's.
+    const textarea = /<textarea[^>]*>/.exec(html)?.[0] ?? "";
+    expect(textarea).toContain(`class="${styles.textarea ?? "missing"}"`);
     // The shown counter is never a live region; a separate polite one is always there, empty.
     const counter = /<p id="f_probe-count"[^>]*>/.exec(html)?.[0] ?? "";
     expect(counter).not.toContain("aria-live");
