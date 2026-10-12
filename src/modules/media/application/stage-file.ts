@@ -34,6 +34,8 @@ export async function stageFile(deps: MediaDeps, input: StageFileInput): Promise
   if (kind === "image") {
     const encoded = await deps.encoder.reencode(input.bytes, type);
     if (encoded === null) return { ok: false, code: "file_unreadable" };
+    // Re-encoding can grow a file (a palette PNG, say), so the limit applies again.
+    if (encoded.bytes.length > input.maxBytes) return { ok: false, code: "file_too_large" };
     bytes = encoded.bytes;
     contentType = encoded.contentType;
   } else if (!isWellFormedIsoBmff(input.bytes)) {
