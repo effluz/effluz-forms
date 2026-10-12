@@ -18,17 +18,26 @@ export function fieldSlug(label: string): string {
   return slug === "" ? "file" : slug;
 }
 
-/** Slugs per field key; the second and later fields sharing a slug get `-2`, `-3`, in field order. */
+/**
+ * Slugs per field key; the second and later fields sharing a slug get `-2`,
+ * `-3`, in field order. A suffix is raised until the slug is free, so a label
+ * that is itself `photos-2` cannot collide, and the base is trimmed first so
+ * the suffixed slug stays within MAX_FIELD_SLUG.
+ */
 export function uniqueFieldSlugs(
   fields: readonly { fieldKey: string; label: string }[],
 ): Map<string, string> {
-  const seen = new Map<string, number>();
+  const taken = new Set<string>();
   const slugs = new Map<string, string>();
   for (const { fieldKey, label } of fields) {
     const base = fieldSlug(label);
-    const count = (seen.get(base) ?? 0) + 1;
-    seen.set(base, count);
-    slugs.set(fieldKey, count === 1 ? base : `${base}-${String(count)}`);
+    let slug = base;
+    for (let n = 2; taken.has(slug); n += 1) {
+      const suffix = `-${String(n)}`;
+      slug = `${base.slice(0, MAX_FIELD_SLUG - suffix.length).replace(/-+$/g, "")}${suffix}`;
+    }
+    taken.add(slug);
+    slugs.set(fieldKey, slug);
   }
   return slugs;
 }
@@ -44,11 +53,22 @@ export function durableKey(parts: {
   return `forms/${parts.formSlug}/${parts.reference}/${nn}-${parts.fieldSlug}.${parts.ext}`;
 }
 
-/** The staging prefix of one record: a single prefix delete removes all its files. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function requireUuid(id: string, what: string): string {
+  if (!UUID.test(id)) throw new Error(`staging ${what} is not a UUID`);
+  return id;
+}
+
+/**
+ * The staging prefix of one record: a single prefix delete removes all its
+ * files. Refuses an id that is not a UUID, which could resolve the prefix to
+ * the staging root.
+ */
 export function stagingPrefix(recordId: string): string {
-  return `${STAGING_ROOT}/${recordId}/`;
+  return `${STAGING_ROOT}/${requireUuid(recordId, "record id")}/`;
 }
 
 export function stagingKey(recordId: string, fileId: string, ext: string): string {
-  return `${stagingPrefix(recordId)}${fileId}.${ext}`;
+  return `${stagingPrefix(recordId)}${requireUuid(fileId, "file id")}.${ext}`;
 }
