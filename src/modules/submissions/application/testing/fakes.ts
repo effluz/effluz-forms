@@ -69,6 +69,11 @@ export class InMemoryInProgressRepository implements InProgressRepository {
     return Promise.resolve();
   }
 
+  lockExpired(_uow: UnitOfWork, id: string, now: Date): Promise<boolean> {
+    const row = this.rows.get(id);
+    return Promise.resolve(row !== undefined && row.expiresAt.getTime() <= now.getTime());
+  }
+
   listExpired(now: Date, limit: number): Promise<string[]> {
     const expired = [...this.rows.values()]
       .filter((row) => row.expiresAt.getTime() <= now.getTime())

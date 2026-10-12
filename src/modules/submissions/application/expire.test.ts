@@ -72,6 +72,16 @@ describe("expireInProgress", () => {
     expect(deps.inProgress.rows.size).toBe(0);
   });
 
+  it("removes an expired record whose stored row no longer parses", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishStory(deps);
+    const id = await startRecord(deps);
+    deps.inProgress.findForUpdate = () => Promise.reject(new Error("corrupt"));
+    const later = new Date(deps.clock.now().getTime() + 24 * 60 * 60 * 1000);
+    expect(await expireInProgress(deps, { now: later, logger: deps.logger })).toBe(1);
+    expect(deps.inProgress.rows.has(id)).toBe(false);
+  });
+
   it("keeps a record whose files could not be removed, for the next run", async () => {
     const deps = makeSubmissionsDeps();
     await publishStory(deps);

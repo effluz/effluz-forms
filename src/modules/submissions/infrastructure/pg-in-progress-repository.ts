@@ -160,6 +160,15 @@ export class PgInProgressRepository implements InProgressRepository {
     await txOf(uow).client.query("delete from submission_in_progress where id = $1", [id]);
   }
 
+  async lockExpired(uow: UnitOfWork, id: string, now: Date): Promise<boolean> {
+    if (!isUuid(id)) return false;
+    const { rows } = await txOf(uow).client.query<{ id: string }>(
+      "select id from submission_in_progress where id = $1 and expires_at <= $2 for update",
+      [id, now],
+    );
+    return rows.length > 0;
+  }
+
   async listExpired(now: Date, limit: number): Promise<string[]> {
     const { rows } = await this.pool.query<{ id: string }>(
       `select id from submission_in_progress

@@ -1,6 +1,5 @@
 import { discardRecordFiles } from "@/modules/media/application";
 import type { Logger } from "@/shared/application/ports/logger";
-import { isExpired } from "../domain/in-progress";
 import { recordHash } from "../domain/record-hash";
 import type { SubmissionsDeps } from "./deps";
 import { errorClass } from "./staging";
@@ -26,8 +25,8 @@ export async function expireInProgress(
     for (const id of ids) {
       try {
         const gone = await deps.uow.run(async (uow) => {
-          const record = await deps.inProgress.findForUpdate(uow, id);
-          if (!record || !isExpired(record, input.now)) return false;
+          // Locked without parsing: a row that no longer parses still goes.
+          if (!(await deps.inProgress.lockExpired(uow, id, input.now))) return false;
           await discardRecordFiles(deps.media, id);
           await deps.inProgress.delete(uow, id);
           return true;

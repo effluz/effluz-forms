@@ -13,6 +13,12 @@ export interface InProgressRepository {
   findForUpdate(uow: UnitOfWork, id: string): Promise<InProgress | null>;
   update(uow: UnitOfWork, record: InProgress): Promise<void>;
   delete(uow: UnitOfWork, id: string): Promise<void>;
+  /**
+   * Locks the record `for update` when it exists and `expiresAt <= now`, without
+   * reading its contents, so a row that no longer parses can still be removed.
+   * False for an unknown, unexpired or non-UUID id.
+   */
+  lockExpired(uow: UnitOfWork, id: string, now: Date): Promise<boolean>;
   /** Ids of records with `expiresAt <= now`, oldest first, at most `limit`. */
   listExpired(now: Date, limit: number): Promise<string[]>;
 }

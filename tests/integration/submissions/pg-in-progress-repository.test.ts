@@ -87,4 +87,37 @@ describe("PgInProgressRepository", () => {
     expect(await repo.find(old.id)).toBeNull();
     expect(await repo.find(fresh.id)).not.toBeNull();
   });
+
+  it("locks an expired row without reading it, even one that no longer parses", async () => {
+    const { formId, versionId } = await seedPublishedForm(pool);
+    const make = (iso: string) => {
+      const now = new Date(iso);
+      return newInProgress({
+        id: randomUUID(),
+        formId,
+        versionId,
+        locale: "en",
+        pageKey: "page_contact",
+        submitToken: randomUUID(),
+        startedAt: now,
+        now,
+      });
+    };
+    const old = make("2026-10-08T00:00:00.000Z");
+    const fresh = make("2026-10-10T00:00:00.000Z");
+    await uow.run(async (u) => {
+      await repo.insert(u, old);
+      await repo.insert(u, fresh);
+    });
+    await pool.query("update submission_in_progress set answers = '[]'::jsonb where id = $1", [
+      old.id,
+    ]);
+    const now = new Date("2026-10-10T12:00:00.000Z");
+    await expect(uow.run((u) => repo.findForUpdate(u, old.id))).rejects.toThrow(/corrupt/);
+    await uow.run(async (u) => {
+      expect(await repo.lockExpired(u, old.id, now)).toBe(true);
+      expect(await repo.lockExpired(u, fresh.id, now)).toBe(false);
+      expect(await repo.lockExpired(u, "not-a-uuid", now)).toBe(false);
+    });
+  });
 });
