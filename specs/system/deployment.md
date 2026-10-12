@@ -109,6 +109,10 @@ and the worker run on the host for fast iteration. `.env.example` is sufficient
 to start with the local adapters; Dropbox and Google credentials are needed
 only to exercise those adapters manually. The variables and their defaults are
 documented in `.env.example` itself.
+Media goes to `MEDIA_DURABLE_DIR` on local disk and email to Mailpit
+(`MAILPIT_URL`, web view at http://127.0.0.1:8025) unless
+`MEDIA_PROVIDER=dropbox` or `EMAIL_PROVIDER=smtp2go` is set with its
+credentials.
 
 | Command | Does |
 |---|---|
