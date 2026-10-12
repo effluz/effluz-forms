@@ -97,6 +97,20 @@ describe("media.upload", () => {
     expect(deps.staging.files.size).toBe(1);
   });
 
+  it("deletes the file it just wrote when the row was deleted while the upload ran", async () => {
+    const deps = makeMediaDeps();
+    await seed(deps);
+    const put = deps.durable.put.bind(deps.durable);
+    deps.durable.put = async (bytes, key, contentType) => {
+      const ref = await put(bytes, key, contentType);
+      deps.media.rows.delete(ID); // media.delete ran between the read and the write
+      return ref;
+    };
+    await createMediaUploadHandler(deps)({ mediaId: ID }, handlerContext());
+    expect(deps.durable.files.size).toBe(0);
+    expect(deps.media.rows.has(ID)).toBe(false);
+  });
+
   it("marks the row failed at once and rethrows when the staging copy is missing", async () => {
     const deps = makeMediaDeps();
     await seed(deps);
@@ -140,6 +154,19 @@ describe("media.delete", () => {
     await deps.staging.delete("in-progress/r/x.jpg");
     await handler({ mediaId: ID }, handlerContext());
     expect(deps.media.rows.has(ID)).toBe(false);
+  });
+
+  it("finds a file that was written but never recorded by the storage's reference for the key", async () => {
+    const deps = makeMediaDeps();
+    await seed(deps);
+    const refs: string[] = [];
+    deps.durable.refForKey = (key) => `/${key}`;
+    deps.durable.delete = (ref) => {
+      refs.push(ref);
+      return Promise.resolve();
+    };
+    await createMediaDeleteHandler(deps)({ mediaId: ID }, handlerContext());
+    expect(refs).toEqual([`/${KEY}`]);
   });
 
   it("keeps the row when the durable delete fails, so the retry can finish", async () => {

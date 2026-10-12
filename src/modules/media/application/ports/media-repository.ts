@@ -6,7 +6,8 @@ export interface MediaRepository {
   findById(id: string): Promise<MediaRecord | null>;
   /** Ordered by field key, then position. */
   listBySubmission(submissionId: string): Promise<MediaRecord[]>;
-  markStored(uow: UnitOfWork, id: string, providerRef: string, at: Date): Promise<void>;
+  /** Answers whether a row was updated; false means the row is gone. */
+  markStored(uow: UnitOfWork, id: string, providerRef: string, at: Date): Promise<boolean>;
   clearStaging(uow: UnitOfWork, id: string, at: Date): Promise<void>;
   markFailed(uow: UnitOfWork, id: string, at: Date): Promise<void>;
   delete(uow: UnitOfWork, id: string): Promise<void>;

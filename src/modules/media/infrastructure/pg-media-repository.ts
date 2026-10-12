@@ -89,12 +89,13 @@ export class PgMediaRepository implements MediaRepository {
     return rows.map(toMedia);
   }
 
-  async markStored(uow: UnitOfWork, id: string, providerRef: string, at: Date): Promise<void> {
-    if (!isUuid(id)) return;
-    await txOf(uow).client.query(
+  async markStored(uow: UnitOfWork, id: string, providerRef: string, at: Date): Promise<boolean> {
+    if (!isUuid(id)) return false;
+    const result = await txOf(uow).client.query(
       "update media set status = 'stored', provider_ref = $2, updated_at = $3 where id = $1",
       [id, providerRef, at],
     );
+    return (result.rowCount ?? 0) > 0;
   }
 
   async clearStaging(uow: UnitOfWork, id: string, at: Date): Promise<void> {

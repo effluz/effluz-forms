@@ -31,9 +31,17 @@ export function createMediaUploadHandler(deps: MediaDeps): JobHandler {
           throw new PermanentJobError("staging copy is missing");
         const bytes = await deps.staging.read(row.stagingRef);
         const providerRef = await deps.durable.put(bytes, row.durableKey, row.contentType);
-        await deps.uow.run((uow) =>
+        const updated = await deps.uow.run((uow) =>
           deps.media.markStored(uow, mediaId, providerRef, deps.clock.now()),
         );
+        if (!updated) {
+          // The row was deleted while the upload ran: nothing points at the file.
+          await deps.durable.delete(providerRef);
+          await deps.staging.delete(row.stagingRef);
+          ctx.logger.info("media deleted during upload", { mediaId });
+          recorded = true;
+          return;
+        }
       }
       recorded = true;
 
@@ -69,7 +77,7 @@ export function createMediaDeleteHandler(deps: MediaDeps): JobHandler {
     const row = await deps.media.findById(mediaId);
     if (row === null) return;
 
-    await deps.durable.delete(row.providerRef ?? row.durableKey);
+    await deps.durable.delete(row.providerRef ?? deps.durable.refForKey(row.durableKey));
     if (row.stagingRef !== null) await deps.staging.delete(row.stagingRef);
     await deps.uow.run((uow) => deps.media.delete(uow, mediaId));
     ctx.logger.info("media deleted", { mediaId });

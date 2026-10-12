@@ -41,6 +41,10 @@ export class LocalDiskStorage implements StagingStorage {
     return key;
   }
 
+  refForKey(key: string): string {
+    return key;
+  }
+
   async read(ref: string): Promise<Uint8Array> {
     return new Uint8Array(await readFile(this.resolve(ref)));
   }

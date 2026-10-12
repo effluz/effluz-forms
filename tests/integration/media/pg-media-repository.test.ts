@@ -73,7 +73,9 @@ describe("PgMediaRepository", () => {
     const r = record();
     await uow.run((u) => repo.insert(u, r));
     const later = new Date("2026-10-10T13:00:00.000Z");
-    await uow.run((u) => repo.markStored(u, r.id, "/forms/s/HP-0001/01-photos.jpg", later));
+    expect(
+      await uow.run((u) => repo.markStored(u, r.id, "/forms/s/HP-0001/01-photos.jpg", later)),
+    ).toBe(true);
     await uow.run((u) => repo.clearStaging(u, r.id, later));
     expect(await repo.findById(r.id)).toMatchObject({
       status: "stored",
@@ -87,9 +89,14 @@ describe("PgMediaRepository", () => {
     expect(await repo.findById(r.id)).toBeNull();
   });
 
+  it("reports false when markStored finds no row", async () => {
+    const gone = record();
+    expect(await uow.run((u) => repo.markStored(u, gone.id, "ref", at))).toBe(false);
+  });
+
   it("ignores malformed ids on writes without querying", async () => {
     await uow.run(async (u) => {
-      await repo.markStored(u, "nope", "ref", at);
+      expect(await repo.markStored(u, "nope", "ref", at)).toBe(false);
       await repo.clearStaging(u, "nope", at);
       await repo.markFailed(u, "nope", at);
       await repo.delete(u, "nope");

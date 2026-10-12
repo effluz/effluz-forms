@@ -9,7 +9,8 @@
  *   that type, anything else is unrecognised.
  * - `FakeEncoder`: the word `broken` in the bytes does not decode; otherwise
  *   the output is `reencoded:` plus the input, PNG and WebP kept, all else JPEG.
- * - `InMemoryMediaRepository`: `rows` by id, copies in and out.
+ * - `InMemoryMediaRepository`: `rows` by id, copies in and out; `markStored`
+ *   answers false for a missing row, as the real adapter does.
  * - `makeMediaDeps(overrides?)`: every port filled with these fakes and the
  *   shared ones.
  *
@@ -48,6 +49,10 @@ export class InMemoryStorage implements StagingStorage {
     if (this.failPut) return Promise.reject(new Error("storage unavailable"));
     this.files.set(key, { bytes: bytes.slice(), contentType });
     return Promise.resolve(key);
+  }
+
+  refForKey(key: string): string {
+    return key;
   }
 
   viewUrl(ref: string): Promise<string> {
@@ -116,8 +121,11 @@ export class InMemoryMediaRepository implements MediaRepository {
     return Promise.resolve(found.map((r) => ({ ...r })));
   }
 
-  markStored(_uow: UnitOfWork, id: string, providerRef: string, at: Date): Promise<void> {
-    return this.patch(id, { status: "stored", providerRef, updatedAt: at });
+  markStored(_uow: UnitOfWork, id: string, providerRef: string, at: Date): Promise<boolean> {
+    const row = this.rows.get(id);
+    if (row === undefined) return Promise.resolve(false);
+    this.rows.set(id, { ...row, status: "stored", providerRef, updatedAt: at });
+    return Promise.resolve(true);
   }
 
   clearStaging(_uow: UnitOfWork, id: string, at: Date): Promise<void> {
