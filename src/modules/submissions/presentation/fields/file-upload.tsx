@@ -78,6 +78,8 @@ export const fileUpload: FieldRenderer = {
             chooseFiles: t(locale, "choose_files"),
             uploading: t(locale, "uploading"),
             uploaded: t(locale, "uploaded"),
+            uploadingFile: t(locale, "file_uploading"),
+            uploadedFile: t(locale, "file_uploaded"),
             remove: t(locale, "remove"),
             retry: t(locale, "retry"),
             removed: t(locale, "removed"),

@@ -6,6 +6,7 @@ import {
   type ReactElement,
   useContext,
   useEffect,
+  useMemo,
   useReducer,
   useRef,
   useState,
@@ -19,7 +20,15 @@ import { keepRows, keptRows } from "./bus";
 import { fill } from "./form-dom";
 import { RefusedFilesContext } from "./refused-files";
 import { middleEllipsis, precheckFile, queueReducer, type Row } from "./upload-queue";
-import { removeFile, sendUpload } from "./upload-request";
+import { removeFile, sendUpload, type UploadHandle } from "./upload-request";
+import { createRowActions, reannouncing, rowButtons } from "./upload-rows";
+
+/** Runs after the next frame was drawn, so a cleared live region is seen empty first. */
+const afterNextFrame = (run: () => void): void => {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(run);
+  });
+};
 
 export interface UploadFieldProps {
   slug: string;
@@ -40,6 +49,9 @@ export interface UploadFieldProps {
     chooseFiles: string;
     uploading: string;
     uploaded: string;
+    // "{file}" is left in these two announcements; "{percent}" too in the first.
+    uploadingFile: string;
+    uploadedFile: string;
     remove: string;
     retry: string;
     removed: string;
@@ -93,7 +105,8 @@ function FilmIcon(): ReactElement {
  * staged files with a Remove button each, and the field's refused files in its error slot.
  * With script, each chosen file uploads early with its own progress row (at once, or one at a
  * time until the page has an in-progress record; see `bus.ts`), and the input is cleared so the
- * page post does not resend it.
+ * page post does not resend it. The native input is visually hidden but focusable; its label
+ * carries `choose_files` as the visible control.
  */
 export function UploadField(props: UploadFieldProps): ReactElement {
   const refused = useContext(RefusedFilesContext).filter((r) => r.fieldKey === props.fieldKey);
@@ -109,13 +122,22 @@ export function UploadField(props: UploadFieldProps): ReactElement {
   const [enhanced, setEnhanced] = useState(() => keptRows(props.fieldKey) !== null);
   const [rows, dispatch] = useReducer(queueReducer, props, startingRows);
   const [dragging, setDragging] = useState(false);
-  const [announcement, setAnnouncement] = useState("");
-  const [alert, setAlert] = useState("");
   // Rows whose removal failed, by local id, with the message shown under them.
   const [removeFailed, setRemoveFailed] = useState<Readonly<Record<string, string>>>({});
   const chosen = useRef(new Map<string, File>());
+  const handles = useRef(new Map<string, UploadHandle>());
   const nextLocalId = useRef(0);
   const input = useRef<HTMLInputElement>(null);
+  // The live regions are written in place, never by React, so a repeated message is heard again.
+  const announceRegion = useRef<HTMLParagraphElement>(null);
+  const alertRegion = useRef<HTMLParagraphElement>(null);
+  const say = useMemo(() => {
+    const writer = (region: { current: HTMLElement | null }) =>
+      reannouncing((text) => {
+        if (region.current) region.current.textContent = text;
+      }, afterNextFrame);
+    return { announce: writer(announceRegion), alert: writer(alertRegion) };
+  }, []);
 
   useEffect(() => {
     setEnhanced(true);
@@ -130,7 +152,7 @@ export function UploadField(props: UploadFieldProps): ReactElement {
 
   function upload(localId: string, file: File, name: string): void {
     let milestone = 0;
-    sendUpload(
+    const handle = sendUpload(
       { slug: props.slug, fieldKey: props.fieldKey, locale, file },
       {
         progress: (percent) => {
@@ -138,23 +160,28 @@ export function UploadField(props: UploadFieldProps): ReactElement {
           const reached = Math.floor(percent / MILESTONE) * MILESTONE;
           if (reached > milestone && reached < 100) {
             milestone = reached;
-            setAnnouncement(
-              `${middleEllipsis(name)}, ${fill(text.uploading, { percent: formatNumber(reached, locale) })}`,
+            say.announce(
+              fill(text.uploadingFile, {
+                file: middleEllipsis(name),
+                percent: formatNumber(reached, locale),
+              }),
             );
           }
         },
         settled: (outcome) => {
+          handles.current.delete(localId);
           if (outcome.ok) {
             dispatch({ type: "done", localId, id: outcome.id, label: outcome.label ?? name });
-            setAnnouncement(`${middleEllipsis(name)}, ${text.uploaded}`);
+            say.announce(fill(text.uploadedFile, { file: middleEllipsis(name) }));
             return;
           }
           const message = fill(outcome.message ?? text.failed, { file: middleEllipsis(name) });
           dispatch({ type: "fail", localId, message });
-          setAlert(message);
+          say.alert(message);
         },
       },
     );
+    handles.current.set(localId, handle);
   }
 
   function choose(files: readonly File[]): void {
@@ -176,7 +203,7 @@ export function UploadField(props: UploadFieldProps): ReactElement {
         const template = refusal === "file_too_large" ? text.tooLarge : text.wrongType;
         const message = fill(template, { file: middleEllipsis(file.name) });
         added.push({ ...base, thumb: null, state: { status: "failed", message } });
-        setAlert(message);
+        say.alert(message);
         continue;
       }
       const thumb = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
@@ -207,36 +234,37 @@ export function UploadField(props: UploadFieldProps): ReactElement {
     choose(Array.from(event.dataTransfer.files));
   }
 
-  function retry(row: Row): void {
-    const file = chosen.current.get(row.localId);
-    if (file === undefined) return;
-    dispatch({ type: "retry", localId: row.localId });
-    upload(row.localId, file, file.name);
-  }
-
-  const forgetRemoveFailure = (localId: string): void => {
-    setRemoveFailed((failures) =>
-      localId in failures
-        ? Object.fromEntries(Object.entries(failures).filter(([id]) => id !== localId))
-        : failures,
-    );
-  };
-
-  async function remove(row: Row): Promise<void> {
-    if (row.id !== null && (await removeFile(props.slug, row.id)) === "failed") {
-      // The row stays, with its Remove button, and says why.
-      const message = fill(text.removeFailed, { file: shortName(row) });
-      setRemoveFailed((failures) => ({ ...failures, [row.localId]: message }));
-      setAlert(message);
-      return;
-    }
-    forgetRemoveFailure(row.localId);
-    if (row.thumb !== null) URL.revokeObjectURL(row.thumb);
-    chosen.current.delete(row.localId);
-    dispatch({ type: "remove", localId: row.localId });
-    setAnnouncement(fill(text.removed, { file: shortName(row) }));
-    input.current?.focus();
-  }
+  const actions = createRowActions({
+    dispatch,
+    fileFor: (localId) => chosen.current.get(localId),
+    forgetFile: (localId) => {
+      chosen.current.delete(localId);
+    },
+    start: (localId, file) => {
+      upload(localId, file, file.name);
+    },
+    cancel: (localId) => {
+      handles.current.get(localId)?.cancel();
+      handles.current.delete(localId);
+    },
+    removeStaged: (id) => removeFile(props.slug, id),
+    focusControl: () => {
+      input.current?.focus();
+    },
+    revoke: (url) => {
+      URL.revokeObjectURL(url);
+    },
+    announce: say.announce,
+    alert: say.alert,
+    removeFailed: (localId, message) => {
+      setRemoveFailed((failures) => {
+        if (message !== null) return { ...failures, [localId]: message };
+        if (!(localId in failures)) return failures;
+        return Object.fromEntries(Object.entries(failures).filter(([id]) => id !== localId));
+      });
+    },
+    text: { removed: text.removed, removeFailed: text.removeFailed },
+  });
 
   const uploaded = rows.filter((row) => row.state.status === "uploaded").length;
   const count = enhanced
@@ -282,6 +310,11 @@ export function UploadField(props: UploadFieldProps): ReactElement {
           aria-describedby={describedBy}
           onChange={enhanced ? onChange : undefined}
         />
+        {/* The control's visible text, in the page's language; the input itself is hidden but
+            focusable, and its focus ring is drawn here. */}
+        <label htmlFor={props.inputId} className={styles.chooseButton}>
+          {text.chooseFiles}
+        </label>
       </div>
       <p id={props.countId} className={styles.count} aria-live="polite">
         {count}
@@ -302,8 +335,12 @@ export function UploadField(props: UploadFieldProps): ReactElement {
             ) : null}
             {enhanced ? (
               <span className={styles.fileBody}>
-                <span id={`${row.localId}-name`} className={styles.fileName}>
-                  {row.size === "" ? shortName(row) : `${shortName(row)}, ${row.size}`}
+                {/* Name and size apart, laid out side by side: no punctuation to translate. */}
+                <span className={styles.fileLine}>
+                  <span id={`${row.localId}-name`} className={styles.fileName}>
+                    {shortName(row)}
+                  </span>
+                  {row.size === "" ? null : <span className={styles.fileSize}>{row.size}</span>}
                 </span>
                 <RowStatus
                   row={row}
@@ -336,43 +373,49 @@ export function UploadField(props: UploadFieldProps): ReactElement {
               >
                 {text.remove}
               </button>
-            ) : row.state.status === "uploading" ? null : (
+            ) : (
               <span className={styles.fileActions}>
-                {row.state.status === "failed" && chosen.current.has(row.localId) ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      retry(row);
-                    }}
-                    aria-describedby={`${row.localId}-name`}
-                    className={styles.removeButton}
-                  >
-                    {text.retry}
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => void remove(row)}
-                  aria-describedby={
-                    removeFailed[row.localId] === undefined
-                      ? `${row.localId}-name`
-                      : `${row.localId}-name ${row.localId}-remove-failed`
-                  }
-                  className={styles.removeButton}
-                >
-                  {text.remove}
-                </button>
+                {rowButtons(row, chosen.current.has(row.localId)).map((button) =>
+                  button === "retry" ? (
+                    <button
+                      key="retry"
+                      type="button"
+                      onClick={() => {
+                        actions.retry(row);
+                      }}
+                      aria-describedby={`${row.localId}-name`}
+                      className={styles.removeButton}
+                    >
+                      {text.retry}
+                    </button>
+                  ) : (
+                    <button
+                      key="remove"
+                      type="button"
+                      onClick={() => void actions.remove(row)}
+                      aria-describedby={
+                        removeFailed[row.localId] === undefined
+                          ? `${row.localId}-name`
+                          : `${row.localId}-name ${row.localId}-remove-failed`
+                      }
+                      className={styles.removeButton}
+                    >
+                      {text.remove}
+                    </button>
+                  ),
+                )}
               </span>
             )}
           </li>
         ))}
       </ul>
-      <p className={styles.visuallyHidden} aria-live="polite" data-announce="">
-        {announcement}
-      </p>
-      <p className={styles.visuallyHidden} aria-live="assertive" data-alert="">
-        {alert}
-      </p>
+      <p
+        ref={announceRegion}
+        className={styles.visuallyHidden}
+        aria-live="polite"
+        data-announce=""
+      />
+      <p ref={alertRegion} className={styles.visuallyHidden} aria-live="assertive" data-alert="" />
       <p id={props.errorId} className={styles.error} aria-live="assertive">
         {messages.map((message, index) => (
           <span key={index} className={styles.errorLine}>

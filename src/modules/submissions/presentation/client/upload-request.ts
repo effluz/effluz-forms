@@ -28,8 +28,35 @@ export interface UploadHandlers {
 /** The part of `XMLHttpRequest` an upload uses. */
 export type XhrLike = Pick<
   XMLHttpRequest,
-  "open" | "send" | "status" | "responseText" | "onload" | "onerror" | "onabort" | "ontimeout"
+  | "open"
+  | "send"
+  | "abort"
+  | "timeout"
+  | "status"
+  | "responseText"
+  | "onload"
+  | "onerror"
+  | "onabort"
+  | "ontimeout"
 > & { readonly upload: Pick<XMLHttpRequestUpload, "onprogress"> };
+
+/** A sent upload: `cancel` stops it, whether it is held or open, and reports nothing. */
+export interface UploadHandle {
+  cancel: () => void;
+}
+
+/** The base allowance of an upload, and the slowest rate it is given for its bytes. */
+const TIMEOUT_BASE_MS = 60_000;
+const SLOWEST_BYTES_PER_SECOND = 20_000;
+
+/**
+ * How long an upload may stay open before it fails as `upload_failed`: a minute plus the file at
+ * 20 kB/s, so a slow phone connection finishes and a stalled request does not hold the page.
+ * See specs/ui-ux/renderer.md, "File upload".
+ */
+export function uploadTimeoutMs(bytes: number): number {
+  return TIMEOUT_BASE_MS + Math.ceil((bytes / SLOWEST_BYTES_PER_SECOND) * 1000);
+}
 
 function parseOutcome(status: number, text: string): UploadOutcome {
   let answer: unknown = null;
@@ -56,22 +83,26 @@ export function sendUpload(
   request: UploadRequest,
   on: UploadHandlers,
   makeXhr: () => XhrLike = () => new XMLHttpRequest(),
-): void {
+): UploadHandle {
   uploadStarted();
   let open = true;
+  let cancelled = false;
+  let sent: XhrLike | null = null;
   const settle = (): boolean => {
     if (!open) return false;
     open = false;
     uploadFinished();
     return true;
   };
-  queueUpload(
+  const withdraw = queueUpload(
     (answered) => {
       const xhr = makeXhr();
+      sent = xhr;
       const finish = (outcome: UploadOutcome): void => {
         if (!settle()) return;
         answered(outcome.ok);
-        on.settled(outcome);
+        // A cancelled upload's row is already gone: there is nothing to report to.
+        if (!cancelled) on.settled(outcome);
       };
       xhr.upload.onprogress = (event) => {
         if (!event.lengthComputable || event.total === 0) return;
@@ -91,6 +122,7 @@ export function sendUpload(
       body.set("_locale", request.locale);
       body.set("file", request.file, "upload");
       xhr.open("POST", `/f/${encodeURIComponent(request.slug)}/files`);
+      xhr.timeout = uploadTimeoutMs(request.file.size);
       xhr.send(body);
     },
     // A new server render dropped it before it left: it is no longer in flight.
@@ -98,6 +130,15 @@ export function sendUpload(
       settle();
     },
   );
+  return {
+    cancel: () => {
+      if (!open || cancelled) return;
+      cancelled = true;
+      // Still held: it never leaves. Open: the abort answers through `finish`, freeing the gate.
+      if (withdraw()) settle();
+      else sent?.abort();
+    },
+  };
 }
 
 type Send = (url: string, init: { method: string }) => Promise<Pick<Response, "ok" | "status">>;

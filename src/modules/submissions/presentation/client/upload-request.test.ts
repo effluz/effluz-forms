@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { holdsPosts, inFlight, queuePost, recordStateFor } from "./bus";
-import { removeFile, sendUpload, type UploadOutcome, type XhrLike } from "./upload-request";
+import {
+  removeFile,
+  sendUpload,
+  type UploadOutcome,
+  uploadTimeoutMs,
+  type XhrLike,
+} from "./upload-request";
 
 interface Progress {
   lengthComputable: boolean;
@@ -19,6 +25,12 @@ class FakeXhr {
   onerror: (() => void) | null = null;
   onabort: (() => void) | null = null;
   ontimeout: (() => void) | null = null;
+  timeout = 0;
+  aborted = 0;
+  abort(): void {
+    this.aborted += 1;
+    this.onabort?.();
+  }
   open(_method: string, url: string): void {
     this.url = url;
   }
@@ -215,6 +227,92 @@ describe("the upload request", () => {
       { ok: false, message: "{file} pesa más de 10 MB" },
       { ok: false, message: null },
     ]);
+    expect(inFlight()).toBe(0);
+  });
+});
+
+describe("a stalled or cancelled upload", () => {
+  const file = (bytes: number): File =>
+    new File([new Uint8Array(bytes)], "a.jpg", { type: "image/jpeg" });
+
+  it("gives every upload a timeout that grows with the file, so a stalled one fails and frees the gate", () => {
+    expect(uploadTimeoutMs(0)).toBe(60_000);
+    expect(uploadTimeoutMs(2_000_000)).toBe(160_000);
+    const { sent, make } = harness(false);
+    const outcomes: UploadOutcome[] = [];
+    const on = { progress: () => undefined, settled: (o: UploadOutcome) => outcomes.push(o) };
+    sendUpload(
+      { slug: "story-form", fieldKey: "f_photos", locale: "en", file: file(10) },
+      on,
+      make,
+    );
+    sendUpload(
+      { slug: "story-form", fieldKey: "f_photos", locale: "en", file: file(10) },
+      on,
+      make,
+    );
+    expect(sent[0]?.timeout).toBe(uploadTimeoutMs(10));
+    expect(left(sent)).toHaveLength(1);
+    sent[0]?.ontimeout?.();
+    expect(outcomes).toEqual([{ ok: false, message: null }]);
+    // The stalled first upload made no record, so the held one now goes alone.
+    expect(left(sent)).toHaveLength(2);
+    sent[1]?.answer(200, created);
+    expect(inFlight()).toBe(0);
+  });
+
+  it("cancels an open upload: the request is aborted, nothing is reported, and the gate moves on", () => {
+    const { sent, make } = harness(false);
+    const outcomes: UploadOutcome[] = [];
+    const on = { progress: () => undefined, settled: (o: UploadOutcome) => outcomes.push(o) };
+    const first = sendUpload(
+      { slug: "story-form", fieldKey: "f_photos", locale: "en", file: file(10) },
+      on,
+      make,
+    );
+    sendUpload(
+      { slug: "story-form", fieldKey: "f_photos", locale: "en", file: file(10) },
+      on,
+      make,
+    );
+    const posted: string[] = [];
+    queuePost(
+      () => posted.push("back"),
+      () => undefined,
+    );
+    first.cancel();
+    expect(sent[0]?.aborted).toBe(1);
+    expect(outcomes).toEqual([]);
+    expect(left(sent)).toHaveLength(2);
+    expect(inFlight()).toBe(1);
+    sent[1]?.answer(200, created);
+    expect(posted).toEqual(["back"]);
+    expect(inFlight()).toBe(0);
+    // A second cancel, or one after the answer, changes nothing.
+    first.cancel();
+    expect(sent[0]?.aborted).toBe(1);
+  });
+
+  it("cancels a held upload before it leaves: it is never sent and stops counting", () => {
+    const { sent, make } = harness(false);
+    const outcomes: UploadOutcome[] = [];
+    const on = { progress: () => undefined, settled: (o: UploadOutcome) => outcomes.push(o) };
+    sendUpload(
+      { slug: "story-form", fieldKey: "f_photos", locale: "en", file: file(10) },
+      on,
+      make,
+    );
+    const held = sendUpload(
+      { slug: "story-form", fieldKey: "f_photos", locale: "en", file: file(10) },
+      on,
+      make,
+    );
+    expect(inFlight()).toBe(2);
+    held.cancel();
+    expect(inFlight()).toBe(1);
+    sent[0]?.answer(200, created);
+    expect(sent).toHaveLength(1);
+    expect(outcomes).toHaveLength(1);
     expect(inFlight()).toBe(0);
   });
 });

@@ -129,11 +129,26 @@ function release(): void {
   for (const entry of posts) if (entry.kind === "post") entry.start();
 }
 
-/** Sends an upload now, or holds it while the first upload of a render without a record is open. */
-export function queueUpload(start: (answered: UploadAnswered) => void, drop: () => void): void {
+/**
+ * Sends an upload now, or holds it while the first upload of a render without a record is open.
+ * Returns the withdrawal: true when the upload was still held and now never leaves.
+ */
+export function queueUpload(
+  start: (answered: UploadAnswered) => void,
+  drop: () => void,
+): () => boolean {
   if (recordExists) start(ignoreAnswer);
-  else if (firstOpen) held.push({ kind: "upload", start, drop });
-  else sendFirst(start);
+  else if (firstOpen) {
+    const entry: Held = { kind: "upload", start, drop };
+    held.push(entry);
+    return () => {
+      const index = held.indexOf(entry);
+      if (index === -1) return false;
+      held.splice(index, 1);
+      return true;
+    };
+  } else sendFirst(start);
+  return () => false;
 }
 
 /** Whether a post that does not wait for uploads must wait for the first upload's answer. */

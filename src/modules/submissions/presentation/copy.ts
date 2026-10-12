@@ -110,6 +110,8 @@ export const chrome = {
     es: "No se pudo quitar {file}. Revisa tu conexión e inténtalo de nuevo",
   },
   group_required: { en: "required", es: "obligatorio" },
+  file_uploading: { en: "{file}, uploading {percent}%", es: "{file}, subiendo {percent}%" },
+  file_uploaded: { en: "{file} uploaded", es: "Se subió {file}" },
 } as const satisfies Record<string, Text>;
 
 /** Keyed by the rule name with spaces, as the catalog table writes it. */

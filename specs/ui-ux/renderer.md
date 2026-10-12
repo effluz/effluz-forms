@@ -141,7 +141,10 @@ the control so screen readers hear it before entering.
 
 Without script: a native `<input type="file" multiple accept="...">`. Files
 are sent with the page's form post and validated server-side; the page
-re-renders with results.
+re-renders with results. With or without script, the visible control is a label
+styled as a secondary button reading `choose_files`; the native input is
+visually hidden but focusable, its focus ring drawn on that label, so the
+browser's own text (in the browser's language) never shows.
 
 Without script, each staged file is listed as `file_row` (the original name is
 not kept) with a Remove button that submits the page form with that file; the
@@ -156,8 +159,18 @@ With script, the same input is enhanced:
 
 - Choosing files starts an upload per file immediately. Each file shows a
   row: thumbnail for images or a film icon for video, file name truncated in
-  the middle, size, a progress bar with "Uploading {percent}%", then
-  "Uploaded" or an error with "Retry" and "Remove".
+  the middle with the size beside it (laid out apart, no punctuation between),
+  a progress bar with "Uploading {percent}%", then "Uploaded" or an error with
+  "Retry" and "Remove". An uploading row has "Remove" too: it cancels the
+  upload (held or in flight) and removes the row. After Retry or Remove, whose
+  button goes away, focus moves to the file input.
+- Milestones are announced politely as `file_uploading` every 25 percent and
+  `file_uploaded` at the end; refusals and failures go to an assertive region.
+  Both regions are cleared and written again on the next frame, so a message
+  equal to the last one is announced again.
+- An upload still open after one minute plus its size at 20 kB/s fails as
+  `upload failed` (the browser's request timeout), so a stalled request never
+  holds the page.
 - A count line "{count} of {max} files" updates and is announced.
 - The accepted kinds and limits render as fixed help under the staff help:
   "Photos up to {size} each." or "Photos and videos up to {size} each."
@@ -391,6 +404,8 @@ The only strings the renderer owns. Everything else is staff-authored.
 | file_unnamed | File {n} | Archivo {n} |
 | remove_failed | {file} was not removed. Check your connection and try again | No se pudo quitar {file}. Revisa tu conexión e inténtalo de nuevo |
 | group_required | required | obligatorio |
+| file_uploading | {file}, uploading {percent}% | {file}, subiendo {percent}% |
+| file_uploaded | {file} uploaded | Se subió {file} |
 
 `{contact}` is the configured privacy contact address. `{size}` and `{date}`
 are formatted per locale.

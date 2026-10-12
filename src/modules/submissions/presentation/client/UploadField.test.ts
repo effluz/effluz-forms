@@ -1,7 +1,9 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { keepRows, resetRowsFor } from "./bus";
 import { RefusedFilesContext } from "./refused-files";
+import type { Row } from "./upload-queue";
 import { UploadField, type UploadFieldProps } from "./UploadField";
 
 const FILE_ID = "00000000-0000-4000-8000-000000000001";
@@ -26,6 +28,8 @@ function props(over: Partial<UploadFieldProps> = {}): UploadFieldProps {
       chooseFiles: "Choose files",
       uploading: "Uploading {percent}%",
       uploaded: "Uploaded",
+      uploadingFile: "{file}, uploading {percent}%",
+      uploadedFile: "{file} uploaded",
       remove: "Remove",
       retry: "Retry",
       removed: "{file} removed",
@@ -76,11 +80,54 @@ describe("UploadField without script", () => {
     expect(html).toContain('aria-invalid="true"');
   });
 
+  it("shows choose_files as the control's text, on a label for the native input, never the browser's own", () => {
+    const html = renderToStaticMarkup(createElement(UploadField, props()));
+    expect(html).toMatch(/<label for="f-f_photos"[^>]*>Choose files<\/label>/);
+    // The input comes first, so its focus ring can be drawn on the label after it.
+    expect(html.indexOf('type="file"')).toBeLessThan(html.indexOf(">Choose files<"));
+  });
+
   it("falls back to the stored error when no refused file belongs to the field", () => {
     const html = renderToStaticMarkup(
       createElement(UploadField, props({ error: "Photos is required" })),
     );
     expect(html).toMatch(/id="f_photos-error"[^>]*>[\s\S]*Photos is required/);
     expect(html).toContain('aria-invalid="true"');
+  });
+});
+
+describe("UploadField with script (rows kept from before a remount)", () => {
+  const uploading: Row = {
+    localId: "f_photos-new-1",
+    id: null,
+    name: "photo.jpg",
+    size: "12 kB",
+    kind: "image",
+    thumb: null,
+    state: { status: "uploading", percent: 40 },
+  };
+  const failed: Row = {
+    ...uploading,
+    localId: "f_photos-new-2",
+    state: { status: "failed", message: "photo.jpg did not upload." },
+  };
+
+  function enhancedHtml(rows: Row[]): string {
+    resetRowsFor(`render-${String(Math.random())}`);
+    keepRows("f_photos", rows);
+    return renderToStaticMarkup(createElement(UploadField, props({ initial: [] })));
+  }
+
+  it("lists the name and the size apart, with no punctuation between them", () => {
+    const html = enhancedHtml([failed]);
+    expect(html).toMatch(/<span id="f_photos-new-2-name"[^>]*>photo\.jpg<\/span>/);
+    expect(html).toMatch(/<span class="[^"]*">12 kB<\/span>/);
+    expect(html).not.toContain("photo.jpg, 12 kB");
+  });
+
+  it("keeps its announcement regions in the page, empty", () => {
+    const html = enhancedHtml([failed]);
+    expect(html).toMatch(/<p[^>]*aria-live="polite"[^>]*data-announce=""[^>]*><\/p>/);
+    expect(html).toMatch(/<p[^>]*aria-live="assertive"[^>]*data-alert=""[^>]*><\/p>/);
   });
 });
