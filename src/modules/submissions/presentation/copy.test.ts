@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { validationCodes } from "@/shared/domain/form-model";
 import { specTableRows } from "@/shared/presentation/testing/spec-copy";
 import { catalog, chrome, isOne, t } from "./copy";
+import { errorCopy } from "./error-copy";
 
 const asText = (rows: Map<string, string[]>) =>
   Object.fromEntries([...rows].map(([key, [en, es]]) => [key, { en, es }]));
@@ -38,5 +39,13 @@ describe("renderer copy", () => {
     expect(isOne("es", 1)).toBe(true);
     expect(isOne("en", 0)).toBe(false);
     expect(isOne("es", 2)).toBe(false);
+  });
+
+  it("keeps the client error boundary's copy equal to the chrome rows", () => {
+    expect(errorCopy).toEqual({
+      title: chrome.error_title,
+      body: chrome.error_body,
+      tryAgain: chrome.try_again,
+    });
   });
 });
