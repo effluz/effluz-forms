@@ -94,10 +94,12 @@ export async function decodePagePost(
   const decodeIssues: ValidationIssue[] = [];
   const raw: RawValues = {};
   const incoming: IncomingFile[] = [];
-  const keys = new Set<string>(page.fields.map((f) => f.key));
+  // Only the names the page's own controls post are kept, so a crafted name never reaches the record.
+  const names = new Set<string>(
+    page.fields.flatMap((f) => fieldRenderers[f.type].controlNames?.(f) ?? [f.key]),
+  );
   for (const [name, value] of form.entries()) {
-    const owner = name.split(".")[0] ?? "";
-    if (typeof value !== "string" || !keys.has(owner)) continue;
+    if (typeof value !== "string" || !names.has(name)) continue;
     const prev = raw[name];
     raw[name] = prev === undefined ? value : Array.isArray(prev) ? [...prev, value] : [prev, value];
   }

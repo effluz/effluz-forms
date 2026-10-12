@@ -127,7 +127,7 @@ the control so screen readers hear it before entering.
 | `long_text` | `<textarea>` with `rows` from settings, auto-growing with script | Character counter appears only when a max length is set, as "{n} of {max}", announced politely from 90% through a separate, always-present live region (the shown counter is not one). |
 | `email` | `<input type="email" inputmode="email" autocomplete="email">` | Trimmed and lowercased on the server. |
 | `phone` | `<input type="tel" inputmode="tel" autocomplete="tel">` | No formatting enforced beyond length rules. |
-| `number` | `<input type="text" inputmode="decimal">` or `numeric` for integers | Not `type="number"`, which has poor accessibility and scroll bugs. Unit label shown after the input. |
+| `number` | `<input type="text" inputmode="decimal">` or `numeric` for integers | Not `type="number"`, which has poor accessibility and scroll bugs. Unit label shown after the input. "2,5" and "2.5" both read as 2.5; with both separators the last one is the decimal mark and the other must group thousands ("1.234,5", "1,234.5"), else `not a number`. |
 | `date` | Three inputs: day, month, year, in the locale's order, grouped in a `<fieldset>` with the label as `<legend>` | Native date pickers are inconsistent on phones and inaccessible in places. |
 | `single_choice` radio | `<fieldset>` with `<legend>`, one `<input type="radio">` per option, each with a full-width tappable label | Vertical list always. |
 | `single_choice` dropdown | `<select>` with a placeholder option "Choose one" | Used only when staff chose dropdown and there are more than 6 options; otherwise the renderer falls back to radio. |

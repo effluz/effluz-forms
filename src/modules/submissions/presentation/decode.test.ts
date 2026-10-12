@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { asKey, type Field, fieldTypes, type Version } from "@/shared/domain/form-model";
 import { registry, storyVersion } from "../domain/testing/versions";
 import { decodePagePost, parseAction } from "./decode";
 
@@ -35,6 +36,43 @@ describe("decodePagePost", () => {
     expect(post?.answers).not.toHaveProperty("f_consent");
     expect(post?.raw).not.toHaveProperty("f_consent");
     expect(post?.raw).not.toHaveProperty("$ACTION_REF_1");
+  });
+
+  it("keeps in raw only the names the page's controls post: a key, and a date's three parts", async () => {
+    const story = storyVersion();
+    const date: Field = {
+      key: asKey("f_due"),
+      type: "date",
+      label: { en: "Due date", es: "Fecha probable" },
+      required: false,
+      personal: false,
+      validation: [],
+      settings: fieldTypes.date.fixtures.settings[0],
+    };
+    const version: Version = {
+      ...story,
+      pages: story.pages.map((page) =>
+        page.key === "page_contact" ? { ...page, fields: [...page.fields, date] } : page,
+      ),
+    };
+    const form = formOf({
+      _page: "page_contact",
+      _action: "next",
+      f_name: "Ana Prueba",
+      "f_name.extra": "x".repeat(50),
+      "f_due.day": "9",
+      "f_due.month": "11",
+      "f_due.year": "2026",
+      "f_due.hour": "10",
+      f_due: "stray",
+    });
+    const post = await decodePagePost(form, version, registry);
+    expect(post?.raw).toEqual({
+      f_name: "Ana Prueba",
+      "f_due.day": "9",
+      "f_due.month": "11",
+      "f_due.year": "2026",
+    });
   });
 
   it("collects posted files of the page's upload fields with their names", async () => {

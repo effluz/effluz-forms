@@ -16,6 +16,7 @@ const ORDER = {
 } as const;
 
 export const date: FieldRenderer = {
+  controlNames: (field) => ["day", "month", "year"].map((part) => `${field.key}.${part}`),
   decode: (input, field) => {
     const [d, m, y] = ["day", "month", "year"].map((p) =>
       (input.get(`${field.key}.${p}`) ?? "").trim(),

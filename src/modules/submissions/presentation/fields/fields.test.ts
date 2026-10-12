@@ -67,6 +67,20 @@ describe("field renderers", () => {
     expect(decode(input({ f_probe: " " }), field)).toEqual({ value: undefined, issue: null });
   });
 
+  it("number: with both separators the last one is the decimal mark, and anything else is not_a_number", () => {
+    const field = base({ type: "number", settings: { integerOnly: false } });
+    const { decode } = fieldRenderers.number;
+    const read = (raw: string) => decode(input({ f_probe: raw }), field);
+    expect(read("1.234,5")).toEqual({ value: 1234.5, issue: null });
+    expect(read("1,234.5")).toEqual({ value: 1234.5, issue: null });
+    expect(read("1.234.567,25")).toEqual({ value: 1234567.25, issue: null });
+    expect(read("-1,234.5")).toEqual({ value: -1234.5, issue: null });
+    expect(read("2.5")).toEqual({ value: 2.5, issue: null });
+    expect(read("2,5")).toEqual({ value: 2.5, issue: null });
+    for (const raw of ["1.2,3.4", "1,2.5", "1.234,5,6", "12,34.5", "1.234.5", "1,2,3"])
+      expect(read(raw), raw).toEqual({ value: undefined, issue: "not_a_number" });
+  });
+
   it("date: day, month and year in the locale's order inside a fieldset, impossible input is date_invalid", () => {
     const field = base({ type: "date" });
     const en = render(field, { locale: "en" });

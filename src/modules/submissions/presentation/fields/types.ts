@@ -49,6 +49,8 @@ export interface FieldProps {
  */
 export interface FieldRenderer {
   decode: (input: FieldInput, field: Field) => Decoded;
+  /** The names its controls post; the field key alone when left out. */
+  controlNames?: (field: Field) => readonly string[];
   encode: (value: unknown, field: Field) => FormValues;
   Component: (props: FieldProps) => ReactElement | null;
 }

@@ -4,12 +4,33 @@ import { styles } from "../styles";
 import { describedBy, FieldShell } from "./FieldShell";
 import { type FieldRenderer, ids, one } from "./types";
 
-/** Postel: "2,5" and "2.5" both read as 2.5; empty is no answer. */
+const NOT_A_NUMBER = { value: undefined, ok: false } as const;
+
+/** Whole digits grouped in threes by `group`: "1.234.567" or "1,234". */
+const grouped = (whole: string, group: "." | ","): boolean =>
+  new RegExp(`^-?\\d{1,3}(\\${group}\\d{3})+$`).test(whole);
+
+/**
+ * Postel: "2,5" and "2.5" both read as 2.5. With both separators, the last one is the decimal
+ * mark and the other groups thousands ("1.234,5" and "1,234.5" are 1234.5); any other mix is
+ * not a number rather than a guess. Empty is no answer.
+ */
 function parseNumber(raw: string): { value: number | undefined; ok: boolean } {
   const s = raw.trim().replace(/\s/g, "");
   if (s === "") return { value: undefined, ok: true };
-  const normalized = s.includes(".") ? s.replace(/,/g, "") : s.replace(",", ".");
-  if (!/^-?\d+(\.\d+)?$/.test(normalized)) return { value: undefined, ok: false };
+  let normalized = s;
+  const lastDot = s.lastIndexOf(".");
+  const lastComma = s.lastIndexOf(",");
+  if (lastDot !== -1 && lastComma !== -1) {
+    const decimal = lastDot > lastComma ? "." : ",";
+    const group = decimal === "." ? "," : ".";
+    const [whole = "", fraction, ...rest] = s.split(decimal);
+    if (fraction === undefined || rest.length > 0 || !grouped(whole, group)) return NOT_A_NUMBER;
+    normalized = `${whole.split(group).join("")}.${fraction}`;
+  } else if (lastComma !== -1) {
+    normalized = s.replace(",", ".");
+  }
+  if (!/^-?\d+(\.\d+)?$/.test(normalized)) return NOT_A_NUMBER;
   return { value: Number(normalized), ok: true };
 }
 
