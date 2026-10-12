@@ -16,16 +16,19 @@ import { PgAuditLog } from "@/modules/identity/infrastructure/pg-audit-log";
 import { PgAuditLogReader } from "@/modules/identity/infrastructure/pg-audit-log-reader";
 import { PgSubmissionStats } from "@/modules/submissions/infrastructure/pg-submission-stats";
 import { buildDefaultRegistry, parseDraft } from "@/shared/domain/form-model";
+import type { Languages, LocalizedText } from "@/shared/domain/localized-text";
 import { systemClock } from "@/shared/infrastructure/clock";
 import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
 import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
+import { bilingualFormDraft } from "../fixtures/bilingual-form";
 import { referenceFormDraft, referenceSubmission } from "../fixtures/reference-form";
+import { E2E_BASE_URL } from "../support/app-server";
 
 const editor: Actor = { email: "editor@example.com", ip: "203.0.113.7" };
 const DAY_MS = 86_400_000;
 
 /** Definitions over Postgres, wired as the composition root wires them. */
-function definitionsDeps(pool: Pool): DefinitionsDeps {
+function definitionsDeps(pool: Pool, publicBaseUrl: string): DefinitionsDeps {
   return {
     forms: new PgFormRepository(pool),
     drafts: new PgDraftRepository(pool),
@@ -38,32 +41,80 @@ function definitionsDeps(pool: Pool): DefinitionsDeps {
     ids: systemIdGenerator,
     registry: buildDefaultRegistry(),
     allowedRecipientDomains: ["effluz.com", "example.com"],
-    publicBaseUrl: "http://127.0.0.1:3199",
+    publicBaseUrl,
   };
+}
+
+export interface Published {
+  formId: string;
+  slug: string;
+  deps: DefinitionsDeps;
 }
 
 /**
  * Publishes the reference form (tests/fixtures/reference-form.ts) under a
  * random slug through the definitions use cases, with prefix `HP`, 12 months
  * of retention, one staff recipient and a closing date 30 days out; `over`
- * replaces any setting.
+ * replaces any setting. `publicBaseUrl` is the app the run started.
  */
 export async function publishReferenceForm(
   pool: Pool,
   over: Partial<FormSettings> = {},
-): Promise<{ formId: string; slug: string; deps: DefinitionsDeps }> {
-  const deps = definitionsDeps(pool);
-  const slug = `historia-prematuro-${randomBytes(3).toString("hex")}`;
+  publicBaseUrl = E2E_BASE_URL,
+): Promise<Published> {
+  return publishDraft(
+    pool,
+    {
+      draft: referenceFormDraft,
+      title: { es: "Historias" },
+      languages: "es",
+      slugPrefix: "historia-prematuro",
+    },
+    over,
+    publicBaseUrl,
+  );
+}
+
+/**
+ * Publishes the bilingual form (tests/fixtures/bilingual-form.ts) as
+ * `publishReferenceForm` publishes the reference form.
+ */
+export async function publishBilingualForm(
+  pool: Pool,
+  over: Partial<FormSettings> = {},
+  publicBaseUrl = E2E_BASE_URL,
+): Promise<Published> {
+  return publishDraft(
+    pool,
+    {
+      draft: bilingualFormDraft,
+      title: bilingualFormDraft.title,
+      languages: "bilingual",
+      slugPrefix: "prueba-bilingue",
+    },
+    over,
+    publicBaseUrl,
+  );
+}
+
+async function publishDraft(
+  pool: Pool,
+  input: { draft: unknown; title: LocalizedText; languages: Languages; slugPrefix: string },
+  over: Partial<FormSettings>,
+  publicBaseUrl: string,
+): Promise<Published> {
+  const deps = definitionsDeps(pool, publicBaseUrl);
+  const slug = `${input.slugPrefix}-${randomBytes(3).toString("hex")}`;
   const created = await createForm(deps, editor, {
-    title: { es: "Historias" },
-    languages: "es",
+    title: input.title,
+    languages: input.languages,
     slug,
   });
   if (!created.ok) throw new Error(created.code);
   const formId = created.formId;
 
-  const parsed = parseDraft(referenceFormDraft, deps.registry);
-  if (!parsed.ok) throw new Error("the reference form does not parse");
+  const parsed = parseDraft(input.draft, deps.registry);
+  if (!parsed.ok) throw new Error(`the ${input.slugPrefix} form does not parse`);
   await deps.uow.run(async (uow) => {
     const draft = await deps.drafts.findForUpdate(uow, formId);
     if (!draft) throw new Error("no draft");

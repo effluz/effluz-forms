@@ -1,14 +1,20 @@
-import { expect, type Page, test } from "@playwright/test";
+import { type ElementHandle, expect, type Page, test } from "@playwright/test";
 import pg from "pg";
-import { pageAnswers, publishReferenceForm } from "../e2e/publish";
+import { MIN_FILL_MS } from "@/modules/submissions/application";
+import { catalog } from "@/modules/submissions/presentation/copy";
+import { pageAnswers, publishBilingualForm, publishReferenceForm } from "../e2e/publish";
 import { syntheticJpegWithGps } from "../fakes/media-files";
+import { bilingualFormDraft } from "../fixtures/bilingual-form";
+import { BROWSER_E2E_BASE_URL } from "../support/app-server";
 
 // The reference form on a phone with script enabled, in Chromium (ADR 0024). Synthetic data
 // only. The script-disabled run and the budgets live in tests/e2e/. Copy comes from
 // specs/ui-ux/renderer.md.
 
 /** specs/system/security.md, "Minimum time-to-submit", plus a margin for the clocks. */
-const MINIMUM_FILL_MS = 3_000 + 500;
+const MINIMUM_FILL_MS = MIN_FILL_MS + 500;
+
+const publishReference = (pool: pg.Pool) => publishReferenceForm(pool, {}, BROWSER_E2E_BASE_URL);
 
 const OFFLINE = "Parece que no tienes conexión. Continuaremos cuando vuelvas a conectarte.";
 const SUBMIT_FAILED = "Tus respuestas no se enviaron. Revisa tu conexión e inténtalo de nuevo.";
@@ -30,15 +36,25 @@ async function fillPage(page: Page, answers: Record<string, string>): Promise<vo
   }
 }
 
-/** Opens the form and fills pages 1 to 4 with the reference answers, landing on page 5. */
-async function reachPhotos(page: Page, slug: string): Promise<void> {
+/**
+ * Opens the form and fills pages 1 to 4 with the reference answers, landing on page 5. Returns
+ * the time page 1 had loaded, which is after the server rendered it (the fill's start).
+ */
+async function reachPhotos(page: Page, slug: string): Promise<number> {
   await page.goto(`/f/${slug}`);
+  const loadedAt = Date.now();
   for (const key of ["page1", "page2", "page3", "page4"]) {
     await fillPage(page, pageAnswers(key));
     await page.locator("[data-primary]").click();
     await expect(page.locator("[data-page-heading]")).toBeFocused();
   }
   await expect(page.getByText("Página 5 de 5")).toBeVisible();
+  return loadedAt;
+}
+
+/** A live region's text, or a marker when the captured element is no longer in the page. */
+async function mountedText(region: ElementHandle): Promise<string | null> {
+  return region.evaluate((el) => (el.isConnected ? el.textContent : "(no longer mounted)"));
 }
 
 async function syntheticPhotos(
@@ -104,15 +120,14 @@ test("completes the reference form on a phone with script: a blur check, focus, 
 }) => {
   const pool = newPool();
   try {
-    const { slug, formId } = await publishReferenceForm(pool);
+    const { slug, formId } = await publishReference(pool);
     await page.goto(`/f/${slug}`);
     const startedAt = Date.now();
 
     await page.locator('[name="email"]').fill("no-es-un-correo");
     await page.locator('[name="instagram"]').focus();
-    await expect(page.locator("#email-error")).toHaveText(
-      "Escribe un correo válido, como nombre@ejemplo.com",
-    );
+    // The bound copy row; copy.test.ts keeps it equal to specs/ui-ux/renderer.md.
+    await expect(page.locator("#email-error")).toHaveText(catalog["email syntax"].es);
     await expect(page).toHaveURL(new RegExp(`/f/${slug}$`));
 
     for (const key of ["page1", "page2", "page3", "page4"]) {
@@ -147,7 +162,8 @@ test("completes the reference form on a phone with script: a blur check, focus, 
     await expect(page.locator("#photos-count")).toHaveText("2 de 10 archivos");
     await page.unroute(`**/f/${slug}`);
 
-    // A Submit faster than the minimum time is accepted silently and stores nothing.
+    // Wait out the minimum time, so this Submit is a real one (the too-fast silent accept has
+    // its own case below).
     await page.waitForTimeout(Math.max(0, startedAt + MINIMUM_FILL_MS - Date.now()));
     await page.locator("[data-primary]").click();
     await expect(page.getByText("Tu referencia:")).toBeVisible();
@@ -173,7 +189,7 @@ test("restores a draft after a reload, focuses the error summary after a refused
 }) => {
   const pool = newPool();
   try {
-    const { slug } = await publishReferenceForm(pool);
+    const { slug } = await publishReference(pool);
     await page.goto(`/f/${slug}`);
 
     await page.locator('[name="adult_name"]').fill("Lucía Prueba Ejemplo");
@@ -218,7 +234,7 @@ test("waits for the connection on Next, announces it, and goes on when it return
 }) => {
   const pool = newPool();
   try {
-    const { slug } = await publishReferenceForm(pool);
+    const { slug } = await publishReference(pool);
     await page.goto(`/f/${slug}`);
     await fillPage(page, pageAnswers("page1"));
 
@@ -248,13 +264,17 @@ test("shows each upload's progress, done, failure, retry, removal and failed rem
 }) => {
   const pool = newPool();
   try {
-    const { slug } = await publishReferenceForm(pool);
+    const { slug } = await publishReference(pool);
     await reachPhotos(page, slug);
     const input = page.locator('input[type="file"][name="photos"]');
     const rows = page.locator("[data-upload] li");
     const primary = page.locator("[data-primary]");
     const [first, second] = await syntheticPhotos(2);
     if (first === undefined || second === undefined) throw new Error("no photos");
+    // The live regions as mounted before any upload: each announcement must land in these
+    // same elements, since a region added or replaced along with its text is not announced.
+    const announce = await page.locator("[data-announce]").elementHandle();
+    const alert = await page.locator("[data-alert]").elementHandle();
 
     // Progress, with Next waiting and saying why.
     let release = (): void => undefined;
@@ -277,6 +297,7 @@ test("shows each upload's progress, done, failure, retry, removal and failed rem
     release();
     await expect(rows.first()).toContainText("Subido");
     await expect(page.locator("[data-announce]")).toHaveText("IMG_0.jpg, Subido");
+    expect(await mountedText(announce)).toBe("IMG_0.jpg, Subido");
     await expect(page.locator("#photos-count")).toHaveText("1 de 10 archivos");
     await expect(primary).toBeEnabled();
     await expect(page.locator("#uploads-pending")).toHaveCount(0);
@@ -288,6 +309,7 @@ test("shows each upload's progress, done, failure, retry, removal and failed rem
     const failedUpload = "IMG_1.jpg no se subió. Revisa tu conexión y reintenta";
     await expect(rows.nth(1)).toContainText(failedUpload);
     await expect(page.locator("[data-alert]")).toHaveText(failedUpload);
+    expect(await mountedText(alert)).toBe(failedUpload);
     await expect(page.locator("#photos-count")).toHaveText("1 de 10 archivos");
     await page.unroute(`**/f/${slug}/files`);
     await rows.nth(1).getByRole("button", { name: "Reintentar" }).click();
@@ -304,6 +326,7 @@ test("shows each upload's progress, done, failure, retry, removal and failed rem
     await rows.nth(1).getByRole("button", { name: "Quitar" }).click();
     await expect(rows.nth(1)).toContainText(removeFailed);
     await expect(page.locator("[data-alert]")).toHaveText(removeFailed);
+    expect(await mountedText(alert)).toBe(removeFailed);
     await expect(rows).toHaveCount(2);
     await page.unroute(`**/f/${slug}/files/*`);
 
@@ -311,8 +334,21 @@ test("shows each upload's progress, done, failure, retry, removal and failed rem
     await rows.nth(1).getByRole("button", { name: "Quitar" }).click();
     await expect(rows).toHaveCount(1);
     await expect(page.locator("[data-announce]")).toHaveText("Se quitó IMG_1.jpg");
+    expect(await mountedText(announce)).toBe("Se quitó IMG_1.jpg");
     await expect(page.locator("#photos-count")).toHaveText("1 de 10 archivos");
     await expect(input).toBeFocused();
+
+    // Back after an early upload: the scripted post carries no empty file part, so nothing is
+    // refused, and the uploaded photo is still there on the way forward again.
+    await page.getByRole("button", { name: "Atrás" }).click();
+    await expect(page.getByText("Página 4 de 5")).toBeVisible();
+    await expect(page.locator("[data-page-heading]")).toBeFocused();
+    await expect(page.locator("[data-error-summary]")).toHaveCount(0);
+    await primary.click();
+    await expect(page.getByText("Página 5 de 5")).toBeVisible();
+    await expect(page.locator("[data-error-summary]")).toHaveCount(0);
+    await expect(page.locator("#photos-count")).toHaveText("1 de 10 archivos");
+    await expect(rows).toHaveCount(1);
   } finally {
     await pool.end();
   }
@@ -323,7 +359,7 @@ test("reaches every control by keyboard, the skip link first, on page 1 and on t
 }) => {
   const pool = newPool();
   try {
-    const { slug } = await publishReferenceForm(pool);
+    const { slug } = await publishReference(pool);
     await page.goto(`/f/${slug}`);
     const firstPage = await markTabStops(page);
     const forward = await tabStops(page, "Tab");
@@ -350,6 +386,89 @@ test("reaches every control by keyboard, the skip link first, on page 1 and on t
     const before = await tabStops(page, "Shift+Tab");
     expect([...new Set([...before, ...after])].sort()).toEqual([...photosPage].sort());
     expect(photosPage.length).toBeGreaterThanOrEqual(5);
+  } finally {
+    await pool.end();
+  }
+});
+
+test("silently accepts a Submit inside the minimum time: the decoy confirmation, and nothing stored", async ({
+  page,
+}) => {
+  const pool = newPool();
+  try {
+    const { slug, formId } = await publishReference(pool);
+    await reachPhotos(page, slug);
+    const [photo] = await syntheticPhotos(1);
+    if (photo === undefined) throw new Error("no photo");
+    await page.locator('input[type="file"][name="photos"]').setInputFiles([photo]);
+    await expect(page.locator("#photos-count")).toHaveText("1 de 10 archivos");
+    await fillPage(page, pageAnswers("page5"));
+
+    // The fill starts now, so the Submit below lands inside the minimum time however long the
+    // pages above took on this machine.
+    const moved = await pool.query(
+      "update submission_in_progress set started_at = now() where form_id = $1",
+      [formId],
+    );
+    expect(moved.rowCount).toBe(1);
+    const startedAt = Date.now();
+    await page.locator("[data-primary]").click();
+    await expect(page.getByText("Tu referencia:")).toBeVisible();
+    expect(Date.now() - startedAt).toBeLessThan(MIN_FILL_MS);
+
+    // A decoy is shaped like a reference but is never the form's first real one, HP-0001.
+    expect(await page.locator("main").innerText()).toMatch(/\bHP-[1-9]\d{3}\b/);
+    const counts = await pool.query<{ submissions: number; media: number; records: number }>(
+      `select (select count(*)::int from submission where form_id = $1) as submissions,
+              (select count(*)::int from media where form_id = $1) as media,
+              (select count(*)::int from submission_in_progress where form_id = $1) as records`,
+      [formId],
+    );
+    expect(counts.rows[0]).toEqual({ submissions: 0, media: 0, records: 0 });
+  } finally {
+    await pool.end();
+  }
+});
+
+// Waits for group 4's fix of final-review-c1.md item 1 (focus the confirmation heading on mount).
+test.fixme("moves focus to the confirmation heading after a scripted Submit", async ({ page }) => {
+  const pool = newPool();
+  try {
+    const { slug } = await publishReference(pool);
+    const loadedAt = await reachPhotos(page, slug);
+    const [photo] = await syntheticPhotos(1);
+    if (photo === undefined) throw new Error("no photo");
+    await page.locator('input[type="file"][name="photos"]').setInputFiles([photo]);
+    await expect(page.locator("#photos-count")).toHaveText("1 de 10 archivos");
+    await fillPage(page, pageAnswers("page5"));
+    await page.waitForTimeout(Math.max(0, loadedAt + MINIMUM_FILL_MS - Date.now()));
+
+    await page.locator("[data-primary]").click();
+    await expect(page.getByText("HP-0001")).toBeVisible();
+    await expect(page.locator("h1#page-title")).toBeFocused();
+  } finally {
+    await pool.end();
+  }
+});
+
+test("switches the language with script and keeps html[lang] in step", async ({ page }) => {
+  const pool = newPool();
+  try {
+    const { slug } = await publishBilingualForm(pool, {}, BROWSER_E2E_BASE_URL);
+    await page.goto(`/f/${slug}`);
+    const first = await page.locator("html").getAttribute("lang");
+    if (first !== "en" && first !== "es") throw new Error(`unexpected html[lang] ${String(first)}`);
+    const other = first === "es" ? "en" : "es";
+    const heading = bilingualFormDraft.title;
+    await expect(page.locator("[data-page-heading]")).toContainText(heading[first]);
+
+    await page.locator('[name="plants"]').fill("3");
+    await page.locator(`button[value="language:${other}"]`).click();
+    // The switch now offers the first language back, and the page is in the other one.
+    await expect(page.locator(`button[value="language:${first}"]`)).toBeVisible();
+    await expect(page.locator("[data-page-heading]")).toContainText(heading[other]);
+    await expect(page.locator("html")).toHaveAttribute("lang", other);
+    await expect(page.locator('[name="plants"]')).toHaveValue("3");
   } finally {
     await pool.end();
   }
