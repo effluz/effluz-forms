@@ -47,6 +47,13 @@ As built (`.github/workflows/ci.yml`):
   HTTP exactly as a browser without script does, plus the budgets of
   `ui-ux/renderer.md`. It writes `reports/e2e.xml`, uploaded as the
   `e2e-report` artifact when the job fails.
+- `e2e-browser` installs Chromium with `playwright install --with-deps
+  chromium`, builds the app and completes the reference form on a phone
+  viewport with script enabled (ADR 0024). The browser download is cached
+  under `~/.cache/ms-playwright`, keyed on the lockfile. The run starts the
+  app as `e2e` does, on port 3299, writes `reports/e2e-browser.xml`, and
+  uploads it with Playwright's traces in `test-results/` as the
+  `e2e-browser-report` artifact when the job fails.
 - A final job named `ci` waits for all the others and fails unless each one
   succeeded. It is the single status check branch protection requires.
 
