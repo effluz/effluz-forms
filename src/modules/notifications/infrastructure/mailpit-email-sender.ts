@@ -1,6 +1,9 @@
 import { EmailSendError, type EmailSender, type OutgoingEmail } from "../application";
 import { parseMailbox } from "./mailbox";
 
+/** A send that takes longer is abandoned and retried by the job system as unreachable. */
+const REQUEST_TIMEOUT_MS = 30_000;
+
 export interface MailpitConfig {
   url: string;
   from: string;
@@ -35,6 +38,7 @@ export class MailpitEmailSender implements EmailSender {
           Text: email.text,
           HTML: email.html,
         }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch {
       throw new EmailSendError("mailpit is unreachable", false);

@@ -14,6 +14,7 @@ Each tier is an adapter of the same port.
 | Operation | Behavior |
 |---|---|
 | `put(bytes, key, contentType)` | Store the bytes (files are capped at 10 MB, so no stream is needed). Returns a provider reference. Idempotent for the same key: Dropbox writes with `mode: overwrite`. |
+| `refForKey(key)` | The reference `put` returns for a key, without a call to the provider. `media.delete` uses it for a row whose upload never recorded a reference. |
 | `viewUrl(ref, ttl)` | A URL that serves the file for at most `ttl`. |
 | `delete(ref)` | Remove the file. Succeeds if it is already gone. |
 | `exists(ref)` | Existence check; uploads rely on `put` overwriting by key. |
@@ -32,10 +33,16 @@ backups/<YYYY-MM-DD>-db.dump.enc
 `nn` is the file's position within the field, `field slug` is an ASCII
 slug of the field label in the form's first language, truncated to 40
 characters. Example: `forms/historia-prematuro-2026/HP-0042/01-sube-hasta-10-fotos.jpg`.
-The original filename is never used.
+The original filename is never used. Two fields of one form never share a slug:
+the second and later fields with the same slug get `-2`, `-3`, and a suffix is
+raised until the slug is free (a label that is itself `Photos 2` cannot collide
+with the suffixed `Photos`). The base is trimmed first so the suffixed slug
+still fits 40 characters.
 
 Staged files are named `in-progress/<record id>/<file id>.<ext>`: random ids
-only, so expiring a record removes its files with one prefix delete. Local refs
+only, so expiring a record removes its files with one prefix delete. Both ids
+must be UUIDs: a prefix or key built from anything else is refused, so a bad id
+can never resolve to the staging root. Local refs
 are the key itself; Dropbox refs are the key with a leading `/` inside the App
 folder.
 
@@ -62,8 +69,10 @@ the job system, never inline.
 `oauth2/token` for the refresh-token exchange, `files/upload`,
 `files/get_metadata`, `files/delete_v2` and `files/get_temporary_link`.
 `DROPBOX_API_URL` and `DROPBOX_CONTENT_URL` exist so tests can point it at a
-local fake. A 401 renews the access token once; a 429 or 5xx fails the job so
-the job system retries it.
+local fake. A 401 renews the access token once. Any other non-2xx answer (429, 5xx, and
+also 4xx such as a refused path) fails the job, which the job system retries
+until it is dead; there is no permanent class for Dropbox answers. Every call
+stops waiting after 60 seconds, which counts as a failed attempt.
 
 Any further provider (S3-compatible, Supabase Storage, Google Drive) is a new
 adapter and an ADR. No other code changes.
@@ -89,6 +98,9 @@ Applied by the application layer before `put`, independent of provider:
   validation error. The container check walks the ISO base media file format
   boxes: the first box is `ftyp`, every box size fits the file, and a `moov`
   box is present.
+- The size limit applies twice: to the received bytes, and again to the
+  re-encoded image, which can be larger than the original (a palette PNG, for
+  instance). A file over the limit after re-encoding is `file_too_large`.
 - Rename to the key scheme above. The original filename is not stored.
 
 ## Staff-uploaded header images
@@ -119,7 +131,16 @@ received  -->  staged (local disk, DB row)  -->  stored (Dropbox, staging delete
 
 Deletion for retention removes the Dropbox file, the staging copy if any, and
 the media row, in that order, through a job so a provider outage cannot leave
-the row pointing at nothing.
+the row pointing at nothing. The job finds the file through its row: the stored
+reference, or `refForKey` of the row's durable key when no reference was
+recorded. It never parses a key back into a reference.
+
+When a delete overlaps an upload, the upload's final write can land after the
+row is gone. Recording the reference then updates no row, and the upload job
+deletes the file it just wrote instead of leaving it in the folder.
+
+`viewUrl` on local disk returns `/admin/media/local/<ref>`, the admin route
+that streams the file; that route arrives with the review plan.
 
 ## Dropbox-specific risks to monitor
 

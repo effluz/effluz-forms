@@ -73,6 +73,44 @@ describe("DropboxStorage against a fake Dropbox", () => {
     await storage.put(new Uint8Array([2]), accented, "image/jpeg");
     expect(fake.files.get(`/${accented}`)).toEqual(new Uint8Array([2]));
     expect(fake.files.size).toBe(1);
+    for (const raw of fake.uploadArgs) {
+      expect(Buffer.from(raw, "latin1").every((byte) => byte < 128)).toBe(true); // ASCII only
+      expect(raw).toContain("\\u00f1");
+      expect(JSON.parse(raw)).toMatchObject({ path: `/${accented}`, mode: "overwrite" });
+    }
+  });
+
+  it("gives a file whose reference was never recorded the same reference put returns", async () => {
+    const ref = await storage.put(new Uint8Array([1]), key, "image/jpeg");
+    expect(storage.refForKey(key)).toBe(ref);
+    await storage.delete(storage.refForKey(key));
+    expect(fake.files.size).toBe(0);
+  });
+
+  it("fails an upload the provider refuses as a conflict, for the job system to retry", async () => {
+    await storage.put(new Uint8Array([1]), key, "image/jpeg");
+    fake.failNext(409, { error_summary: "path/conflict/file/" });
+    await expect(storage.put(new Uint8Array([2]), key, "image/jpeg")).rejects.toThrow(
+      "dropbox files/upload failed with 409",
+    );
+  });
+
+  it("gives every call a timeout, so a hung connection fails the attempt", async () => {
+    const signals: Array<AbortSignal | null | undefined> = [];
+    const spying = new DropboxStorage({
+      appKey: "app-key",
+      appSecret: "app-secret",
+      refreshToken: "refresh-token",
+      apiUrl: fake.url,
+      contentUrl: fake.url,
+      fetch: (input, init) => {
+        signals.push(init?.signal);
+        return fetch(input, init);
+      },
+    });
+    await spying.put(new Uint8Array([1]), key, "image/jpeg");
+    expect(signals).toHaveLength(2); // the token exchange and the upload
+    for (const signal of signals) expect(signal).toBeInstanceOf(AbortSignal);
   });
 
   it("drops the cached link when the file is deleted", async () => {

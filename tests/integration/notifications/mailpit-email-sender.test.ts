@@ -57,4 +57,22 @@ describe("MailpitEmailSender", () => {
     });
     await expect(offline.send(message)).rejects.toMatchObject({ permanent: false });
   });
+
+  it("gives the call a timeout, so a hung provider fails the attempt as retryable", async () => {
+    const signals: Array<AbortSignal | null | undefined> = [];
+    const spy: typeof fetch = (input, init) => {
+      signals.push(init?.signal);
+      return fetch(input, init);
+    };
+    stub.reply(200, { ID: "m1" });
+    const sender = new MailpitEmailSender({
+      url: stub.url,
+      from: "Effluz Forms <forms@forms.example.com>",
+      replyTo: "team@example.com",
+      fetch: spy,
+    });
+    await sender.send({ to: ["family@example.com"], subject: "S", text: "T", html: "<p>T</p>" });
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+  });
 });

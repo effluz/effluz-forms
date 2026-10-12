@@ -13,6 +13,8 @@ export interface FakeDropbox {
   files: Map<string, Uint8Array>;
   /** Endpoint paths in the order they were requested. */
   calls: string[];
+  /** The raw `Dropbox-API-Arg` header of every upload, as received. */
+  uploadArgs: string[];
   /** How many refresh-token exchanges were answered. */
   readonly tokenRefreshes: number;
   /** The next request to a files endpoint is answered with this status, once. */
@@ -25,6 +27,16 @@ export interface FakeDropbox {
 const EXPIRED = {
   error_summary: "expired_access_token/",
   error: { ".tag": "expired_access_token" },
+};
+
+const CONFLICT = {
+  error_summary: "path/conflict/file/",
+  error: { ".tag": "path", path: { ".tag": "conflict", conflict: { ".tag": "file" } } },
+};
+
+const MALFORMED_PATH = {
+  error_summary: "path/malformed_path/",
+  error: { ".tag": "path", path: { ".tag": "malformed_path" } },
 };
 
 function notFound(summary: string): unknown {
@@ -48,6 +60,7 @@ function reply(res: ServerResponse, status: number, body: unknown): void {
 export async function startFakeDropbox(): Promise<FakeDropbox> {
   const files = new Map<string, Uint8Array>();
   const calls: string[] = [];
+  const uploadArgs: string[] = [];
   let refreshes = 0;
   let token = "token-0";
   const queued: Array<{ status: number; body: unknown }> = [];
@@ -55,6 +68,10 @@ export async function startFakeDropbox(): Promise<FakeDropbox> {
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
     calls.push(path);
+    if (req.method !== "POST") {
+      reply(res, 405, { error_summary: "method_not_allowed/" });
+      return;
+    }
     const body = await readBody(req);
 
     if (path === "/oauth2/token") {
@@ -76,8 +93,19 @@ export async function startFakeDropbox(): Promise<FakeDropbox> {
     }
 
     if (path === "/2/files/upload") {
-      const arg = JSON.parse(String(req.headers["dropbox-api-arg"] ?? "{}")) as { path?: string };
+      const raw = String(req.headers["dropbox-api-arg"] ?? "{}");
+      uploadArgs.push(raw);
+      const arg = JSON.parse(raw) as { path?: string; mode?: string };
       const target = arg.path ?? "";
+      if (!target.startsWith("/")) {
+        reply(res, 409, MALFORMED_PATH);
+        return;
+      }
+      // Real Dropbox defaults to `add`, which refuses to replace a file.
+      if (files.has(target) && arg.mode !== "overwrite") {
+        reply(res, 409, CONFLICT);
+        return;
+      }
       files.set(target, body);
       reply(res, 200, { id: "id:fake", path_lower: target.toLowerCase(), size: body.byteLength });
       return;
@@ -89,6 +117,10 @@ export async function startFakeDropbox(): Promise<FakeDropbox> {
       path === "/2/files/delete_v2"
     ) {
       const target = (JSON.parse(Buffer.from(body).toString("utf8")) as { path: string }).path;
+      if (!target.startsWith("/")) {
+        reply(res, 409, MALFORMED_PATH);
+        return;
+      }
       const exists = files.has(target);
       if (path === "/2/files/delete_v2") {
         if (!exists) {
@@ -124,6 +156,7 @@ export async function startFakeDropbox(): Promise<FakeDropbox> {
     url: `http://127.0.0.1:${String(port)}`,
     files,
     calls,
+    uploadArgs,
     get tokenRefreshes() {
       return refreshes;
     },

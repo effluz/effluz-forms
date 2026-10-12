@@ -73,4 +73,23 @@ describe("Smtp2goEmailSender", () => {
     stub.reply(403, {});
     await expect(sender.send(message)).rejects.toMatchObject({ permanent: false });
   });
+
+  it("gives the call a timeout, so a hung provider fails the attempt as retryable", async () => {
+    const signals: Array<AbortSignal | null | undefined> = [];
+    const spy: typeof fetch = (input, init) => {
+      signals.push(init?.signal);
+      return fetch(input, init);
+    };
+    stub.reply(200, { data: { succeeded: 1, email_id: "e1" } });
+    const sender = new Smtp2goEmailSender({
+      apiKey: "api-key",
+      apiUrl: stub.url,
+      from: "Effluz Forms <forms@forms.example.com>",
+      replyTo: "team@example.com",
+      fetch: spy,
+    });
+    await sender.send({ to: ["family@example.com"], subject: "S", text: "T", html: "<p>T</p>" });
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+  });
 });

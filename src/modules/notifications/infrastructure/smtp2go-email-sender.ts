@@ -1,5 +1,8 @@
 import { EmailSendError, type EmailSender, type OutgoingEmail } from "../application";
 
+/** A send that takes longer is abandoned and retried by the job system as unreachable. */
+const REQUEST_TIMEOUT_MS = 30_000;
+
 export interface Smtp2goConfig {
   apiKey: string;
   apiUrl: string;
@@ -53,6 +56,7 @@ export class Smtp2goEmailSender implements EmailSender {
           html_body: email.html,
           custom_headers: [{ header: "Reply-To", value: this.config.replyTo }],
         }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch {
       throw new EmailSendError("smtp2go is unreachable", false);

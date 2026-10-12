@@ -24,6 +24,12 @@ export class DropboxRequestError extends Error {
 }
 
 const TOKEN_ENDPOINT = "oauth2/token";
+/**
+ * Every Dropbox call stops waiting after this long, so a hung connection
+ * becomes a failed attempt the job system retries instead of a job that holds
+ * its lease. Sized for the largest upload (10 MB) on a slow link.
+ */
+const REQUEST_TIMEOUT_MS = 60_000;
 const TOKEN_MARGIN_MS = 60_000;
 /** Temporary links last four hours; cache for five minutes less. */
 const LINK_MAX_CACHE_SECONDS = 4 * 3600 - 5 * 60;
@@ -67,7 +73,7 @@ export class DropboxStorage implements MediaStorage {
   /** The content type is not sent: Dropbox stores the bytes as received. */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- part of the port
   async put(bytes: Uint8Array, key: string, _contentType: string): Promise<string> {
-    const path = `/${key}`;
+    const path = this.refForKey(key);
     const res = await this.send(
       "files/upload",
       this.config.contentUrl,
@@ -80,6 +86,10 @@ export class DropboxStorage implements MediaStorage {
     );
     await res.body?.cancel();
     return path;
+  }
+
+  refForKey(key: string): string {
+    return `/${key}`;
   }
 
   async exists(ref: string): Promise<boolean> {
@@ -132,6 +142,7 @@ export class DropboxStorage implements MediaStorage {
         method: "POST",
         headers: { ...headers, Authorization: `Bearer ${token}` },
         body,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (res.ok) return res;
       if (res.status === 401 && attempt === 0) {
@@ -167,6 +178,7 @@ export class DropboxStorage implements MediaStorage {
         client_id: this.config.appKey,
         client_secret: this.config.appSecret,
       }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) {
       await res.body?.cancel();
