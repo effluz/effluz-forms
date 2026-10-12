@@ -150,7 +150,10 @@ Initial set: `retention.purge` daily, `email.staff_digest` daily per form,
 `backup.database` nightly, `jobs.cleanup` daily, `identity.cleanup` daily. Only
 the last two are scheduled today. `jobs.cleanup` deletes succeeded jobs finished
 more than 30 days ago and logs the count, then runs the cleanup steps the
-worker's composition root passes in, so `shared` never imports `submissions`:
+worker's composition root passes in, so `shared` never imports `submissions`.
+Steps run in order. A step that fails is logged at `warn` by name
+(`cleanup step failed`, with the scrubbed error) and does not stop the others;
+the first failure is rethrown at the end so the job retries:
 
 - `submissions.expire_in_progress` removes in-progress records past their 24
   hours, their staged files first. It locks each row by id and expiry without
@@ -177,7 +180,7 @@ counts.
 | `email.staff_digest` | Daily schedule per form with daily cadence | List of new references with links, skipped when empty |
 | `retention.purge` | Daily schedule | Delete submissions past their form's retention setting |
 | `backup.database` | Nightly schedule | Encrypted dump to Dropbox backup folder |
-| `jobs.cleanup` | Daily schedule | Prune old succeeded jobs, expired in-progress records and their staged files |
+| `jobs.cleanup` | Daily schedule | Prune old succeeded jobs, expired in-progress records and their staged files, and staging prefixes no record claims |
 | `identity.cleanup` | Daily schedule | Delete expired sign-in attempts and expired admin sessions, no audit entries |
 
 Every `media.*` and `email.*` job is enqueued with `max_attempts` 36 instead of

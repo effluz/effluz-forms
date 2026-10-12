@@ -20,6 +20,7 @@ Each tier is an adapter of the same port.
 | `exists(ref)` | Existence check; uploads rely on `put` overwriting by key. |
 | `read(ref)` | Staging only: the bytes, for the upload job. |
 | `deletePrefix(prefix)` | Staging only: remove every file under a prefix. |
+| `listPrefixes(root)` | Staging only: the prefixes directly under a root, each with the last time its contents changed; none when nothing was ever staged. The staging sweep uses it. |
 
 Keys are human-readable so staff can browse the Dropbox folder, and carry
 no personal data:
@@ -139,8 +140,16 @@ When a delete overlaps an upload, the upload's final write can land after the
 row is gone. Recording the reference then updates no row, and the upload job
 deletes the file it just wrote instead of leaving it in the folder.
 
+Staged files can outlive their row (a crash before the first commit, or a
+failed delete after a silent accept or a Submit). The recurring step
+`submissions.sweep_staging` (`system/jobs.md`, "Recurring jobs") lists the
+`in-progress/` prefixes, and removes those older than 24 hours that no
+`submission_in_progress` row and no `media.staging_ref` claims.
+
 `viewUrl` on local disk returns `/admin/media/local/<ref>`, the admin route
-that streams the file; that route arrives with the review plan.
+that streams the file, and ignores the `ttl` (the route checks the session on
+every request). That route does not exist yet; it arrives with the review
+plan.
 
 ## Dropbox-specific risks to monitor
 

@@ -25,7 +25,9 @@ The implementation is the template module in
 infrastructure may not import presentation.
 
 `EmailSender.send({ to, subject, text, html }) -> { providerMessageId }`
-sends one message from `EMAIL_FROM` with `Reply-To: EMAIL_REPLY_TO`. A
+sends one message from `EMAIL_FROM` with `Reply-To: EMAIL_REPLY_TO`.
+`EMAIL_FROM` defaults to `Effluz Forms <forms@forms.effluz.com>`.
+`EMAIL_REPLY_TO` is optional and falls back to `PRIVACY_CONTACT_EMAIL`. A
 failure is an `EmailSendError` marked retryable or permanent.
 
 The job handler looks the data up at run time, renders, sends, and records
@@ -81,13 +83,15 @@ review plan adds the submission page.
 SMTP2GO, through its HTTP API rather than SMTP relay, so the adapter gets a
 message id and a structured error back instead of parsing SMTP responses. The
 API key is scoped to sending only. The adapter maps provider errors into two
-classes: retryable (rate limit, 5xx,
-network) and permanent (invalid address, suppressed recipient). Permanent
-failures mark the job `dead` immediately and record the reason.
+classes: retryable (network, any
+non-2xx answer except 400) and permanent (invalid address, suppressed
+recipient). Permanent failures mark the job `dead` immediately and record the
+reason.
 
 The adapter posts to `SMTP2GO_API_URL` (default `https://api.smtp2go.com/v3`)
-`/email/send`. Retryable: network errors, 401, 403, 429, 5xx. Permanent: a 400,
-or a 200 that reports the recipient failed.
+`/email/send`. Retryable: network errors (including a request that takes longer
+than 30 seconds) and every non-2xx answer except 400. Permanent: a 400, or a
+200 that reports the recipient failed.
 
 Provider webhooks for bounces and complaints are out of scope for the first
 release. Revisit if submitter follow-ups are ever added.
