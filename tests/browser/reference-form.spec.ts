@@ -1,7 +1,7 @@
 import { type ElementHandle, expect, type Page, test } from "@playwright/test";
 import pg from "pg";
 import { MIN_FILL_MS } from "@/modules/submissions/application";
-import { catalog } from "@/modules/submissions/presentation/copy";
+import { catalog, chrome } from "@/modules/submissions/presentation/copy";
 import { pageAnswers, publishBilingualForm, publishReferenceForm } from "../e2e/publish";
 import { syntheticJpegWithGps } from "../fakes/media-files";
 import { bilingualFormDraft } from "../fixtures/bilingual-form";
@@ -293,11 +293,12 @@ test("shows each upload's progress, done, failure, retry, removal and failed rem
     await expect(page.locator("#uploads-pending")).toHaveText(UPLOADS_PENDING);
     await expect(primary).toHaveAttribute("aria-describedby", "uploads-pending");
 
-    // Done.
+    // Done. The announcement follows the chrome copy row, so a copy change moves with it.
+    const uploadedAnnouncement = chrome.file_uploaded.es.replace("{file}", "IMG_0.jpg");
     release();
     await expect(rows.first()).toContainText("Subido");
-    await expect(page.locator("[data-announce]")).toHaveText("IMG_0.jpg, Subido");
-    expect(await mountedText(announce)).toBe("IMG_0.jpg, Subido");
+    await expect(page.locator("[data-announce]")).toHaveText(uploadedAnnouncement);
+    expect(await mountedText(announce)).toBe(uploadedAnnouncement);
     await expect(page.locator("#photos-count")).toHaveText("1 de 10 archivos");
     await expect(primary).toBeEnabled();
     await expect(page.locator("#uploads-pending")).toHaveCount(0);
