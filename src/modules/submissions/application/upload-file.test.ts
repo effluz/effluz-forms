@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { seedPublished } from "@/modules/definitions/application/testing/fakes";
 import { fakeImage } from "@/modules/media/application/testing/fakes";
+import { twoUploadsVersion } from "../domain/testing/versions";
 import { postContext } from "./post-context";
 import { savePage } from "./save-page";
 import { removeFile, uploadFile } from "./upload-file";
@@ -189,6 +191,48 @@ describe("uploadFile", () => {
     });
     expect(deps.media.staging.files.size).toBe(0);
     expect(deps.inProgress.rows.get(id)?.files["f_photos"]).toHaveLength(1);
+  });
+
+  it("counts toward the 100 MB only the files of upload fields the answers show", async () => {
+    const deps = makeSubmissionsDeps();
+    await seedPublished(deps.definitions, { slug: "media-form", document: twoUploadsVersion() });
+    const open = async (state: Parameters<typeof postContext>[1]["state"]) => {
+      const ctx = await postContext(deps, { slug: "media-form", state, submitToken: null });
+      if (!ctx.ok) throw new Error(ctx.outcome.kind);
+      return ctx;
+    };
+    const doc = (size: number) => ({ ...photo(fakeImage("image/jpeg", size)), fieldKey: "f_docs" });
+    const first = await uploadFile(deps, await open({ kind: "none" }), doc(MB));
+    if (!first.ok) throw new Error(first.code);
+    const id = first.recordId;
+    const r = deps.inProgress.rows.get(id);
+    if (!r) throw new Error("no record");
+    const hidden = {
+      id: "a",
+      stagingRef: `in-progress/${id}/a.jpg`,
+      kind: "image" as const,
+      contentType: "image/jpeg",
+      size: 98 * MB,
+    };
+    // Photos answered then hidden: their files stay staged until Submit discards them.
+    deps.inProgress.rows.set(id, {
+      ...r,
+      answers: { f_kind: "none_opt" },
+      files: { ...r.files, f_photos: [hidden] },
+    });
+    expect((await uploadFile(deps, await open({ kind: "record", id }), doc(2 * MB))).ok).toBe(true);
+    const saved = await savePage(
+      deps,
+      await open({ kind: "record", id }),
+      basePost({
+        pageKey: "page_media",
+        state: { kind: "record", id },
+        answers: { f_kind: "none_opt" },
+        incoming: [{ fieldKey: "f_docs", name: "c.jpg", bytes: fakeImage("image/jpeg", 2 * MB) }],
+      }),
+    );
+    expect(saved).toEqual({ kind: "show", recordId: id });
+    expect(deps.inProgress.rows.get(id)?.files["f_docs"]).toHaveLength(3);
   });
 
   it("answers expired and removes the file when the record vanished before the lock", async () => {

@@ -117,3 +117,52 @@ export function datedVersion(): Version {
   if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues));
   return parsed.version;
 }
+
+/** Two pages: media (photos, shown when f_kind = photos_opt, and documents, always shown), then a note. */
+export function twoUploadsVersion(): Version {
+  const upload = (key: string, label: LocalizedText, extra: object = {}) => ({
+    key,
+    type: "file_upload",
+    label,
+    settings: { kinds: ["image"], maxFiles: 3, maxSizeMb: 10 },
+    ...extra,
+  });
+  const parsed = parseDraft(
+    {
+      languages: "bilingual",
+      title: text("Media", "Medios"),
+      confirmation: { screen: text("Thank you.", "Gracias.") },
+      pages: [
+        {
+          key: "page_media",
+          title: text("Media", "Medios"),
+          fields: [
+            {
+              key: "f_kind",
+              type: "single_choice",
+              label: text("Photos?", "¿Fotos?"),
+              settings: {
+                options: [
+                  { key: "photos_opt", label: text("Yes", "Sí") },
+                  { key: "none_opt", label: text("No", "No") },
+                ],
+              },
+            },
+            upload("f_photos", text("Photos", "Fotos"), {
+              visibility: { field: "f_kind", op: "equals", value: "photos_opt" },
+            }),
+            upload("f_docs", text("Documents", "Documentos")),
+          ],
+        },
+        {
+          key: "page_note",
+          title: text("Note", "Nota"),
+          fields: [{ key: "f_note", type: "short_text", label: text("Note", "Nota") }],
+        },
+      ],
+    },
+    registry,
+  );
+  if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues));
+  return parsed.version;
+}

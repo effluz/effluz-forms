@@ -1,12 +1,13 @@
-import type {
-  Field,
-  FieldTypeRegistry,
-  UploadLimits,
-  ValidationIssue,
-  Version,
+import {
+  evaluateVisibility,
+  type Field,
+  type FieldTypeRegistry,
+  type UploadLimits,
+  type ValidationIssue,
+  type Version,
 } from "@/shared/domain/form-model";
 import type { Languages, Locale } from "@/shared/domain/localized-text";
-import type { StagedUpload } from "./in-progress";
+import { stagedBytes, withFileAnswers, type StagedUpload } from "./in-progress";
 
 /** The fields that take files, in document order, read from the type hook (ADR 0016). */
 export function uploadFields(
@@ -25,6 +26,23 @@ export function uploadFields(
 /** English unless the form is Spanish only: the field slug language of the media keys (`specs/system/media-storage.md`, "The `MediaStorage` port"). */
 export function firstLanguage(languages: Languages): Locale {
   return languages === "es" ? "es" : "en";
+}
+
+/**
+ * The staged bytes of the upload fields the answers show. A hidden field's
+ * files have no Remove on any page and are discarded at Submit, so they never
+ * count toward the per-submission size.
+ */
+export function visibleStagedBytes(
+  version: Version,
+  registry: FieldTypeRegistry,
+  answers: Readonly<Record<string, unknown>>,
+  files: Readonly<Record<string, readonly StagedUpload[]>>,
+): number {
+  const visible = evaluateVisibility(version, withFileAnswers(answers, files), registry).fields;
+  return stagedBytes(
+    Object.fromEntries(Object.entries(files).filter(([key]) => visible.get(key) === true)),
+  );
 }
 
 export interface PlannedFile {

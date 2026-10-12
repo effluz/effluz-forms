@@ -13,7 +13,7 @@ import {
   type RefusedFile,
   type StagedUpload,
 } from "../domain/in-progress";
-import { uploadFields } from "../domain/intake";
+import { uploadFields, visibleStagedBytes } from "../domain/intake";
 import { pageInputKeys } from "./answers";
 import type { SubmissionsDeps } from "./deps";
 import type { IncomingFile } from "./fill-state";
@@ -61,13 +61,15 @@ export async function stageIncoming(
     recordId: string;
     version: Version;
     pageKey: string;
+    /** The record's stored answers, which decide the fields counted toward the total. */
+    answers: Readonly<Record<string, unknown>>;
     existing: Readonly<Record<string, readonly StagedUpload[]>>;
     incoming: readonly IncomingFile[];
   },
 ): Promise<StagedBatch> {
   const batch: StagedBatch = { added: {}, refused: [], countIssues: [], refs: [], names: {} };
   const onPage = new Set(pageInputKeys(input.version, deps.registry, input.pageKey).uploads);
-  let total = stagedBytes(input.existing);
+  let total = visibleStagedBytes(input.version, deps.registry, input.answers, input.existing);
 
   for (const { field, limits } of uploadFields(input.version, deps.registry)) {
     if (!onPage.has(field.key)) continue;
@@ -139,7 +141,7 @@ export function mergeBatch(
   const overflow: string[] = [];
   const issues: ValidationIssue[] = [...batch.countIssues];
   const oversize: { fieldKey: string; stagingRef: string }[] = [];
-  let total = stagedBytes(files);
+  let total = visibleStagedBytes(version, registry, record.answers, files);
   for (const [fieldKey, added] of Object.entries(batch.added)) {
     const existing = files[fieldKey] ?? [];
     const max = limits.get(fieldKey)?.maxFiles ?? 0;

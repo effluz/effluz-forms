@@ -131,6 +131,7 @@ export async function submitForm(
     recordId,
     version: doc,
     pageKey: post.pageKey,
+    answers: existing?.answers ?? {},
     existing: existing?.files ?? {},
     incoming: post.incoming,
   });

@@ -5,11 +5,10 @@ import {
   isExpired,
   newInProgress,
   removeUpload,
-  stagedBytes,
   withFileAnswers,
   type InProgress,
 } from "../domain/in-progress";
-import { uploadFields } from "../domain/intake";
+import { uploadFields, visibleStagedBytes } from "../domain/intake";
 import { pickLocale } from "../domain/locale";
 import { firstPageKey } from "../domain/navigation";
 import { pageInputKeys } from "./answers";
@@ -72,7 +71,8 @@ export async function uploadFile(
   const held = existing?.files ?? {};
   if ((held[input.fieldKey]?.length ?? 0) >= limits.maxFiles)
     return refuse("files_max", limits.maxFiles);
-  if (stagedBytes(held) + input.bytes.length > SUBMISSION_BYTES)
+  const total = visibleStagedBytes(doc, deps.registry, existing?.answers ?? {}, held);
+  if (total + input.bytes.length > SUBMISSION_BYTES)
     return refuse("submission_too_large");
 
   const recordId = existing?.id ?? deps.ids.newId();
