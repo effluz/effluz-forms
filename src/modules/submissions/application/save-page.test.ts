@@ -512,6 +512,30 @@ describe("savePage", () => {
       expect(deps.media.staging.files.size).toBe(0);
     });
 
+    it("applies to a Remove as to Next, removing the record and its files", async () => {
+      const deps = makeSubmissionsDeps();
+      await publishStory(deps);
+      const id = await startOnPhotos(deps);
+      await savePage(
+        deps,
+        await context(deps, { kind: "record", id }),
+        post({
+          pageKey: "page_baby",
+          action: { kind: "language", locale: "es" },
+          incoming: [photo("a.jpg")],
+        }),
+      );
+      const fileId = deps.inProgress.rows.get(id)?.files["f_photos"]?.[0]?.id ?? "";
+      const out = await savePage(
+        deps,
+        await context(deps, { kind: "record", id }),
+        post({ pageKey: "page_baby", action: { kind: "remove", fileId }, honeypot: "x" }),
+      );
+      expect(out).toEqual({ kind: "decoy", reference: "ST-5500" });
+      expect(deps.inProgress.rows.size).toBe(0);
+      expect(deps.media.staging.files.size).toBe(0);
+    });
+
     it("applies to a language switch as to Next", async () => {
       const deps = makeSubmissionsDeps();
       await publishStory(deps);

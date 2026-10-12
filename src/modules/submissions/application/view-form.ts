@@ -68,6 +68,26 @@ export async function viewForm(
   }
 
   const resolved = await resolvePublicForm(deps.definitions, input.slug);
+  // A decoy shows its confirmation whatever the form's state, as a done cookie does, so a
+  // silent accept never reads differently from a real submission.
+  if (
+    state.kind === "decoy" &&
+    (resolved.state === "closed" || resolved.state === "not_open_yet")
+  ) {
+    const { form } = resolved;
+    const version =
+      form.currentVersionId === null
+        ? null
+        : await deps.versions.get(deps.definitions, form.currentVersionId);
+    if (version)
+      return {
+        screen: "confirmation",
+        form,
+        version,
+        locale: pickLocale(version.document.languages, input.acceptLanguage),
+        reference: state.reference,
+      };
+  }
   switch (resolved.state) {
     case "not_found":
       return { screen: "not_found" };

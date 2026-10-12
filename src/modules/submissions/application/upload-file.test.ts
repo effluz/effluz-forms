@@ -97,6 +97,24 @@ describe("uploadFile", () => {
     expect(deps.media.staging.files.size).toBe(0);
   });
 
+  it("re-checks the field on the locked record: a field another tab hid is refused", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishStory(deps);
+    const stale = await onPhotos(deps);
+    const id = stale.record?.id ?? "";
+    // Another tab went Back and answered no while this upload was being decoded.
+    const row = deps.inProgress.rows.get(id);
+    if (row)
+      deps.inProgress.rows.set(id, {
+        ...row,
+        pageKey: "page_contact",
+        answers: { ...row.answers, f_baby: "no_opt" },
+      });
+    expect(await uploadFile(deps, stale, photo())).toEqual({ ok: false, code: "not_allowed" });
+    expect(deps.media.staging.files.size).toBe(0);
+    expect(deps.inProgress.rows.get(id)?.files["f_photos"] ?? []).toEqual([]);
+  });
+
   it("refuses a lying, truncated or oversized file and stages nothing", async () => {
     const deps = makeSubmissionsDeps();
     await publishStory(deps);

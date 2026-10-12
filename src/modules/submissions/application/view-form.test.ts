@@ -224,6 +224,20 @@ describe("viewForm", () => {
     expect(decoy).toMatchObject({ screen: "confirmation", reference: "ST-4321", locale: "es" });
   });
 
+  it("shows a decoy's confirmation on a closed form, as a done cookie's is", async () => {
+    const deps = makeSubmissionsDeps();
+    const { formId } = await publishStory(deps);
+    const stored = deps.definitions.store.forms.get(formId);
+    if (stored) deps.definitions.store.forms.set(formId, { ...stored, status: "closed" });
+    const decoy = await viewForm(deps, {
+      slug: "story-form",
+      state: { kind: "decoy", reference: "ST-4321" },
+      acceptLanguage: "es",
+      expired: false,
+    });
+    expect(decoy).toMatchObject({ screen: "confirmation", reference: "ST-4321", locale: "es" });
+  });
+
   it("does not show another form's confirmation under this slug", async () => {
     const deps = makeSubmissionsDeps();
     const { versionId } = await publishStory(deps);

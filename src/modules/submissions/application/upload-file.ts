@@ -60,12 +60,16 @@ export async function uploadFile(
   const now = deps.clock.now();
 
   const pageKey = existing?.pageKey ?? firstPageKey(doc, deps.registry);
+  // A visible upload field of the record's current page; decided on the cookie's view, then
+  // again on the locked row, since another tab may have moved or hidden it meanwhile.
+  const allowedOn = (record: InProgress | null): boolean => {
+    const on = record?.pageKey ?? firstPageKey(doc, deps.registry);
+    if (!pageInputKeys(doc, deps.registry, on).uploads.includes(input.fieldKey)) return false;
+    const answers = withFileAnswers(record?.answers ?? {}, record?.files ?? {});
+    return evaluateVisibility(doc, answers, deps.registry).fields.get(input.fieldKey) === true;
+  };
   const target = uploadFields(doc, deps.registry).find((u) => u.field.key === input.fieldKey);
-  if (!target || !pageInputKeys(doc, deps.registry, pageKey).uploads.includes(input.fieldKey))
-    return refuse("not_allowed");
-  const answers = withFileAnswers(existing?.answers ?? {}, existing?.files ?? {});
-  if (evaluateVisibility(doc, answers, deps.registry).fields.get(input.fieldKey) !== true)
-    return refuse("not_allowed");
+  if (!target || !allowedOn(existing)) return refuse("not_allowed");
 
   const { limits } = target;
   const held = existing?.files ?? {};
@@ -98,6 +102,7 @@ export async function uploadFile(
       if (existing) {
         const locked = await deps.inProgress.findForUpdate(uow, existing.id);
         if (!locked || isExpired(locked, now)) return refuse("expired");
+        if (!allowedOn(locked)) return refuse("not_allowed");
         record = locked;
       } else {
         record = newInProgress({
