@@ -88,8 +88,11 @@ export class LocalDiskStorage implements StagingStorage {
         .filter((entry) => entry.isDirectory())
         .map((entry) => entry.name);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-      throw error;
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return [];
+      // Never the system error itself: its message carries the directory path, which under
+      // the staging root is a record id.
+      throw new Error(`could not list the staging prefixes (${code ?? "unknown"})`);
     }
     const listed: ListedPrefix[] = [];
     for (const name of names) {
@@ -98,7 +101,9 @@ export class LocalDiskStorage implements StagingStorage {
         listed.push({ prefix: `${base}${name}/`, modifiedAt: mtime });
       } catch (error) {
         // Removed between the listing and the stat: nothing left to report.
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") continue;
+        throw new Error(`could not stat a staging prefix (${code ?? "unknown"})`);
       }
     }
     return listed;

@@ -9,7 +9,8 @@ import { errorClass } from "./staging";
 const STAGING_ROOT = "in-progress/";
 /** Ids the asking for claims is split into, so one statement stays small. */
 const CHUNK = 500;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Lowercase only: ids come from the database and randomUUID, and claimedStaging answers lowercase.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
  * The staging sweep of `jobs.cleanup` (specs/system/jobs.md, "Recurring
