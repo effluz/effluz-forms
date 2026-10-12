@@ -5,14 +5,45 @@ import path from "node:path";
 
 const READY_TIMEOUT_MS = 60_000;
 const POLL_INTERVAL_MS = 250;
+/** How long one readiness probe may take before the next poll. */
+const PROBE_TIMEOUT_MS = 5_000;
+/** How long `stop()` waits after SIGTERM before it sends SIGKILL. */
+const STOP_GRACE_MS = 10_000;
+
+/** The URL of the app `startApp` starts on `port`. */
+export function appBaseUrl(port: number): string {
+  return `http://127.0.0.1:${String(port)}`;
+}
+
+/** The HTTP end-to-end run's port (tests/e2e) and the browser run's (tests/browser, ADR 0024). */
+export const E2E_PORT = 3199;
+export const BROWSER_E2E_PORT = 3299;
+export const E2E_BASE_URL = appBaseUrl(E2E_PORT);
+export const BROWSER_E2E_BASE_URL = appBaseUrl(BROWSER_E2E_PORT);
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** True when `settled` settles within `ms`; the timer never outlives the wait. */
+export async function settlesWithin(settled: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<false>((resolve) => {
+    timer = setTimeout(() => {
+      resolve(false);
+    }, ms);
+  });
+  try {
+    return await Promise.race([settled.then(() => true), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Starts the built app (`pnpm build` first) with `next start` on 127.0.0.1,
  * against `databaseUrl`, with local media under a fresh temporary root and
  * Mailpit as the email provider. Resolves once the renderer answers; `stop()`
- * ends the process and removes the root. Synthetic configuration only.
+ * ends the process (SIGTERM, then SIGKILL after a grace period) and removes
+ * the root. Synthetic configuration only.
  * See specs/system/ci-cd.md, "As built".
  */
 export async function startApp(input: {
@@ -21,7 +52,7 @@ export async function startApp(input: {
 }): Promise<{ baseUrl: string; stagingDir: string; stop(): Promise<void> }> {
   const root = await mkdtemp(path.join(tmpdir(), "effluz-e2e-"));
   const stagingDir = path.join(root, "staging");
-  const baseUrl = `http://127.0.0.1:${String(input.port)}`;
+  const baseUrl = appBaseUrl(input.port);
   const child = spawn(
     process.execPath,
     ["node_modules/next/dist/bin/next", "start", "-p", String(input.port), "-H", "127.0.0.1"],
@@ -53,11 +84,21 @@ export async function startApp(input: {
   });
   const running = (): boolean => child.exitCode === null && child.signalCode === null;
 
+  // A test process that exits on its own (process.exit, an uncaught error) takes the app with it.
+  const killOnExit = (): void => {
+    if (running()) child.kill("SIGKILL");
+  };
+  process.once("exit", killOnExit);
+
   const stop = async (): Promise<void> => {
     if (running()) {
       child.kill("SIGTERM");
-      await exited;
+      if (!(await settlesWithin(exited, STOP_GRACE_MS))) {
+        child.kill("SIGKILL");
+        await exited;
+      }
     }
+    process.removeListener("exit", killOnExit);
     await rm(root, { recursive: true, force: true });
   };
 
@@ -68,11 +109,14 @@ export async function startApp(input: {
       throw new Error("next start exited before it answered");
     }
     try {
-      const response = await fetch(`${baseUrl}/f/e2e-probe`, { redirect: "manual" });
+      const response = await fetch(`${baseUrl}/f/e2e-probe`, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      });
       await response.arrayBuffer();
       break;
     } catch {
-      // Not listening yet.
+      // Not listening yet, or the probe timed out.
     }
     if (Date.now() > deadline) {
       await stop();
