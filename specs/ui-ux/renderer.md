@@ -92,6 +92,26 @@ A generic failure page for unexpected server errors, HTTP 500, with the
 copy below and a "Try again" link that returns to the current page. Answers
 on previous pages are preserved because they were already stored.
 
+As built:
+
+- A page render whose view cannot be loaded (the database is down, the
+  configuration is invalid) answers 200 with the error screen and
+  `noindex`, logged once as `form render failed` with the slug and the
+  error class. A missing form answers 200 with the not-found screen and
+  `noindex`. Both are rendered by the page instead of thrown, because under
+  the renderer's root layout, whose `slug` is a root parameter, Next 16.4
+  answers anything thrown while rendering with an empty document and the
+  screen only in the script payload, so a visitor without script would see
+  a blank page.
+- A page post that fails unexpectedly, with or without script, is logged as
+  `form post failed` with the slug and the error class and redirects (303)
+  to `GET /f/<slug>?error=1`, which renders the error screen. The cookies
+  are left as they were, so "Try again" returns to the same page.
+- Accepted limit: a page post whose body is above 101 MB (several large
+  files chosen without script) is refused by Next before the action runs,
+  so the visitor gets the error screen instead of `submission too large`
+  or `too many files`. With script, early uploads are refused one by one.
+
 ## Field rendering
 
 Every field renders as: label (`<label for>`), optional help text linked by
@@ -394,8 +414,8 @@ Plain-text and HTML versions carry the same words. No images, no tracking.
 
 | Route | What it is |
 |---|---|
-| `GET /f/<slug>` | The current screen: a form page, the confirmation, or a closed, not open, not found or expired screen (`?expired=1` asks for the expired screen; `?refused=<at>` shows the refused files of the post that redirected there) |
-| `POST /f/<slug>` | The page form, posted to a Server Action: Next, Back, Submit, a language switch or a Remove. Every post redirects (303): a refused one to `GET /f/<slug>?refused=<at>`, the others to `GET /f/<slug>` |
+| `GET /f/<slug>` | The current screen: a form page, the confirmation, or a closed, not open, not found or expired screen (`?expired=1` asks for the expired screen; `?refused=<at>` shows the refused files of the post that redirected there; `?error=1` shows the error screen) |
+| `POST /f/<slug>` | The page form, posted to a Server Action: Next, Back, Submit, a language switch or a Remove. Every post redirects (303): a refused one to `GET /f/<slug>?refused=<at>`, one that failed unexpectedly to `GET /f/<slug>?error=1`, the others to `GET /f/<slug>` |
 | `POST /f/<slug>/files` | Early upload of one file with script; JSON. 403 from another origin |
 | `DELETE /f/<slug>/files/<file id>` | Removes a staged file with script; 204. 403 from another origin |
 | `POST /f/<slug>/check` | Checks one field on blur; JSON with the message or null. 403 from another origin |

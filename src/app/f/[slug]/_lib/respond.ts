@@ -68,6 +68,11 @@ export function outcomeLocation(
   return outcome.kind === "expired" ? `${formPath(slug)}?expired=1` : formPath(slug);
 }
 
+/** The error screen, where a page post that failed unexpectedly lands. */
+export function errorLocation(slug: string): string {
+  return `${formPath(slug)}?error=1`;
+}
+
 /** The page showing the refused post tagged `at`. */
 export function refusedLocation(slug: string, at: number): string {
   return `${formPath(slug)}?refused=${String(at)}`;

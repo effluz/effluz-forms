@@ -16,9 +16,9 @@ export function generateStaticParams(): { slug: string }[] {
 }
 
 /**
- * The view's language. When the view cannot be loaded the page fails the same way and its error
- * boundary shows the error screen, which leads in Spanish; a root layout that threw would leave
- * no boundary to show it.
+ * The view's language. When the view cannot be loaded the page fails the same way, logs it and
+ * shows the error screen, which leads in Spanish; a root layout that threw would leave no page
+ * to show it.
  */
 async function documentLocale(slug: string): Promise<Locale> {
   try {

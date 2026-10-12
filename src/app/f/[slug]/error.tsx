@@ -18,9 +18,10 @@ function Both(props: { text: Text }) {
 }
 
 /**
- * The renderer's error screen for an unexpected failure of a page render or a page post:
- * nothing is known about the form, so both languages, and a Try again link back to the page.
- * See specs/ui-ux/renderer.md, "Error".
+ * The renderer's error boundary, for a failure the page does not catch itself (it renders
+ * `ErrorScreen` for a view it cannot load and for `?error=1`): nothing is known about the form,
+ * so both languages, and a Try again link back to the page. See specs/ui-ux/renderer.md,
+ * "Error".
  */
 export default function RendererError() {
   const pathname = usePathname();

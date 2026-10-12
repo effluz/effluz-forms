@@ -7,6 +7,7 @@ interface Jarred {
 }
 
 const request = vi.hoisted(() => ({ jar: new Map<string, Jarred>() }));
+const standAlone = vi.hoisted(() => ({ error: vi.fn() }));
 
 vi.mock("next/headers", () => ({
   cookies: () =>
@@ -26,6 +27,11 @@ vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
     throw new Error(`REDIRECT ${url}`);
   },
+}));
+// The logger used when no container can be built.
+vi.mock("@/shared/infrastructure/logging/logger", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/infrastructure/logging/logger")>()),
+  createLogger: () => ({ error: standAlone.error }),
 }));
 vi.mock("@/app/container", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/app/container")>()),
@@ -55,6 +61,24 @@ const config = loadConfig({
   GOOGLE_ALLOWED_HOSTED_DOMAIN: "effluz.com",
 });
 
+/** The same app with the production configuration: Secure cookies, https only. */
+const production = loadConfig({
+  NODE_ENV: "production",
+  PUBLIC_BASE_URL: "https://forms.example.com",
+  DATABASE_URL: "postgres://user:pw@localhost:5432/none",
+  STAGING_DIR: "./data/staging",
+  PRIVACY_CONTACT_EMAIL: "privacy@example.com",
+  GOOGLE_CLIENT_ID: "id",
+  GOOGLE_CLIENT_SECRET: "secret",
+  GOOGLE_ALLOWED_HOSTED_DOMAIN: "effluz.com",
+  MEDIA_PROVIDER: "dropbox",
+  DROPBOX_APP_KEY: "k",
+  DROPBOX_APP_SECRET: "s",
+  DROPBOX_REFRESH_TOKEN: "r",
+  EMAIL_PROVIDER: "smtp2go",
+  SMTP2GO_API_KEY: "api",
+});
+
 const OPTIONS = {
   path: "/f/story-form",
   httpOnly: true,
@@ -66,18 +90,25 @@ const OPTIONS = {
 let deps: FakeSubmissionsDeps;
 const jar = request.jar;
 
-beforeEach(async () => {
-  jar.clear();
-  deps = makeSubmissionsDeps();
-  await publishStory(deps);
+function useConfig(chosen: typeof config): void {
+  vi.mocked(getContainer).mockReset();
   vi.mocked(getContainer).mockReturnValue(
-    buildContainer(config, {
+    buildContainer(chosen, {
       pool: {} as unknown as Pool,
+      logger: deps.logger,
       submissions: deps,
       definitions: deps.definitions,
       media: deps.media,
     }),
   );
+}
+
+beforeEach(async () => {
+  jar.clear();
+  standAlone.error.mockReset();
+  deps = makeSubmissionsDeps();
+  await publishStory(deps);
+  useConfig(config);
 });
 
 function form(fields: Record<string, string | File>): FormData {
@@ -194,5 +225,61 @@ describe("postPage", () => {
       ),
     ).rejects.toThrow(/^REDIRECT \/f\/story-form$/);
     expect(deps.inProgress.rows.size).toBe(0);
+  });
+
+  it("sets Secure and the form's path on both renderer cookies in production", async () => {
+    useConfig(production);
+    await postPage(
+      "story-form",
+      form({ _page: "page_contact", _action: "next", f_name: "Ana Prueba", f_baby: "yes_opt" }),
+    ).catch(() => undefined);
+    expect(jar.get("effluz_fill")?.options).toEqual({ ...OPTIONS, secure: true });
+    await postPage(
+      "story-form",
+      form({ _page: "page_baby", _action: "next", f_photos: new File(["hello"], "notes.txt") }),
+    ).catch(() => undefined);
+    expect(jar.get("effluz_fill_state")?.options).toEqual({
+      ...OPTIONS,
+      secure: true,
+      maxAge: 600,
+    });
+  });
+
+  it("logs an unexpected failure once and redirects to the error screen, keeping progress", async () => {
+    await postPage(
+      "story-form",
+      form({ _page: "page_contact", _action: "next", f_name: "Ana Prueba", f_baby: "yes_opt" }),
+    ).catch(() => undefined);
+    const held = jar.get("effluz_fill");
+    vi.spyOn(deps.inProgress, "find").mockRejectedValueOnce(new TypeError("connection lost"));
+    await expect(
+      postPage("story-form", form({ _page: "page_baby", _action: "back" })),
+    ).rejects.toThrow(/^REDIRECT \/f\/story-form\?error=1$/);
+    expect(jar.get("effluz_fill")).toEqual(held);
+    const failures = deps.logger.lines.filter((line) => line.msg === "form post failed");
+    expect(failures).toEqual([
+      expect.objectContaining({
+        level: "error",
+        fields: { slug: "story-form", error: "TypeError" },
+      }),
+    ]);
+    expect(JSON.stringify(deps.logger.lines)).not.toContain(held?.value ?? "none");
+  });
+
+  it("redirects to the error screen when the container cannot be built, logging stand-alone", async () => {
+    vi.mocked(getContainer).mockImplementation(() => {
+      throw new Error("Invalid configuration: DATABASE_URL");
+    });
+    await expect(
+      postPage(
+        "story-form",
+        form({ _page: "page_contact", _action: "next", f_name: "Ana Prueba", f_baby: "no_opt" }),
+      ),
+    ).rejects.toThrow(/^REDIRECT \/f\/story-form\?error=1$/);
+    expect(standAlone.error).toHaveBeenCalledWith("form post failed", {
+      slug: "story-form",
+      error: "Error",
+    });
+    expect(jar.size).toBe(0);
   });
 });
