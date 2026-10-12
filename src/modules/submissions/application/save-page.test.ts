@@ -396,6 +396,29 @@ describe("savePage", () => {
     expect(JSON.stringify(deps.inProgress.rows.get(id))).not.toContain("notes.txt");
   });
 
+  it("stays on the page and answers refused when Back brings a file that is not taken", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishStory(deps);
+    const id = await startOnPhotos(deps);
+    const out = await savePage(
+      deps,
+      await context(deps, { kind: "record", id }),
+      post({
+        pageKey: "page_baby",
+        action: { kind: "back" },
+        incoming: [{ fieldKey: "f_photos", name: "x.txt", bytes: new TextEncoder().encode("hi") }],
+      }),
+    );
+    expect(out).toEqual({
+      kind: "refused",
+      recordId: id,
+      locale: "es",
+      page: 2,
+      refusedFiles: [{ fieldKey: "f_photos", code: "file_wrong_type", name: "x.txt" }],
+    });
+    expect(deps.inProgress.rows.get(id)?.pageKey).toBe("page_baby");
+  });
+
   it("answers refused on a language switch only when a file was refused", async () => {
     const deps = makeSubmissionsDeps();
     await publishStory(deps);

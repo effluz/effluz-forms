@@ -149,6 +149,12 @@ export async function savePage(
           break;
         }
         case "back": {
+          // A file Back brought that was not taken is reported on this page, as on Next.
+          if (refusedFiles.length > 0) {
+            record = holdsPage({ pageKey: post.pageKey, raw, issues: merged.issues });
+            outcome = refusedOutcome(record);
+            break;
+          }
           const to = previousPageKey(doc, answersNow(), deps.registry, post.pageKey);
           record = { ...record, pageKey: to ?? post.pageKey, pending: null };
           outcome = { kind: "show", recordId: record.id };
