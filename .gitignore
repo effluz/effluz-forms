@@ -55,3 +55,6 @@ src/modules/probe-*/
 
 # subagent-driven-development scratch workspace
 .superpowers/
+
+# operator notes that must never be public: account identities, contacts, runbook secrets
+/private/

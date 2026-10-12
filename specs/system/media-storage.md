@@ -55,9 +55,9 @@ in tests. `MEDIA_PROVIDER=local` (the default outside production) also uses
 local disk as the durable tier, rooted at `MEDIA_DURABLE_DIR` (default
 `./data/durable`); production refuses it.
 
-**Dropbox (durable).** An app registered under the Dropbox account
-`tluzcando@gmail.com` using an App folder, so the token can reach nothing
-else in that account. Uses the refresh-token
+**Dropbox (durable).** An app registered under the Effluz Dropbox account
+(its identity is recorded in `private/`, outside version control) using an App
+folder, so the token can reach nothing else in that account. Uses the refresh-token
 flow; the refresh token is an environment variable, access tokens are renewed
 in memory. `viewUrl` wraps the temporary-link API and the result is cached in
 process for slightly less than its validity window so the admin page does not

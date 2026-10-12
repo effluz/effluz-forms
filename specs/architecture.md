@@ -258,7 +258,7 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 | Account | Identity | Used for |
 |---|---|---|
 | Google Workspace | `effluz.com` | Admin sign-in; OAuth client lives in a Google Cloud project owned by this Workspace |
-| Dropbox | Personal account `tluzcando@gmail.com` | App folder for durable media and encrypted backups |
+| Dropbox | The Effluz Dropbox account (identity in `private/`, outside version control) | App folder for durable media and encrypted backups |
 | SMTP2GO | Effluz account, sender domain `forms.effluz.com` | Transactional email |
 | InterServer | Effluz account | The VPS, United States region |
 | DeepL | Effluz account, API key | Translation suggestions in the builder; DeepL Write corrections in the manager |

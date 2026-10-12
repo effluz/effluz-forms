@@ -15,8 +15,9 @@ through the job system, so a local staging tier exists regardless.
 Define a `MediaStorage` port with two adapters: local disk for staging and
 Dropbox for the durable copy. The admin page shows photos from staging while
 present, otherwise through Dropbox temporary links. Dropbox access is scoped
-to an App folder with a refresh token. The account is the personal Dropbox
-account `tluzcando@gmail.com`, not a Business team.
+to an App folder with a refresh token. The account is a personal Dropbox
+account, not a Business team; its identity is recorded in `private/`, which
+is kept out of version control.
 
 ## Consequences
 
