@@ -6,6 +6,7 @@ import { parseRichText, richTextToPlain } from "@/shared/domain/rich-text";
 import { RichBlocks } from "@/shared/presentation/RichText";
 import type { ViewResult } from "../application";
 import { ClearDrafts } from "./client/ClearDrafts";
+import { FocusTitle } from "./client/FocusTitle";
 import { t, type ChromeKey } from "./copy";
 import { FormPage } from "./FormPage";
 import { formatInstant } from "./format";
@@ -41,6 +42,8 @@ function Message(props: {
   body: ChromeKey;
   vars?: (locale: Locale) => Record<string, string>;
   action?: { href: string; label: ChromeKey };
+  /** Client pieces with no markup of their own (ClearDrafts). */
+  children?: ReactNode;
 }): ReactElement {
   const { form } = props;
   const locale: Locale = form.languages === "en" ? "en" : "es";
@@ -75,6 +78,7 @@ function Message(props: {
           </a>
         </p>
       ) : null}
+      {props.children}
     </PublicShell>
   );
 }
@@ -121,6 +125,7 @@ function Confirmation(props: {
       </p>
       <p>{t(locale, "confirmation_close")}</p>
       <ClearDrafts slug={props.slug} />
+      <FocusTitle />
       {form.settings.allowAnotherResponse ? (
         <p>
           <a href={`/f/${props.slug}/restart`} className={styles.secondaryLink}>
@@ -182,7 +187,9 @@ export function RendererScreen(props: {
           title="expired_title"
           body="expired_body"
           action={{ href: `/f/${slug}/restart`, label: "start_again" }}
-        />
+        >
+          <ClearDrafts slug={slug} />
+        </Message>
       );
   }
 }

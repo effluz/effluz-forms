@@ -284,6 +284,16 @@ export function focusSubmitterAfterFailure<T extends SubmitterLike & Focusable>(
   return target;
 }
 
+/**
+ * Focuses the screen's `<h1 id="page-title">` (it has `tabIndex={-1}`), so focus never falls to
+ * the body when a scripted post lands on a screen without the form.
+ */
+export function focusTitle(
+  find: (id: string) => { focus: () => void } | null = (id) => document.getElementById(id),
+): void {
+  find("page-title")?.focus();
+}
+
 export function loadDraft(slug: string, pageKey: string): Draft | null {
   const stored = readStored(draftKey(slug, pageKey));
   if (stored === null) return null;

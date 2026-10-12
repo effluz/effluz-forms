@@ -261,7 +261,8 @@ for `{n}` (or `{count}`), the `… one` row is used, otherwise the plain row. In
   lost; with script, they are also kept in session storage and restored into
   what the server rendered empty: empty text controls, and radio, checkbox and
   select groups with nothing chosen.
-  The confirmation screen clears the form's drafts from session storage.
+  The confirmation and session-expired screens clear the form's drafts from
+  session storage, so an expired fill never reaches a new one.
 - Changing an earlier answer that controls visibility re-evaluates on Next.
   If a later page the submitter already filled becomes hidden, nothing is
   shown about it; its answers are discarded at submit.
@@ -292,7 +293,7 @@ for `{n}` (or `{count}`), the `… one` row is used, otherwise the plain row. In
 - Skip link "Skip to form" as the first focusable element.
 - Focus order follows reading order. After Next, focus lands on the new
   page's `<h1>`; after an error, on the error summary; after Back, on the
-  `<h1>`.
+  `<h1>`; after Submit, on the confirmation's `<h1>`.
 - Every status change is announced: upload progress milestones, uploaded,
   removed, page changed, submitting, offline. Progress uses `aria-live=
   "polite"`, errors `assertive`. Live regions (the offline banner, the status
