@@ -277,6 +277,8 @@ for `{n}` (or `{count}`), the `… one` row is used, otherwise the plain row. In
 
 - Back is always safe: it stores the current page's valid answers without
   validating required fields, so a submitter can go back to fix something.
+  Back with a refused file (one posted with it and not staged) stays on the
+  page and names the file, as a refused Next does.
 - Answers persist across Back and Next and across a browser refresh, because
   every Next stores server-side. Only the current page's unsent edits can be
   lost; with script, they are also kept in session storage and restored into
