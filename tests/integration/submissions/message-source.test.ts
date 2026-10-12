@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { updateSettings } from "@/modules/definitions/application";
 import { VersionCache } from "@/modules/submissions/application";
 import { registry, storyVersion } from "@/modules/submissions/domain/testing/versions";
@@ -11,11 +14,21 @@ import { pgSubmissionsDeps } from "./wiring";
 
 describe("SubmissionMessageSource", () => {
   const pool = testPool();
-  beforeEach(() => truncateAll(pool));
+  let dir: string;
+  // Building messages never touches media: the storage directory stays empty.
+  const dirs = () => ({ staging: path.join(dir, "staging"), durable: path.join(dir, "durable") });
+  beforeEach(async () => {
+    await truncateAll(pool);
+    dir = await mkdtemp(path.join(os.tmpdir(), "effluz-messages-"));
+  });
+  afterEach(async () => {
+    expect(await readdir(dir)).toEqual([]);
+    await rm(dir, { recursive: true, force: true });
+  });
 
   it("builds both messages from the stored submission at run time", async () => {
     const { formId, versionId } = await seedPublishedForm(pool);
-    const deps = pgSubmissionsDeps(pool, { staging: "/tmp/unused", durable: "/tmp/unused" });
+    const deps = pgSubmissionsDeps(pool, dirs());
     const form = await deps.definitions.forms.findById(formId);
     if (!form) throw new Error("no form");
     const updated = await updateSettings(
@@ -81,7 +94,7 @@ describe("SubmissionMessageSource", () => {
 
   it("returns null when there is nothing to send", async () => {
     const repo = new PgSubmissionRepository(pool);
-    const deps = pgSubmissionsDeps(pool, { staging: "/tmp/unused", durable: "/tmp/unused" });
+    const deps = pgSubmissionsDeps(pool, dirs());
     const source = new SubmissionMessageSource({
       submissions: repo,
       definitions: deps.definitions,

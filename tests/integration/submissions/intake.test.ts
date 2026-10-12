@@ -30,7 +30,7 @@ import {
   syntheticJpegWithGps,
   syntheticPng,
 } from "../../fakes/media-files";
-import { testPool, truncateAll, waitForLockWaiters } from "../db";
+import { testPool, truncateAll } from "../db";
 import { seedPublishedForm as seedForm } from "./factories";
 import { pgSubmissionsDeps } from "./wiring";
 
@@ -157,16 +157,20 @@ describe("the intake against Postgres", () => {
     return id;
   }
 
+  /** A Submit with the record's token, read now unless `token` is given. */
   async function submit(
     deps: SubmissionsDeps,
     id: string,
     over: Partial<PagePost> = {},
+    token: string | null = null,
   ): Promise<PostOutcome> {
-    const { rows } = await pool.query<{ t: string }>(
-      "select submit_token as t from submission_in_progress where id = $1",
-      [id],
-    );
-    const token = rows[0]?.t ?? null;
+    if (token === null) {
+      const { rows } = await pool.query<{ t: string }>(
+        "select submit_token as t from submission_in_progress where id = $1",
+        [id],
+      );
+      token = rows[0]?.t ?? null;
+    }
     const ctx = await postContext(deps, {
       slug,
       state: { kind: "record", id },
@@ -185,6 +189,21 @@ describe("the intake against Postgres", () => {
         ...over,
       }),
     );
+  }
+
+  /** Resolves once a session of this database waits on a lock `pid` holds; rejects after 5 s. */
+  async function waitForBlockedBy(pid: number): Promise<void> {
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const { rows } = await pool.query<{ n: number }>(
+        `select count(*)::int as n from pg_stat_activity
+          where datname = current_database() and $1 = any(pg_blocking_pids(pid))`,
+        [pid],
+      );
+      if ((rows[0]?.n ?? 0) > 0) return;
+      if (Date.now() > deadline) throw new Error("no session waits on the closer's lock");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
   }
 
   async function formRow() {
@@ -275,9 +294,11 @@ describe("the intake against Postgres", () => {
     try {
       await closer.query("begin");
       await closer.query("select id from form where id = $1 for update", [formId]);
+      const closerPid = (await closer.query<{ pid: number }>("select pg_backend_pid() as pid"))
+        .rows[0]?.pid;
       const pending = submit(deps, id);
       // The intake passed every read and waits on the form row inside allocateReference.
-      await waitForLockWaiters(pool);
+      await waitForBlockedBy(closerPid ?? -1);
       await closer.query("update form set status = 'closed' where id = $1", [formId]);
       await closer.query("commit");
       expect(await pending).toEqual({ kind: "gate", state: "closed" });
@@ -295,7 +316,9 @@ describe("the intake against Postgres", () => {
     const deps = pgSubmissionsDeps(pool, dirs());
     const id = await reachConsent(deps);
     const before = await formRow();
-    const [a, b] = await Promise.all([submit(deps, id), submit(deps, id)]);
+    // Read once: a second read could run after the first Submit deleted the row.
+    const token = await tokenOf(id);
+    const [a, b] = await Promise.all([submit(deps, id, {}, token), submit(deps, id, {}, token)]);
     expect(a).toEqual(b);
     expect(a.kind).toBe("submitted");
     expect(await count("submission")).toBe(1);
