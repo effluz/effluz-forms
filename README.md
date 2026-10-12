@@ -8,6 +8,7 @@ publish forms; the public fills them in; staff review the results.
 - Design: `specs/design.md`, `design-system/`
 - Decisions: `specs/decisions/`
 - Staff manager: after sign-in, the forms live at `/admin/forms`
+- Public forms live at `/f/<slug>`
 
 ## Develop
 
@@ -18,11 +19,14 @@ publish forms; the public fills them in; staff review the results.
     pnpm dev            # app on :3000
     pnpm worker         # in a second terminal
     pnpm test && pnpm test:integration
+    pnpm build && pnpm test:e2e    # HTTP end-to-end on :3199
+    pnpm test:e2e:browser          # Chromium on :3299, after pnpm build and
+                                   # once: pnpm exec playwright install chromium
 
-`pnpm dev` reads `.env`; the `tsx` scripts (`db:migrate`, `worker`,
-`sessions:revoke`) do not. Before running them, export the variables in the
-same shell (`set -a; . ./.env; set +a`), or run the script as
-`pnpm exec tsx --env-file=.env <file>`.
+`pnpm dev`, `pnpm build` and `pnpm start` read `.env`; the `tsx` scripts
+(`db:migrate`, `worker`, `sessions:revoke`) do not. Before running them,
+export the variables in the same shell (`set -a; . ./.env; set +a`), or run
+the script as `pnpm exec tsx --env-file=.env <file>`.
 
 Before a PR: `pnpm lint && pnpm typecheck && pnpm format:check`. See
 `specs/system/deployment.md`, "Local development".

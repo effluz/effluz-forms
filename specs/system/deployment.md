@@ -47,6 +47,40 @@ handlers (`jobs.md`, "Worker behavior"). Its `stop_grace_period` must be longer
 than the job timeout, which is the lease minus 15 seconds (75 seconds by
 default).
 
+### Server environment
+
+The server's `.env` must set `NODE_ENV=production`, and both `app` and
+`worker` must receive it. The variable has no default and start-up fails
+without it: `next start` sets it only when it is unset, and `tsx`, which runs
+the worker, sets nothing. A copied `NODE_ENV=development` would drop `Secure`
+from every cookie and accept the local adapters. In production the
+configuration refuses `MEDIA_PROVIDER=local`, `EMAIL_PROVIDER=mailpit`, and a
+`PUBLIC_BASE_URL`, `GOOGLE_ISSUER`, `SMTP2GO_API_URL`, `DROPBOX_API_URL` or
+`DROPBOX_CONTENT_URL` that is not `https`.
+
+### Reverse proxy
+
+Caddy terminates TLS and applies the request body limits in front of the app,
+which itself accepts up to 101 MB on every path (Next's proxy body limit is
+global):
+
+| Path | Body limit |
+|---|---|
+| `/f/<slug>` (the page post) | At least 101 MB plus multipart overhead: 102 MB |
+| `/f/<slug>/files` (one early upload) | At least 10 MB + 64 KB: 11 MB |
+| Everything else, `/admin` included | 1 MB |
+
+Headers:
+
+- Caddy adds no Content-Security-Policy on `/f/*`. The app's proxy sets a
+  policy with a per-request nonce there (`security.md`, "Transport and
+  headers"); a second policy without the nonce would block Next's bootstrap.
+- On `/admin/*` Caddy adds `Referrer-Policy: no-referrer` and
+  `Content-Security-Policy: frame-ancestors 'none'`, because the app sets
+  neither on admin pages.
+- Caddy sets `X-Forwarded-For` itself and never passes a client-supplied one
+  through (`security.md`, "Audit log").
+
 ## Release procedure
 
 Triggered by the CI/CD workflow on every push to `main` that passes CI
@@ -65,6 +99,11 @@ Triggered by the CI/CD workflow on every push to `main` that passes CI
    is attempted.
 
 Deploys are serialized by a GitHub Actions concurrency group.
+
+Server Action ids change with every build. A visitor without script whose
+page was rendered before a deploy posts to an id the new build does not know,
+and sees the error screen once; their progress is on the in-progress record,
+so "Try again" returns them to the page they were on.
 
 ## Health endpoint
 
@@ -123,10 +162,18 @@ credentials.
 | `pnpm sessions:revoke <address>` | Revoke someone's admin sessions |
 | `pnpm test` | Unit tests |
 | `pnpm test:integration` | Integration tests against a throwaway database |
+| `pnpm test:e2e` | HTTP end-to-end tests against the built app on port 3199; run `pnpm build` first |
+| `pnpm test:e2e:browser` | Browser end-to-end tests in Chromium against the built app on port 3299; run `pnpm build` first, and once `pnpm exec playwright install chromium` |
+| `pnpm lint` | ESLint, including the layer and module boundaries |
+| `pnpm typecheck` | TypeScript, no emit |
+| `pnpm format:check` | Prettier check (`pnpm format` fixes) |
+| `pnpm build` | Production build of the Next.js app |
 
-Only `pnpm dev` (Next) reads `.env`. `db:migrate`, `worker` and
-`sessions:revoke` run through `tsx`, which does not, so export the variables in
-the shell or run `pnpm exec tsx --env-file=.env <file>`.
+The Next commands (`pnpm dev`, `pnpm build`, `pnpm start`) read `.env`.
+`db:migrate`, `worker` and `sessions:revoke` run through `tsx`, which does
+not, so export the variables in the shell or run
+`pnpm exec tsx --env-file=.env <file>`. Every entry point needs `NODE_ENV`;
+`.env.example` sets `development`.
 
 ### What the image must contain
 
