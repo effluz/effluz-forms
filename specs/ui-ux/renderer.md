@@ -76,11 +76,13 @@ Use case: `use-cases/fill-and-submit-form.md`. Model: `form-definition.md`.
 ### Closed, not yet open, not found
 
 Each is one heading, one sentence, the privacy footer (not found excepted),
-no form content. Copy
-below. Not found returns HTTP 404; closed and not yet open return 200 with
-`noindex`. These screens and Session expired show both languages, the page
-language first, since no language has been chosen. Not found has no privacy
-footer: without a form there is no retention period to state.
+no form content. Copy below. All three return 200 with `noindex`: a missing
+form is answered as a screen the page renders, not as a 404, for the reason
+given under "Error". A path outside the three surfaces gets the same screen
+from `src/app/global-not-found.tsx` with 404. These screens and Session
+expired show both languages, the page language first, since no language has
+been chosen. Not found has no privacy footer: without a form there is no
+retention period to state.
 
 ### Session expired
 
