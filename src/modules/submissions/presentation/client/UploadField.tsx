@@ -19,6 +19,7 @@ import { styles } from "../styles";
 import { keepRows, keptRows } from "./bus";
 import { fill } from "./form-dom";
 import { RefusedFilesContext } from "./refused-files";
+import { RenderedAtContext } from "./rendered-at";
 import { middleEllipsis, precheckFile, queueReducer, type Row } from "./upload-queue";
 import { removeFile, sendUpload, type UploadHandle } from "./upload-request";
 import { createRowActions, reannouncing, rowButtons } from "./upload-rows";
@@ -110,6 +111,7 @@ function FilmIcon(): ReactElement {
  */
 export function UploadField(props: UploadFieldProps): ReactElement {
   const refused = useContext(RefusedFilesContext).filter((r) => r.fieldKey === props.fieldKey);
+  const renderedAt = useContext(RenderedAtContext);
   const messages =
     refused.length > 0 ? refused.map((r) => r.message) : props.error ? [props.error] : [];
   const showsError = messages.length > 0;
@@ -153,7 +155,7 @@ export function UploadField(props: UploadFieldProps): ReactElement {
   function upload(localId: string, file: File, name: string): void {
     let milestone = 0;
     const handle = sendUpload(
-      { slug: props.slug, fieldKey: props.fieldKey, locale, file },
+      { slug: props.slug, fieldKey: props.fieldKey, renderedAt, locale, file },
       {
         progress: (percent) => {
           dispatch({ type: "progress", localId, percent });

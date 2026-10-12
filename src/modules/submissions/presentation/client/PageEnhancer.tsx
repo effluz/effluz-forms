@@ -50,6 +50,7 @@ import {
   waitsForUploads,
 } from "./page-state";
 import { RefusedFilesContext } from "./refused-files";
+import { RenderedAtContext } from "./rendered-at";
 import { SubmitStateContext } from "./submit-state";
 
 export interface PageEnhancerProps {
@@ -452,7 +453,9 @@ export function PageEnhancer(props: PageEnhancerProps): ReactElement {
           <Fragment key={props.renderId}>
             <SubmitStateContext.Provider value={submitState}>
               <RefusedFilesContext.Provider value={props.refusedFiles}>
-                {props.children}
+                <RenderedAtContext.Provider value={props.renderId}>
+                  {props.children}
+                </RenderedAtContext.Provider>
               </RefusedFilesContext.Provider>
             </SubmitStateContext.Provider>
           </Fragment>

@@ -11,6 +11,11 @@ import { queueUpload, uploadFinished, uploadStarted } from "./bus";
 export interface UploadRequest {
   slug: string;
   fieldKey: string;
+  /**
+   * The page's render time, as its form's `_rendered` input carries it: a record the upload
+   * opens starts then (the minimum fill time counts from it).
+   */
+  renderedAt: string;
   locale: Locale;
   file: Blob;
 }
@@ -120,6 +125,7 @@ export function sendUpload(
       const body = new FormData();
       body.set("field", request.fieldKey);
       body.set("_locale", request.locale);
+      body.set("_rendered", request.renderedAt);
       body.set("file", request.file, "upload");
       xhr.open("POST", `/f/${encodeURIComponent(request.slug)}/files`);
       xhr.timeout = uploadTimeoutMs(request.file.size);

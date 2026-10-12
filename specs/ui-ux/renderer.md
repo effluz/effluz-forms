@@ -190,7 +190,9 @@ With script, the same input is enhanced:
   `uploads_pending` while a post waits. A refused or failed first upload made
   no record, so the next one goes alone again. Once a record exists, uploads
   run in parallel. The multipart file name is always `upload`; the original
-  name never leaves the browser.
+  name never leaves the browser. Every upload also sends `_rendered`, the
+  page's render time as its form's hidden input carries it, so a record an
+  upload opens starts when the page was rendered.
 - The page post leaves out the empty part of a file input with nothing
   chosen (the input is cleared after each early upload). The Server Action
   would otherwise send it as a file named "blob", which the server refuses

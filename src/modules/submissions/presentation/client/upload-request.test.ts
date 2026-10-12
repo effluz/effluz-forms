@@ -44,6 +44,9 @@ class FakeXhr {
   }
 }
 
+/** The page's render time, as its form's `_rendered` input carries it. */
+const RENDERED = "2026-10-10T09:00:00.000Z";
+
 const created = {
   ok: true,
   file: { id: "srv-1", kind: "image", size: 12 },
@@ -72,6 +75,7 @@ function harness(hasRecord: boolean) {
         slug: "story-form",
         fieldKey,
         locale,
+        renderedAt: RENDERED,
         file: new File(["x"], name, { type: "image/jpeg" }),
       },
       { progress: () => undefined, settled: (outcome) => outcomes.push(outcome) },
@@ -202,6 +206,8 @@ describe("the upload request", () => {
     expect(xhr?.url).toBe("/f/story-form/files");
     expect(xhr?.body?.get("field")).toBe("f_photos");
     expect(xhr?.body?.get("_locale")).toBe("en");
+    // The files route starts a record opened by an early upload at the page's render time.
+    expect(xhr?.body?.get("_rendered")).toBe(RENDERED);
     const file = xhr?.body?.get("file");
     expect(file instanceof File ? file.name : null).toBe("upload");
     xhr?.answer(200, created);
@@ -216,8 +222,16 @@ describe("the upload request", () => {
       progress: (percent: number) => seen.push(percent),
       settled: (outcome: UploadOutcome) => outcomes.push(outcome),
     };
-    sendUpload({ slug: "story-form", fieldKey: "f_photos", locale: "es", file }, on, make);
-    sendUpload({ slug: "story-form", fieldKey: "f_photos", locale: "es", file }, on, make);
+    sendUpload(
+      { slug: "story-form", fieldKey: "f_photos", renderedAt: RENDERED, locale: "es", file },
+      on,
+      make,
+    );
+    sendUpload(
+      { slug: "story-form", fieldKey: "f_photos", renderedAt: RENDERED, locale: "es", file },
+      on,
+      make,
+    );
     sent[0]?.upload.onprogress?.({ lengthComputable: true, loaded: 40, total: 100 });
     sent[0]?.answer(413, { ok: false, message: "{file} pesa más de 10 MB" });
     sent[1]?.onerror?.();
@@ -242,12 +256,24 @@ describe("a stalled or cancelled upload", () => {
     const outcomes: UploadOutcome[] = [];
     const on = { progress: () => undefined, settled: (o: UploadOutcome) => outcomes.push(o) };
     sendUpload(
-      { slug: "story-form", fieldKey: "f_photos", locale: "en", file: file(10) },
+      {
+        slug: "story-form",
+        fieldKey: "f_photos",
+        renderedAt: RENDERED,
+        locale: "en",
+        file: file(10),
+      },
       on,
       make,
     );
     sendUpload(
-      { slug: "story-form", fieldKey: "f_photos", locale: "en", file: file(10) },
+      {
+        slug: "story-form",
+        fieldKey: "f_photos",
+        renderedAt: RENDERED,
+        locale: "en",
+        file: file(10),
+      },
       on,
       make,
     );
@@ -266,12 +292,24 @@ describe("a stalled or cancelled upload", () => {
     const outcomes: UploadOutcome[] = [];
     const on = { progress: () => undefined, settled: (o: UploadOutcome) => outcomes.push(o) };
     const first = sendUpload(
-      { slug: "story-form", fieldKey: "f_photos", locale: "en", file: file(10) },
+      {
+        slug: "story-form",
+        fieldKey: "f_photos",
+        renderedAt: RENDERED,
+        locale: "en",
+        file: file(10),
+      },
       on,
       make,
     );
     sendUpload(
-      { slug: "story-form", fieldKey: "f_photos", locale: "en", file: file(10) },
+      {
+        slug: "story-form",
+        fieldKey: "f_photos",
+        renderedAt: RENDERED,
+        locale: "en",
+        file: file(10),
+      },
       on,
       make,
     );
@@ -298,12 +336,24 @@ describe("a stalled or cancelled upload", () => {
     const outcomes: UploadOutcome[] = [];
     const on = { progress: () => undefined, settled: (o: UploadOutcome) => outcomes.push(o) };
     sendUpload(
-      { slug: "story-form", fieldKey: "f_photos", locale: "en", file: file(10) },
+      {
+        slug: "story-form",
+        fieldKey: "f_photos",
+        renderedAt: RENDERED,
+        locale: "en",
+        file: file(10),
+      },
       on,
       make,
     );
     const held = sendUpload(
-      { slug: "story-form", fieldKey: "f_photos", locale: "en", file: file(10) },
+      {
+        slug: "story-form",
+        fieldKey: "f_photos",
+        renderedAt: RENDERED,
+        locale: "en",
+        file: file(10),
+      },
       on,
       make,
     );
