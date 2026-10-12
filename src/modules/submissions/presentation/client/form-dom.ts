@@ -97,23 +97,61 @@ export function readDraft(form: HTMLFormElement): Draft {
 }
 
 /**
- * Writes a draft back. `empty_text` fills only empty text inputs and textareas (a restore on
- * load must not overwrite what the server rendered); `all` sets every control the draft names
- * (after a post that never reached the server).
+ * A control as a draft restore reads and writes it; inputs, textareas and selects all fit.
+ * `type` is the DOM's: `radio`, `checkbox`, `select-one`, `select-multiple`, `textarea`, ...
  */
-export function applyDraft(form: HTMLFormElement, draft: Draft, mode: "empty_text" | "all"): void {
+export interface DraftControl {
+  readonly name: string;
+  readonly type: string;
+  value: string;
+  checked?: boolean;
+  readonly options?: Iterable<{ readonly value: string; selected: boolean }>;
+}
+
+const isChoiceType = (type: string): boolean => type === "radio" || type === "checkbox";
+const isSelectType = (type: string): boolean => type.startsWith("select");
+
+/** Whether the server rendered a choice for this group: a checked box, a non-empty option. */
+function hasChoice(controls: readonly DraftControl[], name: string): boolean {
+  return controls.some((control) => {
+    if (control.name !== name) return false;
+    if (isChoiceType(control.type)) return control.checked === true;
+    if (isSelectType(control.type))
+      return [...(control.options ?? [])].some((o) => o.selected && o.value !== "");
+    return false;
+  });
+}
+
+/**
+ * Writes a draft back. `empty_text` fills what the server rendered empty: empty text inputs and
+ * textareas, and radio, checkbox and select groups with nothing chosen (a restore on load must
+ * not overwrite what the server rendered); `all` sets every control the draft names (after a
+ * post that never reached the server). See specs/ui-ux/renderer.md, "Navigation and state".
+ */
+export function applyDraftTo(
+  controls: readonly DraftControl[],
+  draft: Draft,
+  mode: "empty_text" | "all",
+): void {
   const seen = new Map<string, number>();
-  for (const control of answerControls(form)) {
+  const chosen = new Map<string, boolean>();
+  const rendered = (name: string): boolean => {
+    let known = chosen.get(name);
+    if (known === undefined) {
+      known = hasChoice(controls, name);
+      chosen.set(name, known);
+    }
+    return known;
+  };
+  for (const control of controls) {
     const values = draft[control.name];
     if (values === undefined) continue;
-    if (isChoice(control)) {
-      if (mode === "all") control.checked = values.includes(control.value);
-      continue;
-    }
-    if (control instanceof HTMLSelectElement) {
-      if (mode === "all") {
-        for (const option of control.options) option.selected = values.includes(option.value);
-      }
+    if (isChoiceType(control.type) || isSelectType(control.type)) {
+      // An empty list is a group left with nothing chosen: nothing to restore on load.
+      if (mode === "empty_text" && (values.length === 0 || rendered(control.name))) continue;
+      if (isChoiceType(control.type)) control.checked = values.includes(control.value);
+      else
+        for (const option of control.options ?? []) option.selected = values.includes(option.value);
       continue;
     }
     const index = seen.get(control.name) ?? 0;
@@ -122,6 +160,11 @@ export function applyDraft(form: HTMLFormElement, draft: Draft, mode: "empty_tex
     if (value === undefined) continue;
     if (mode === "all" || control.value === "") control.value = value;
   }
+}
+
+/** `applyDraftTo` over the page form's answer controls. */
+export function applyDraft(form: HTMLFormElement, draft: Draft, mode: "empty_text" | "all"): void {
+  applyDraftTo(answerControls(form), draft, mode);
 }
 
 const storage = (): Storage | null => {
@@ -285,7 +328,18 @@ function errorIcon(className: string): SVGSVGElement {
   return svg;
 }
 
-function setDescribedBy(element: Element, id: string, present: boolean): void {
+/** The part of an element the error linkage reads and writes. */
+interface Attributed {
+  getAttribute: (name: string) => string | null;
+  hasAttribute: (name: string) => boolean;
+  setAttribute: (name: string, value: string) => void;
+  removeAttribute: (name: string) => void;
+}
+
+/** Marks a control of a group described by the error as its fieldset is (consent.tsx). */
+export const OWN_ERROR_ATTRIBUTE = "data-own-error";
+
+function setDescribedBy(element: Attributed, id: string, present: boolean): void {
   const tokens = (element.getAttribute("aria-describedby") ?? "").split(" ").filter(Boolean);
   const has = tokens.includes(id);
   if (present && !has) element.setAttribute("aria-describedby", [...tokens, id].join(" "));
@@ -319,14 +373,28 @@ export function showFieldError(
   if (message !== null) slot.append(errorIcon(iconClass), document.createTextNode(message));
   const wrapper = form.querySelector(`[data-field="${CSS.escape(key)}"]`);
   const group = wrapper instanceof HTMLFieldSetElement ? wrapper : null;
-  const targets: Element[] = [...controlsOf(form, key), ...(group ? [group] : [])];
-  for (const target of targets) {
-    if (message !== null) target.setAttribute("aria-invalid", "true");
+  linkFieldError(group, controlsOf(form, key), errorId, message !== null);
+}
+
+/**
+ * Sets or clears `aria-invalid` on a field's controls and group, and links the error as the
+ * server render does: a group by its fieldset (and a control marked `data-own-error`, the
+ * consent checkbox, by itself too), a single control by itself.
+ */
+export function linkFieldError(
+  group: Attributed | null,
+  controls: readonly Attributed[],
+  errorId: string,
+  present: boolean,
+): void {
+  for (const target of [...controls, ...(group ? [group] : [])]) {
+    if (present) target.setAttribute("aria-invalid", "true");
     else target.removeAttribute("aria-invalid");
   }
-  // A group is described by its fieldset; a single control by itself.
-  for (const target of group ? [group] : controlsOf(form, key))
-    setDescribedBy(target, errorId, message !== null);
+  const described = group
+    ? [group, ...controls.filter((control) => control.hasAttribute(OWN_ERROR_ATTRIBUTE))]
+    : controls;
+  for (const target of described) setDescribedBy(target, errorId, present);
 }
 
 const graphemes = (text: string): number => {
@@ -335,9 +403,27 @@ const graphemes = (text: string): number => {
   return Array.from(text).length;
 };
 
+/** The share of the maximum from which the count is announced. */
+const ANNOUNCE_FROM = 0.9;
+
 /**
- * Grows an auto-growing textarea to its content and updates its character counter, which
- * becomes a polite live region from 90 % of the maximum.
+ * The counter's text for `n` characters: always shown, and announced (written into the polite
+ * region beside it) only from 90 % of the maximum. See specs/ui-ux/renderer.md, "Field rendering".
+ */
+export function counterText(
+  template: string,
+  n: number,
+  max: number,
+  locale: string,
+): { shown: string; announced: string } {
+  const shown = fill(template, { n: new Intl.NumberFormat(locale).format(n) });
+  const near = Number.isFinite(max) && max > 0 && n >= max * ANNOUNCE_FROM;
+  return { shown, announced: near ? shown : "" };
+}
+
+/**
+ * Grows an auto-growing textarea to its content and updates its character counter and the
+ * always-present polite region that announces it from 90 % of the maximum.
  */
 export function refreshTextarea(textarea: HTMLTextAreaElement, locale: string): void {
   if (textarea.hasAttribute("data-autogrow")) {
@@ -345,13 +431,18 @@ export function refreshTextarea(textarea: HTMLTextAreaElement, locale: string): 
     textarea.style.height = `${String(textarea.scrollHeight)}px`;
   }
   if (textarea.id === "") return;
-  const counter = document.querySelector(`[data-counter-for="${CSS.escape(textarea.id)}"]`);
+  const id = CSS.escape(textarea.id);
+  const counter = document.querySelector(`[data-counter-for="${id}"]`);
   const template = counter?.getAttribute("data-template");
   if (!counter || !template) return;
-  const n = graphemes(textarea.value);
-  counter.textContent = fill(template, { n: new Intl.NumberFormat(locale).format(n) });
-  const max = Number(counter.getAttribute("data-max"));
-  if (Number.isFinite(max) && max > 0 && n >= max * 0.9)
-    counter.setAttribute("aria-live", "polite");
-  else counter.removeAttribute("aria-live");
+  const text = counterText(
+    template,
+    graphemes(textarea.value),
+    Number(counter.getAttribute("data-max")),
+    locale,
+  );
+  counter.textContent = text.shown;
+  const live = document.querySelector(`[data-counter-live-for="${id}"]`);
+  // Written only when it changes, so the region is not told the same thing twice.
+  if (live && live.textContent !== text.announced) live.textContent = text.announced;
 }

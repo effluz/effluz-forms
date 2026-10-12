@@ -124,7 +124,7 @@ the control so screen readers hear it before entering.
 | Type | Control | Notes |
 |---|---|---|
 | `short_text` | `<input type="text">` | `autocomplete` inferred from the label where safe: name, organization. Otherwise off. |
-| `long_text` | `<textarea>` with `rows` from settings, auto-growing with script | Character counter appears only when a max length is set, as "{n} of {max}", announced politely at 90%. |
+| `long_text` | `<textarea>` with `rows` from settings, auto-growing with script | Character counter appears only when a max length is set, as "{n} of {max}", announced politely from 90% through a separate, always-present live region (the shown counter is not one). |
 | `email` | `<input type="email" inputmode="email" autocomplete="email">` | Trimmed and lowercased on the server. |
 | `phone` | `<input type="tel" inputmode="tel" autocomplete="tel">` | No formatting enforced beyond length rules. |
 | `number` | `<input type="text" inputmode="decimal">` or `numeric` for integers | Not `type="number"`, which has poor accessibility and scroll bugs. Unit label shown after the input. |
@@ -258,7 +258,9 @@ for `{n}` (or `{count}`), the `… one` row is used, otherwise the plain row. In
   validating required fields, so a submitter can go back to fix something.
 - Answers persist across Back and Next and across a browser refresh, because
   every Next stores server-side. Only the current page's unsent edits can be
-  lost; with script, they are also kept in session storage and restored.
+  lost; with script, they are also kept in session storage and restored into
+  what the server rendered empty: empty text controls, and radio, checkbox and
+  select groups with nothing chosen.
   The confirmation screen clears the form's drafts from session storage.
 - Changing an earlier answer that controls visibility re-evaluates on Next.
   If a later page the submitter already filled becomes hidden, nothing is

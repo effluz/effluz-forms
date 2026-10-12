@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyDraftTo,
   clearDrafts,
+  counterText,
+  type DraftControl,
   dropEmptyFiles,
   FOCUS_RING_ATTRIBUTE,
   focusSubmitterAfterFailure,
+  linkFieldError,
   type SubmitterLike,
   visibleSubmitter,
 } from "./form-dom";
@@ -174,5 +178,162 @@ describe("dropEmptyFiles", () => {
     dropEmptyFiles(data);
 
     expect(data.getAll("photos")).toHaveLength(1);
+  });
+});
+
+describe("the character counter", () => {
+  const template = "{n} of 500 characters";
+
+  it("always shows the count, and gives the polite region text only from 90 percent", () => {
+    expect(counterText(template, 449, 500, "en")).toEqual({
+      shown: "449 of 500 characters",
+      announced: "",
+    });
+    expect(counterText(template, 450, 500, "en")).toEqual({
+      shown: "450 of 500 characters",
+      announced: "450 of 500 characters",
+    });
+    expect(counterText("{n} de 2000 caracteres", 1950, 2000, "es").announced).toBe(
+      "1950 de 2000 caracteres",
+    );
+    expect(counterText(template, 10, Number.NaN, "en").announced).toBe("");
+  });
+});
+
+/** A control as the draft code reads it. */
+function control(name: string, type: string, over: Partial<DraftControl> = {}): DraftControl {
+  return { name, type, value: "", checked: false, ...over };
+}
+
+function select(name: string, values: string[], selected: string): DraftControl {
+  return {
+    name,
+    type: "select-one",
+    value: selected,
+    options: values.map((value) => ({ value, selected: value === selected })),
+  };
+}
+
+const selectedOf = (control: DraftControl): string[] =>
+  [...(control.options ?? [])].filter((o) => o.selected).map((o) => o.value);
+
+describe("restoring a draft on load", () => {
+  it("fills empty text controls only, leaving what the server rendered", () => {
+    const empty = control("f_name", "text");
+    const rendered = control("f_city", "text", { value: "Server value" });
+    applyDraftTo([empty, rendered], { f_name: ["Draft"], f_city: ["Draft city"] }, "empty_text");
+    expect(empty.value).toBe("Draft");
+    expect(rendered.value).toBe("Server value");
+  });
+
+  it("restores a radio group, a checkbox group and a single checkbox with nothing chosen", () => {
+    const radios = [
+      control("f_baby", "radio", { value: "yes" }),
+      control("f_baby", "radio", { value: "no" }),
+    ];
+    const boxes = [
+      control("f_pick", "checkbox", { value: "a" }),
+      control("f_pick", "checkbox", { value: "b" }),
+      control("f_pick", "checkbox", { value: "c" }),
+    ];
+    const single = control("f_ok", "checkbox", { value: "on" });
+    applyDraftTo(
+      [...radios, ...boxes, single],
+      { f_baby: ["no"], f_pick: ["a", "c"], f_ok: ["on"] },
+      "empty_text",
+    );
+    expect(radios.map((r) => r.checked)).toEqual([false, true]);
+    expect(boxes.map((b) => b.checked)).toEqual([true, false, true]);
+    expect(single.checked).toBe(true);
+  });
+
+  it("leaves a group the server rendered with a choice as it is", () => {
+    const radios = [
+      control("f_baby", "radio", { value: "yes", checked: true }),
+      control("f_baby", "radio", { value: "no" }),
+    ];
+    const boxes = [
+      control("f_pick", "checkbox", { value: "a" }),
+      control("f_pick", "checkbox", { value: "b", checked: true }),
+    ];
+    applyDraftTo([...radios, ...boxes], { f_baby: ["no"], f_pick: ["a"] }, "empty_text");
+    expect(radios.map((r) => r.checked)).toEqual([true, false]);
+    expect(boxes.map((b) => b.checked)).toEqual([false, true]);
+  });
+
+  it("restores a select on its placeholder, and leaves one with a choice", () => {
+    const blank = select("f_country", ["", "pa", "cr"], "");
+    const chosen = select("f_region", ["", "north", "south"], "north");
+    applyDraftTo([blank, chosen], { f_country: ["cr"], f_region: ["south"] }, "empty_text");
+    expect(selectedOf(blank)).toEqual(["cr"]);
+    expect(selectedOf(chosen)).toEqual(["north"]);
+  });
+
+  it("sets every control after a post that never reached the server", () => {
+    const radios = [
+      control("f_baby", "radio", { value: "yes", checked: true }),
+      control("f_baby", "radio", { value: "no" }),
+    ];
+    const text = control("f_name", "text", { value: "Server" });
+    const chosen = select("f_region", ["", "north", "south"], "north");
+    applyDraftTo(
+      [...radios, text, chosen],
+      { f_baby: ["no"], f_name: ["Draft"], f_region: ["south"] },
+      "all",
+    );
+    expect(radios.map((r) => r.checked)).toEqual([false, true]);
+    expect(text.value).toBe("Draft");
+    expect(selectedOf(chosen)).toEqual(["south"]);
+  });
+});
+
+/** An element as the error linkage reads and writes it. */
+class FakeElement {
+  readonly attributes = new Map<string, string>();
+  constructor(attributes: Record<string, string> = {}) {
+    for (const [name, value] of Object.entries(attributes)) this.attributes.set(name, value);
+  }
+  getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null;
+  }
+  hasAttribute(name: string): boolean {
+    return this.attributes.has(name);
+  }
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
+  removeAttribute(name: string): void {
+    this.attributes.delete(name);
+  }
+}
+
+describe("linking a blur check's error", () => {
+  it("describes a group by its fieldset, and the consent checkbox too, as the server render does", () => {
+    const fieldset = new FakeElement({ "aria-describedby": "f_consent-help" });
+    const box = new FakeElement({ "data-own-error": "" });
+    linkFieldError(fieldset, [box], "f_consent-error", true);
+    expect(fieldset.getAttribute("aria-describedby")).toBe("f_consent-help f_consent-error");
+    expect(box.getAttribute("aria-describedby")).toBe("f_consent-error");
+    expect(fieldset.getAttribute("aria-invalid")).toBe("true");
+    expect(box.getAttribute("aria-invalid")).toBe("true");
+
+    linkFieldError(fieldset, [box], "f_consent-error", false);
+    expect(fieldset.getAttribute("aria-describedby")).toBe("f_consent-help");
+    expect(box.hasAttribute("aria-describedby")).toBe(false);
+    expect(box.hasAttribute("aria-invalid")).toBe(false);
+  });
+
+  it("describes a radio group by its fieldset only, and a single control by itself", () => {
+    const fieldset = new FakeElement();
+    const radios = [new FakeElement(), new FakeElement()];
+    linkFieldError(fieldset, radios, "f_baby-error", true);
+    expect(fieldset.getAttribute("aria-describedby")).toBe("f_baby-error");
+    for (const radio of radios) {
+      expect(radio.hasAttribute("aria-describedby")).toBe(false);
+      expect(radio.getAttribute("aria-invalid")).toBe("true");
+    }
+    const input = new FakeElement({ "aria-describedby": "f_name-help" });
+    linkFieldError(null, [input], "f_name-error", true);
+    expect(input.getAttribute("aria-describedby")).toBe("f_name-help f_name-error");
   });
 });

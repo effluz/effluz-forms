@@ -137,21 +137,29 @@ export const longText: FieldRenderer = {
           aria-describedby={describedBy(props, max === undefined ? [] : [countId]) || undefined}
         />
         {max === undefined ? null : (
-          // The grapheme count here is for the first paint; the server's count is the one that validates.
-          <p
-            id={countId}
-            className={styles.counter}
-            data-counter-for={id.control}
-            data-max={max}
-            data-template={t(props.locale, "char_count", {
-              max: formatNumber(max, props.locale),
-            })}
-          >
-            {t(props.locale, "char_count", {
-              n: formatNumber(graphemeLength(value), props.locale),
-              max: formatNumber(max, props.locale),
-            })}
-          </p>
+          <>
+            {/* The grapheme count here is for the first paint; the server's count is the one that validates. */}
+            <p
+              id={countId}
+              className={styles.counter}
+              data-counter-for={id.control}
+              data-max={max}
+              data-template={t(props.locale, "char_count", {
+                max: formatNumber(max, props.locale),
+              })}
+            >
+              {t(props.locale, "char_count", {
+                n: formatNumber(graphemeLength(value), props.locale),
+                max: formatNumber(max, props.locale),
+              })}
+            </p>
+            {/* Always present with a fixed politeness; the script writes the count here from 90 %. */}
+            <p
+              className={styles.visuallyHidden}
+              aria-live="polite"
+              data-counter-live-for={id.control}
+            />
+          </>
         )}
       </FieldShell>
     );

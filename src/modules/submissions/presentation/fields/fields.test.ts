@@ -134,7 +134,14 @@ describe("field renderers", () => {
       settings: { rows: 4 },
       validation: [{ rule: "max_length", value: 500 }],
     });
-    expect(render(limited, { values: { f_probe: "abc" } })).toContain("3 of 500 characters");
+    const html = render(limited, { values: { f_probe: "abc" } });
+    expect(html).toContain("3 of 500 characters");
+    // The shown counter is never a live region; a separate polite one is always there, empty.
+    const counter = /<p id="f_probe-count"[^>]*>/.exec(html)?.[0] ?? "";
+    expect(counter).not.toContain("aria-live");
+    expect(html).toMatch(
+      /<p[^>]*aria-live="polite"[^>]*data-counter-live-for="f-f_probe"[^>]*><\/p>/,
+    );
   });
 
   it("file upload: the video notice before the input, limits as help, rows with Remove, and the count", () => {
