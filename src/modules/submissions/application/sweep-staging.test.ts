@@ -86,7 +86,9 @@ describe("sweepStaging", () => {
     expect(await sweepStaging(deps, { now: deps.clock.now(), logger: deps.logger })).toBe(1);
     expect([...deps.media.staging.files.keys()]).toEqual([`in-progress/${ORPHAN}/f1.jpg`]);
     expect(
-      deps.logger.lines.some((l) => l.level === "warn" && l.fields.recordHash === recordHash(ORPHAN)),
+      deps.logger.lines.some(
+        (l) => l.level === "warn" && l.fields.recordHash === recordHash(ORPHAN),
+      ),
     ).toBe(true);
     expect(JSON.stringify(deps.logger.lines)).not.toContain(ORPHAN);
   });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { allocateReference } from "@/modules/definitions/application";
 import { publishAgain, seedPublished } from "@/modules/definitions/application/testing/fakes";
 import { fakeImage } from "@/modules/media/application/testing/fakes";
+import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 import { consentTextVersion, type Version } from "@/shared/domain/form-model";
 import { CONSENT_TEXT, storyVersion } from "../domain/testing/versions";
 import type { PagePost } from "./fill-state";
@@ -168,7 +169,7 @@ describe("submitForm", () => {
       if (recordGone) deps.inProgress.rows.delete(id);
       const real = deps.submissions.findBySubmitToken.bind(deps.submissions);
       const withUow: boolean[] = [];
-      deps.submissions.findBySubmitToken = (t, uow) => {
+      deps.submissions.findBySubmitToken = (t: string, uow?: UnitOfWork) => {
         withUow.push(uow !== undefined);
         return real(t, uow);
       };

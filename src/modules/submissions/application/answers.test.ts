@@ -5,10 +5,9 @@ import { pageRaw } from "./answers";
 describe("pageRaw", () => {
   it("keeps the parts of a multi-part control, such as a date's day, month and year", () => {
     expect(
-      pageRaw(
-        { "f_born.day": "3", "f_born.month": "4", "f_born.year": "2020", f_borne: "x" },
-        ["f_born"],
-      ),
+      pageRaw({ "f_born.day": "3", "f_born.month": "4", "f_born.year": "2020", f_borne: "x" }, [
+        "f_born",
+      ]),
     ).toEqual({ "f_born.day": "3", "f_born.month": "4", "f_born.year": "2020" });
   });
 

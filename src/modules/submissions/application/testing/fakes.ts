@@ -108,7 +108,9 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
     return Promise.resolve("inserted");
   }
 
-  findBySubmitToken(token: string): Promise<Submission | null> {
+  // One process needs no connection: the unit of work only matters to the real adapter.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  findBySubmitToken(token: string, _uow?: UnitOfWork): Promise<Submission | null> {
     for (const row of this.rows.values())
       if (row.submitToken === token) return Promise.resolve(structuredClone(row));
     return Promise.resolve(null);

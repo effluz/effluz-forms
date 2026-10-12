@@ -72,8 +72,7 @@ export async function uploadFile(
   if ((held[input.fieldKey]?.length ?? 0) >= limits.maxFiles)
     return refuse("files_max", limits.maxFiles);
   const total = visibleStagedBytes(doc, deps.registry, existing?.answers ?? {}, held);
-  if (total + input.bytes.length > SUBMISSION_BYTES)
-    return refuse("submission_too_large");
+  if (total + input.bytes.length > SUBMISSION_BYTES) return refuse("submission_too_large");
 
   const recordId = existing?.id ?? deps.ids.newId();
   const staged = await stageFile(deps.media, {
