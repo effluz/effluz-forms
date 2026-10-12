@@ -32,6 +32,19 @@ export function requestLocale(
   return record ? localeFor(languages, record.locale) : pickLocale(languages, acceptLanguage);
 }
 
+/**
+ * Whether a script request to a renderer route came from a page of another origin: an `Origin`
+ * other than the public one, or a `Sec-Fetch-Site` of `cross-site` or `same-site`. `SameSite=Lax`
+ * lets a same-site page send the fill cookie, so the routes answer such a request 403.
+ * See specs/system/security.md, "In-progress cookie".
+ */
+export function isForeignRequest(headers: Headers, publicOrigin: string): boolean {
+  const origin = headers.get("origin");
+  if (origin !== null && origin !== publicOrigin) return true;
+  const site = headers.get("sec-fetch-site");
+  return site === "cross-site" || site === "same-site";
+}
+
 /** The form's public link. */
 export function formPath(slug: string): string {
   return `/f/${encodeURIComponent(slug)}`;

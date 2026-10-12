@@ -6,7 +6,7 @@ import {
   readCookie,
 } from "@/modules/submissions/presentation/cookies";
 import { plain } from "@/modules/submissions/presentation/http";
-import { errorClass } from "../../_lib/respond";
+import { errorClass, isForeignRequest } from "../../_lib/respond";
 
 /**
  * DELETE /f/<slug>/files/<file id>: removes a staged file with script; 204, or 404 when the
@@ -19,6 +19,7 @@ export async function DELETE(
   const { slug, fileId } = await params;
   const container = getContainer();
   try {
+    if (isForeignRequest(request.headers, container.config.publicBaseUrl)) return plain(403);
     const deps = container.submissions;
     const state = parseFillState(readCookie(request.headers.get("cookie"), FILL_COOKIE));
     const context = await postContext(deps, { slug, state, submitToken: null });

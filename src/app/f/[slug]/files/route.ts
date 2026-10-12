@@ -22,7 +22,7 @@ import {
 import { uploadRefusalMessage } from "@/modules/submissions/presentation/messages";
 import { visiblePages, type FieldTypeRegistry, type Version } from "@/shared/domain/form-model";
 import { resolveText } from "@/shared/domain/localized-text";
-import { errorClass, requestLocale } from "../_lib/respond";
+import { errorClass, isForeignRequest, requestLocale } from "../_lib/respond";
 
 /** The browser fills `{file}` with the name it kept; the server never sees it. */
 const FILE = "{file}";
@@ -51,6 +51,7 @@ export async function POST(
   const { slug } = await params;
   const container = getContainer();
   try {
+    if (isForeignRequest(request.headers, container.config.publicBaseUrl)) return plain(403);
     const deps = container.submissions;
     const state = parseFillState(readCookie(request.headers.get("cookie"), FILL_COOKIE));
     const context = await postContext(deps, { slug, state, submitToken: null });

@@ -32,13 +32,29 @@ const config = loadConfig({
   GOOGLE_ALLOWED_HOSTED_DOMAIN: "effluz.com",
 });
 
+/** The same app with the production configuration: Secure cookies, https only. */
+const production = loadConfig({
+  NODE_ENV: "production",
+  PUBLIC_BASE_URL: "https://forms.example.com",
+  DATABASE_URL: "postgres://user:pw@localhost:5432/none",
+  STAGING_DIR: "./data/staging",
+  PRIVACY_CONTACT_EMAIL: "privacy@example.com",
+  GOOGLE_CLIENT_ID: "id",
+  GOOGLE_CLIENT_SECRET: "secret",
+  GOOGLE_ALLOWED_HOSTED_DOMAIN: "effluz.com",
+  MEDIA_PROVIDER: "dropbox",
+  DROPBOX_APP_KEY: "k",
+  DROPBOX_APP_SECRET: "s",
+  DROPBOX_REFRESH_TOKEN: "r",
+  EMAIL_PROVIDER: "smtp2go",
+  SMTP2GO_API_KEY: "api",
+});
+
 let deps: FakeSubmissionsDeps;
 
-beforeEach(async () => {
-  deps = makeSubmissionsDeps();
-  await publishStory(deps);
+function useConfig(chosen: typeof config): void {
   vi.mocked(getContainer).mockReturnValue(
-    buildContainer(config, {
+    buildContainer(chosen, {
       pool: {} as unknown as Pool,
       logger: deps.logger,
       submissions: deps,
@@ -46,6 +62,12 @@ beforeEach(async () => {
       media: deps.media,
     }),
   );
+}
+
+beforeEach(async () => {
+  deps = makeSubmissionsDeps();
+  await publishStory(deps);
+  useConfig(config);
 });
 
 const params = <T extends Record<string, string>>(values: T) => ({
@@ -72,10 +94,15 @@ async function onPhotos(): Promise<string> {
   return `effluz_fill=${out.recordId}`;
 }
 
-function req(path: string, body: Record<string, string | File>, cookie?: string): Request {
+function req(
+  path: string,
+  body: Record<string, string | File>,
+  cookie?: string,
+  extra: Record<string, string> = {},
+): Request {
   const form = new FormData();
   for (const [name, value] of Object.entries(body)) form.append(name, value);
-  const headers = new Headers();
+  const headers = new Headers(extra);
   if (cookie !== undefined) headers.set("cookie", cookie);
   return new Request(`https://forms.example.com/f/story-form${path}`, {
     method: "POST",
@@ -174,11 +201,136 @@ describe("the public routes", () => {
 
   it("restarts by clearing the cookie", async () => {
     const res = await restart(
-      new Request("https://forms.example.com/f/story-form/restart"),
+      new Request("https://forms.example.com/f/story-form/restart", {
+        headers: { "sec-fetch-site": "same-origin" },
+      }),
       params({}),
     );
     expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe("/f/story-form");
     expect(res.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+
+  it("returns a cross-site restart to the page without clearing the cookie", async () => {
+    const res = await restart(
+      new Request("https://forms.example.com/f/story-form/restart", {
+        headers: { "sec-fetch-site": "cross-site" },
+      }),
+      params({}),
+    );
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/f/story-form");
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("sets Secure and the form's path on the renderer cookies in production", async () => {
+    useConfig(production);
+    const cookie = await onPhotos();
+    const ok = await upload(
+      req(
+        "/files",
+        {
+          field: "f_photos",
+          _locale: "es",
+          file: new File([new Uint8Array(fakeImage())], "a.jpg"),
+        },
+        cookie,
+      ),
+      params({}),
+    );
+    expect(ok.status).toBe(200);
+    const set = ok.headers.get("set-cookie") ?? "";
+    expect(set).toMatch(/^effluz_fill=/);
+    expect(set).toContain("Secure");
+    expect(set).toContain("Path=/f/story-form");
+
+    const cleared = await restart(
+      new Request("https://forms.example.com/f/story-form/restart"),
+      params({}),
+    );
+    const clearing = cleared.headers.get("set-cookie") ?? "";
+    expect(clearing).toContain("Secure");
+    expect(clearing).toContain("Path=/f/story-form");
+    expect(clearing).toContain("Max-Age=0");
+  });
+});
+
+/** Headers a request from another origin may carry; each alone is enough to refuse it. */
+const FOREIGN: [string, Record<string, string>][] = [
+  ["a same-site Origin", { origin: "https://www.effluz.com" }],
+  ["an opaque Origin", { origin: "null" }],
+  ["an Origin with another port", { origin: "https://forms.example.com:8443" }],
+  ["Sec-Fetch-Site: same-site", { "sec-fetch-site": "same-site" }],
+  ["Sec-Fetch-Site: cross-site", { "sec-fetch-site": "cross-site" }],
+];
+
+describe("requests from another origin", () => {
+  it.each(FOREIGN)("refuses an early upload with %s and stages nothing", async (_n, headers) => {
+    const cookie = await onPhotos();
+    const before = JSON.stringify([...deps.inProgress.rows.values()]);
+    const res = await upload(
+      req(
+        "/files",
+        {
+          field: "f_photos",
+          _locale: "es",
+          file: new File([new Uint8Array(fakeImage())], "a.jpg"),
+        },
+        cookie,
+        headers,
+      ),
+      params({}),
+    );
+    expect(res.status).toBe(403);
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(JSON.stringify([...deps.inProgress.rows.values()])).toBe(before);
+  });
+
+  it.each(FOREIGN)("refuses a file removal with %s and keeps the file", async (_n, headers) => {
+    const cookie = await onPhotos();
+    const ok = await upload(
+      req(
+        "/files",
+        {
+          field: "f_photos",
+          _locale: "es",
+          file: new File([new Uint8Array(fakeImage())], "a.jpg"),
+        },
+        cookie,
+      ),
+      params({}),
+    );
+    const staged = (await ok.json()) as { file: { id: string } };
+    const res = await remove(
+      new Request(`https://forms.example.com/f/story-form/files/${staged.file.id}`, {
+        method: "DELETE",
+        headers: { cookie, ...headers },
+      }),
+      params({ fileId: staged.file.id }),
+    );
+    expect(res.status).toBe(403);
+    expect(JSON.stringify([...deps.inProgress.rows.values()])).toContain(staged.file.id);
+  });
+
+  it.each(FOREIGN)("refuses a field check with %s", async (_n, headers) => {
+    const res = await check(
+      req("/check", { _field: "f_email", _locale: "en", f_email: "nope" }, undefined, headers),
+      params({}),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("accepts the public origin and a same-origin fetch", async () => {
+    const res = await check(
+      req("/check", { _field: "f_email", _locale: "en", f_email: "nope" }, undefined, {
+        origin: "https://forms.example.com",
+        "sec-fetch-site": "same-origin",
+      }),
+      params({}),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      message: "Enter a valid email address, like name@example.com",
+    });
   });
 });

@@ -9,7 +9,7 @@ import { decodeField } from "@/modules/submissions/presentation/decode";
 import { json, plain, readFormData } from "@/modules/submissions/presentation/http";
 import { issueMessage } from "@/modules/submissions/presentation/messages";
 import { resolveText } from "@/shared/domain/localized-text";
-import { errorClass, requestLocale } from "../_lib/respond";
+import { errorClass, isForeignRequest, requestLocale } from "../_lib/respond";
 
 /** One field's value and the control fields; far below this. */
 const CHECK_BODY_LIMIT = 64 * 1024;
@@ -26,6 +26,7 @@ export async function POST(
   const { slug } = await params;
   const container = getContainer();
   try {
+    if (isForeignRequest(request.headers, container.config.publicBaseUrl)) return plain(403);
     const deps = container.submissions;
     const state = parseFillState(readCookie(request.headers.get("cookie"), FILL_COOKIE));
     const context = await postContext(deps, { slug, state, submitToken: null });

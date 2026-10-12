@@ -396,10 +396,14 @@ Plain-text and HTML versions carry the same words. No images, no tracking.
 |---|---|
 | `GET /f/<slug>` | The current screen: a form page, the confirmation, or a closed, not open, not found or expired screen (`?expired=1` asks for the expired screen; `?refused=<at>` shows the refused files of the post that redirected there) |
 | `POST /f/<slug>` | The page form, posted to a Server Action: Next, Back, Submit, a language switch or a Remove. Every post redirects (303): a refused one to `GET /f/<slug>?refused=<at>`, the others to `GET /f/<slug>` |
-| `POST /f/<slug>/files` | Early upload of one file with script; JSON |
-| `DELETE /f/<slug>/files/<file id>` | Removes a staged file with script; 204 |
-| `POST /f/<slug>/check` | Checks one field on blur; JSON with the message or null |
-| `GET /f/<slug>/restart` | Clears the in-progress cookie and returns to page 1 ("Start again", "Fill in another form") |
+| `POST /f/<slug>/files` | Early upload of one file with script; JSON. 403 from another origin |
+| `DELETE /f/<slug>/files/<file id>` | Removes a staged file with script; 204. 403 from another origin |
+| `POST /f/<slug>/check` | Checks one field on blur; JSON with the message or null. 403 from another origin |
+| `GET /f/<slug>/restart` | Clears the in-progress cookie and returns to page 1 ("Start again", "Fill in another form"); a cross-site navigation returns without clearing it |
+
+"Another origin" is an `Origin` header other than the origin of
+`PUBLIC_BASE_URL`, or `Sec-Fetch-Site` of `cross-site` or `same-site`
+(`system/security.md`, "In-progress cookie").
 
 ## Test fixtures
 

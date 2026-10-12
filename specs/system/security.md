@@ -154,10 +154,20 @@ The renderer sets two cookies. `effluz_fill`: `Path=/f/<slug>`, `HttpOnly`,
 being filled its value is the random id of the in-progress record; after a
 stored submission it is `done.<submit token>` and after a silent accept
 `decoy.<reference>`, so Back after Submit shows the confirmation again. It
-carries no answers. `SameSite=Lax` keeps cross-site posts from reaching the
-record, and Next refuses a Server Action post whose `Origin` is not this
-host, which is why the public routes need no CSRF token. A value that is
-none of these shapes is treated as absent.
+carries no answers. A value that is none of these shapes is treated as
+absent.
+
+`SameSite=Lax` keeps cross-site posts from reaching the record, but a
+same-site page (any other `*.effluz.com` host) still sends the cookie, and a
+multipart `fetch` needs no preflight. So every state-changing public route
+checks where the request came from. Next refuses a Server Action post whose
+`Origin` is not this host. The script routes (`POST /f/<slug>/files`,
+`DELETE /f/<slug>/files/<id>` and `POST /f/<slug>/check`) answer `403` when
+`Origin` is present and is not the origin of `PUBLIC_BASE_URL`, or when
+`Sec-Fetch-Site` is `cross-site` or `same-site`. With those checks the public
+routes need no CSRF token. `GET /f/<slug>/restart` is a link, so a
+navigation from any site reaches it with the cookie: when `Sec-Fetch-Site`
+is `cross-site` it redirects to the page without clearing the cookie.
 
 `effluz_fill_state` (same path and flags, `Max-Age=600`) carries a refused
 page post's files to the page it redirects to, as the Settings tab does,
