@@ -180,6 +180,9 @@ With script, the same input is enhanced:
 - Drag and drop onto the field is accepted but never required or advertised.
 - Uploads continue while the submitter fills other fields on the page. Next
   is disabled with an explanation while an upload on this page is in flight.
+  Once a post waits for those uploads (Enter in a field, or a held Back), the
+  status line says `uploads_pending` and the hint under the buttons goes, so
+  the text shows once.
 - Removing a file deletes it from staging immediately. If the removal fails
   (a server error or no connection), the row stays with its Remove button and
   shows `remove_failed`.

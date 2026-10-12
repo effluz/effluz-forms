@@ -30,7 +30,7 @@ describe("NavButtons", () => {
     const html = renderToStaticMarkup(
       createElement(
         SubmitStateContext.Provider,
-        { value: { pending: true, action: "submit" } },
+        { value: { pending: true, action: "submit", waiting: false } },
         nav(),
       ),
     );
@@ -46,7 +46,7 @@ describe("NavButtons", () => {
     const html = renderToStaticMarkup(
       createElement(
         SubmitStateContext.Provider,
-        { value: { pending: true, action: "next" } },
+        { value: { pending: true, action: "next", waiting: false } },
         createElement(NavButtons, {
           back: null,
           primary: { value: "next", label: "Next" },

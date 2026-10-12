@@ -87,18 +87,24 @@ describe("submitting state", () => {
   });
 
   it("disables every button while submitting, shows Submitting only for Submit, and holds the primary for uploads", () => {
-    expect(navButtonsState({ pending: true, pendingAction: "submit", uploadsInFlight: 0 })).toEqual(
-      { disabled: true, primaryDisabled: true, submitting: true },
-    );
-    expect(navButtonsState({ pending: true, pendingAction: "next", uploadsInFlight: 0 })).toEqual({
-      disabled: true,
-      primaryDisabled: true,
-      submitting: false,
-    });
-    expect(navButtonsState({ pending: false, pendingAction: null, uploadsInFlight: 1 })).toEqual({
+    const idle = { pending: false, pendingAction: null, waiting: false };
+    expect(
+      navButtonsState({ ...idle, pending: true, pendingAction: "submit", uploadsInFlight: 0 }),
+    ).toEqual({ disabled: true, primaryDisabled: true, submitting: true, showsHint: false });
+    expect(
+      navButtonsState({ ...idle, pending: true, pendingAction: "next", uploadsInFlight: 0 }),
+    ).toEqual({ disabled: true, primaryDisabled: true, submitting: false, showsHint: false });
+    expect(navButtonsState({ ...idle, uploadsInFlight: 1 })).toEqual({
       disabled: false,
       primaryDisabled: true,
       submitting: false,
+      showsHint: true,
     });
+  });
+
+  it("leaves uploads_pending to the status line once a post waits for uploads, so it shows once", () => {
+    expect(
+      navButtonsState({ pending: false, pendingAction: null, waiting: true, uploadsInFlight: 1 }),
+    ).toMatchObject({ primaryDisabled: true, showsHint: false });
   });
 });

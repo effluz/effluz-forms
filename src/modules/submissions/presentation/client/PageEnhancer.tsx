@@ -428,9 +428,10 @@ export function PageEnhancer(props: PageEnhancerProps): ReactElement {
   }, []);
 
   const pending = state.phase === "submitting";
+  const waiting = state.phase === "waiting_uploads";
   const submitState = useMemo(
-    () => ({ pending, action: pending ? state.action : null }),
-    [pending, state.action],
+    () => ({ pending, action: pending ? state.action : null, waiting }),
+    [pending, state.action, waiting],
   );
   const { text } = props;
 

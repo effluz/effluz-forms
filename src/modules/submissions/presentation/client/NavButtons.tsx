@@ -26,9 +26,10 @@ export function NavButtons(props: {
   const state = navButtonsState({
     pending: pending.pending,
     pendingAction: pending.action,
+    waiting: pending.waiting,
     uploadsInFlight,
   });
-  const waitsForUploads = !state.disabled && state.primaryDisabled;
+  const waitsForUploads = state.showsHint;
   return (
     <>
       <div className={styles.navigation}>

@@ -90,15 +90,22 @@ export function checkIsCurrent(state: PageState, key: string, id: number): boole
   return state.checks[key] === id;
 }
 
-/** Every button waits while a post is pending; the primary also waits for uploads in flight. */
+/**
+ * Every button waits while a post is pending; the primary also waits for uploads in flight,
+ * with `uploads_pending` as its hint, unless a post already waits for them (`waiting`): then the
+ * status line says it, and the hint goes, so the text shows once.
+ */
 export function navButtonsState(input: {
   pending: boolean;
   pendingAction: string | null;
+  waiting: boolean;
   uploadsInFlight: number;
-}): { disabled: boolean; primaryDisabled: boolean; submitting: boolean } {
+}): { disabled: boolean; primaryDisabled: boolean; submitting: boolean; showsHint: boolean } {
+  const primaryDisabled = input.pending || input.uploadsInFlight > 0;
   return {
     disabled: input.pending,
-    primaryDisabled: input.pending || input.uploadsInFlight > 0,
+    primaryDisabled,
     submitting: input.pending && input.pendingAction === "submit",
+    showsHint: !input.pending && primaryDisabled && !input.waiting,
   };
 }
