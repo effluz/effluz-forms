@@ -6,6 +6,7 @@ import {
   pageReducer,
   type PageEvent,
   type PageState,
+  waitsForUploads,
 } from "./page-state";
 
 const run = (events: PageEvent[], from: PageState = initialPageState) =>
@@ -65,6 +66,24 @@ describe("submitting state", () => {
     expect(waiting.phase).toBe("waiting_uploads");
     expect(run([{ type: "uploads_settled" }], waiting).phase).toBe("idle");
     expect(run([{ type: "submit", action: "back", uploadsInFlight: 2 }]).phase).toBe("submitting");
+  });
+
+  it("holds a Back or a language switch while the first upload creates the record, then sends it", () => {
+    const held = run([
+      { type: "submit", action: "language:es", uploadsInFlight: 1, holdForRecord: true },
+    ]);
+    expect(held).toMatchObject({ phase: "waiting_uploads", action: "language:es" });
+    expect(
+      run([{ type: "submit", action: "back", uploadsInFlight: 1, holdForRecord: true }]).phase,
+    ).toBe("waiting_uploads");
+    // Released: the same post again, now that the record exists.
+    expect(
+      run([{ type: "submit", action: "language:es", uploadsInFlight: 1 }], held),
+    ).toMatchObject({ phase: "submitting", action: "language:es" });
+    expect(waitsForUploads("next")).toBe(true);
+    expect(waitsForUploads("submit")).toBe(true);
+    expect(waitsForUploads("language:es")).toBe(false);
+    expect(waitsForUploads("back")).toBe(false);
   });
 
   it("disables every button while submitting, shows Submitting only for Submit, and holds the primary for uploads", () => {

@@ -55,3 +55,94 @@ export function resetRowsFor(renderId: string): void {
     for (const row of rows) if (row.thumb !== null) URL.revokeObjectURL(row.thumb);
   kept.clear();
 }
+
+/*
+ * Before this server render has an in-progress record, the first upload creates it and sets its
+ * cookie, and a request sent alongside would create a second one, whose cookie the browser
+ * keeps instead. So, until a record exists, one upload goes at a time, and posts that do not
+ * wait for uploads (Back, the language switch) wait for its answer. An upload refused or lost
+ * made no record, so the next one goes alone again. See specs/ui-ux/renderer.md, "File upload".
+ */
+
+/** Told whether the upload's answer created the record (an `ok` answer). */
+export type UploadAnswered = (recordCreated: boolean) => void;
+
+type Held =
+  | { kind: "upload"; start: (answered: UploadAnswered) => void; drop: () => void }
+  | { kind: "post"; start: () => void; drop: () => void };
+
+const ignoreAnswer: UploadAnswered = () => undefined;
+
+let gateRenderId: string | null = null;
+let recordExists = false;
+let firstOpen = false;
+let held: Held[] = [];
+
+/**
+ * Starts a server render's gate from whether that render has a record. Repeated calls for the
+ * same render (a remount after a failed post) keep what the gate has learned since; a new
+ * render drops whatever is still held.
+ */
+export function recordStateFor(renderId: string, hasRecord: boolean): void {
+  if (renderId === gateRenderId) return;
+  gateRenderId = renderId;
+  recordExists = hasRecord;
+  firstOpen = false;
+  const dropped = held;
+  held = [];
+  for (const entry of dropped) entry.drop();
+}
+
+function sendFirst(start: (answered: UploadAnswered) => void): void {
+  firstOpen = true;
+  const renderId = gateRenderId;
+  let answered = false;
+  start((recordCreated) => {
+    if (answered || renderId !== gateRenderId) return;
+    answered = true;
+    firstOpen = false;
+    if (recordCreated) recordExists = true;
+    release();
+  });
+}
+
+function release(): void {
+  if (recordExists) {
+    const all = held;
+    held = [];
+    for (const entry of all) {
+      if (entry.kind === "upload") entry.start(ignoreAnswer);
+      else entry.start();
+    }
+    return;
+  }
+  // Still no record: the next held upload goes alone; posts wait until no upload is held.
+  const index = held.findIndex((entry) => entry.kind === "upload");
+  const next = held[index];
+  if (next?.kind === "upload") {
+    held.splice(index, 1);
+    sendFirst(next.start);
+    return;
+  }
+  const posts = held;
+  held = [];
+  for (const entry of posts) if (entry.kind === "post") entry.start();
+}
+
+/** Sends an upload now, or holds it while the first upload of a render without a record is open. */
+export function queueUpload(start: (answered: UploadAnswered) => void, drop: () => void): void {
+  if (recordExists) start(ignoreAnswer);
+  else if (firstOpen) held.push({ kind: "upload", start, drop });
+  else sendFirst(start);
+}
+
+/** Whether a post that does not wait for uploads must wait for the first upload's answer. */
+export function holdsPosts(): boolean {
+  return !recordExists && firstOpen;
+}
+
+/** Sends a post now, or once the first upload of a render without a record has answered. */
+export function queuePost(start: () => void, drop: () => void): void {
+  if (holdsPosts()) held.push({ kind: "post", start, drop });
+  else start();
+}

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { fill } from "./form-dom";
 import { NavButtons } from "./NavButtons";
-import { PageEnhancer, type PageEnhancerProps } from "./PageEnhancer";
+import { OfflineBanner, PageEnhancer, type PageEnhancerProps, StatusLines } from "./PageEnhancer";
 import { SubmitStateContext } from "./submit-state";
 
 const nav = (): ReturnType<typeof createElement> =>
@@ -70,6 +70,7 @@ function enhancer(over: Partial<PageEnhancerProps> = {}): string {
       locale: "en",
       renderId: "2026-10-10T09:00:00.000Z",
       navigated: false,
+      hasRecord: false,
       refusedFiles: [],
       text: {
         submitting: "Submitting…",
@@ -91,6 +92,60 @@ describe("PageEnhancer without script", () => {
     expect(html).toMatch(/<p[^>]*role="status"[^>]*data-status=""[^>]*><\/p>/);
     expect(html).not.toContain("You seem to be offline");
     expect(html).not.toContain("Your answers were not sent");
+  });
+});
+
+const text = {
+  submitting: "Submitting…",
+  uploadsPending: "Wait for uploads to finish before continuing",
+  submitFailed: "Your answers were not sent. Check your connection and try again.",
+};
+
+/** The opening tag of the element carrying `marker`. */
+const tagWith = (html: string, marker: string): string =>
+  new RegExp(`<[a-z]+[^>]*${marker}[^>]*>`).exec(html)?.[0] ?? "";
+
+describe("live regions", () => {
+  it("are in the page from the first render, empty, each with a fixed politeness", () => {
+    const html = enhancer();
+    const banner = tagWith(html, "data-offline");
+    expect(banner).toContain('role="status"');
+    expect(banner).toContain('aria-live="polite"');
+    expect(html).toMatch(/data-offline=""[^>]*><\/div>/);
+    const status = tagWith(html, "data-status");
+    expect(status).toContain('aria-live="polite"');
+    expect(html).toMatch(/data-status=""[^>]*><\/p>/);
+    const failed = tagWith(html, "data-submit-failed");
+    expect(failed).toContain('aria-live="assertive"');
+    expect(html).toMatch(/data-submit-failed=""[^>]*><\/p>/);
+    // The form says whether the server render has an in-progress record yet.
+    expect(tagWith(html, 'id="page-form"')).toContain('data-has-record="false"');
+    expect(tagWith(enhancer({ hasRecord: true }), 'id="page-form"')).toContain(
+      'data-has-record="true"',
+    );
+  });
+
+  it("receive the failure and the offline text inside the same elements", () => {
+    const lines = (phase: "idle" | "failed" | "waiting_uploads"): string =>
+      renderToStaticMarkup(createElement(StatusLines, { phase, action: null, text }));
+    const idle = lines("idle");
+    const failed = lines("failed");
+    expect(tagWith(failed, "data-submit-failed")).toBe(tagWith(idle, "data-submit-failed"));
+    expect(failed).toMatch(/data-submit-failed=""[^>]*>Your answers were not sent/);
+    expect(failed).toMatch(/data-status=""[^>]*><\/p>/);
+    const waiting = lines("waiting_uploads");
+    expect(tagWith(waiting, "data-status")).toBe(tagWith(idle, "data-status"));
+    expect(waiting).toMatch(/data-status=""[^>]*>Wait for uploads/);
+
+    const banner = (online: boolean): string =>
+      renderToStaticMarkup(
+        createElement(OfflineBanner, {
+          online,
+          text: "You seem to be offline. We will continue when you reconnect.",
+        }),
+      );
+    expect(tagWith(banner(false), "data-offline")).toBe(tagWith(banner(true), "data-offline"));
+    expect(banner(false)).toMatch(/data-offline=""[^>]*>You seem to be offline/);
   });
 });
 

@@ -29,6 +29,7 @@ function props(over: Partial<UploadFieldProps> = {}): UploadFieldProps {
       remove: "Remove",
       retry: "Retry",
       removed: "{file} removed",
+      removeFailed: "{file} was not removed. Check your connection and try again",
       count: "{count} of {max} files",
       countOne: "{count} of 1 file",
       failed: "{file} did not upload. Check your connection and retry",

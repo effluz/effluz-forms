@@ -5,6 +5,7 @@ import { type Locale, resolveText } from "@/shared/domain/localized-text";
 import { parseRichText, richTextToPlain } from "@/shared/domain/rich-text";
 import { RichBlocks } from "@/shared/presentation/RichText";
 import type { ViewResult } from "../application";
+import { ClearDrafts } from "./client/ClearDrafts";
 import { t, type ChromeKey } from "./copy";
 import { FormPage } from "./FormPage";
 import { formatInstant } from "./format";
@@ -119,6 +120,7 @@ function Confirmation(props: {
         )}
       </p>
       <p>{t(locale, "confirmation_close")}</p>
+      <ClearDrafts slug={props.slug} />
       {form.settings.allowAnotherResponse ? (
         <p>
           <a href={`/f/${props.slug}/restart`} className={styles.secondaryLink}>

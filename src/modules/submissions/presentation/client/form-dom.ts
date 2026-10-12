@@ -132,6 +132,95 @@ export function writeStored(key: string, value: string | null): void {
   }
 }
 
+/**
+ * Removes every draft and the posted marker of a form from session storage, once the form is
+ * submitted, so no answer stays in the tab.
+ */
+export function clearDrafts(
+  slug: string,
+  store: Pick<Storage, "length" | "key" | "removeItem"> | null = storage(),
+): void {
+  if (store === null) return;
+  const prefix = `effluz:${slug}:`;
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < store.length; index += 1) {
+      const key = store.key(index);
+      if (key?.startsWith(prefix)) keys.push(key);
+    }
+    for (const key of keys) store.removeItem(key);
+  } catch {
+    // Blocked storage holds no drafts.
+  }
+}
+
+/** What the submit gate reads of a submit button; `HTMLButtonElement` has all of it. */
+export interface SubmitterLike {
+  readonly isConnected: boolean;
+  readonly value: string;
+  readonly form: unknown;
+  getAttribute: (name: string) => string | null;
+  hasAttribute: (name: string) => boolean;
+}
+
+/**
+ * The button to send a post again or to focus after one failed: the clicked button while it is
+ * on the page and visible, else the visible button of the page form with its value, the primary
+ * first. Never PublicShell's `aria-hidden` default button, which Enter in a field clicks.
+ */
+export function visibleSubmitter<T extends SubmitterLike>(
+  form: unknown,
+  clicked: T | null,
+  buttons: Iterable<T>,
+): T | null {
+  if (clicked === null) return null;
+  const visible = (button: T): boolean =>
+    button.isConnected && button.form === form && button.getAttribute("aria-hidden") !== "true";
+  if (visible(clicked)) return clicked;
+  let match: T | null = null;
+  for (const button of buttons) {
+    if (!visible(button) || button.value !== clicked.value) continue;
+    if (button.hasAttribute("data-primary")) return button;
+    match ??= button;
+  }
+  return match;
+}
+
+/** Marks a control focused by script, so it shows the focus ring (renderer.module.css). */
+export const FOCUS_RING_ATTRIBUTE = "data-focus-ring";
+
+interface Focusable {
+  focus: (options?: FocusOptions) => void;
+  setAttribute: (name: string, value: string) => void;
+  removeAttribute: (name: string) => void;
+  addEventListener: (type: "blur", listener: () => void, options?: { once: boolean }) => void;
+}
+
+/** Focuses with a visible ring, even where the browser would not match `:focus-visible`. */
+export function focusWithRing(element: Focusable): void {
+  element.setAttribute(FOCUS_RING_ATTRIBUTE, "");
+  element.addEventListener(
+    "blur",
+    () => {
+      element.removeAttribute(FOCUS_RING_ATTRIBUTE);
+    },
+    { once: true },
+  );
+  const options: FocusOptions & { focusVisible?: boolean } = { focusVisible: true };
+  element.focus(options);
+}
+
+/** After a failed post, focus goes back to the visible button that sent it. */
+export function focusSubmitterAfterFailure<T extends SubmitterLike & Focusable>(
+  form: unknown,
+  clicked: T | null,
+  buttons: Iterable<T>,
+): T | null {
+  const target = visibleSubmitter(form, clicked, buttons);
+  if (target !== null) focusWithRing(target);
+  return target;
+}
+
 export function loadDraft(slug: string, pageKey: string): Draft | null {
   const stored = readStored(draftKey(slug, pageKey));
   if (stored === null) return null;

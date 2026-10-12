@@ -145,8 +145,17 @@ With script, the same input is enhanced:
 - Drag and drop onto the field is accepted but never required or advertised.
 - Uploads continue while the submitter fills other fields on the page. Next
   is disabled with an explanation while an upload on this page is in flight.
-- Removing a file deletes it from staging immediately.
+- Removing a file deletes it from staging immediately. If the removal fails
+  (a server error or no connection), the row stays with its Remove button and
+  shows `remove_failed`.
 - Files uploaded early belong to the in-progress record and expire with it.
+- Until the page has an in-progress record, the first upload goes alone: it
+  creates the record. Other uploads (retries and other fields included), and
+  Back or the language switch, wait for its answer; the status line says
+  `uploads_pending` while a post waits. A refused or failed first upload made
+  no record, so the next one goes alone again. Once a record exists, uploads
+  run in parallel. The multipart file name is always `upload`; the original
+  name never leaves the browser.
 
 ## Validation and errors
 
@@ -223,6 +232,7 @@ for `{n}` (or `{count}`), the `… one` row is used, otherwise the plain row. In
 - Answers persist across Back and Next and across a browser refresh, because
   every Next stores server-side. Only the current page's unsent edits can be
   lost; with script, they are also kept in session storage and restored.
+  The confirmation screen clears the form's drafts from session storage.
 - Changing an earlier answer that controls visibility re-evaluates on Next.
   If a later page the submitter already filled becomes hidden, nothing is
   shown about it; its answers are discarded at submit.
@@ -256,7 +266,11 @@ for `{n}` (or `{count}`), the `… one` row is used, otherwise the plain row. In
   `<h1>`.
 - Every status change is announced: upload progress milestones, uploaded,
   removed, page changed, submitting, offline. Progress uses `aria-live=
-  "polite"`, errors `assertive`.
+  "polite"`, errors `assertive`. Live regions (the offline banner, the status
+  line, the submit failure) are in the page from the first render, empty, with
+  a fixed `aria-live`, and receive their text in place.
+- After a failed post, focus returns to the visible button that sent it, with
+  the focus ring.
 - Radio and checkbox groups are navigable with arrow keys as native controls
   provide; no custom widgets replace them.
 - Date inputs accept keyboard entry only; no picker widget to trap focus.
@@ -345,6 +359,7 @@ The only strings the renderer owns. Everything else is staff-authored.
 | error_summary_heading_one | Please fix 1 problem before continuing | Corrige 1 problema para continuar |
 | files_count_one | {count} of 1 file | {count} de 1 archivo |
 | file_unnamed | File {n} | Archivo {n} |
+| remove_failed | {file} was not removed. Check your connection and try again | No se pudo quitar {file}. Revisa tu conexión e inténtalo de nuevo |
 
 `{contact}` is the configured privacy contact address. `{size}` and `{date}`
 are formatted per locale.

@@ -22,7 +22,11 @@ export interface PageState {
 export type PageEvent =
   /** Every server render: the first load and the page a redirect lands on. */
   | { type: "loaded"; hasSummary: boolean; navigated: boolean }
-  | { type: "submit"; action: string; uploadsInFlight: number }
+  /**
+   * `holdForRecord`: the first upload of a render without a record is still open, so a post
+   * that does not wait for uploads waits for its answer instead (see `bus.ts`).
+   */
+  | { type: "submit"; action: string; uploadsInFlight: number; holdForRecord?: boolean }
   | { type: "failed" }
   | { type: "uploads_settled" }
   | { type: "offline" }
@@ -40,7 +44,8 @@ export const initialPageState: PageState = {
 };
 
 /** Next and Submit wait for uploads; Back, a language switch and a Remove never do. */
-const waitsForUploads = (action: string): boolean => action === "next" || action === "submit";
+export const waitsForUploads = (action: string): boolean =>
+  action === "next" || action === "submit";
 
 export function pageReducer(state: PageState, event: PageEvent): PageState {
   switch (event.type) {
@@ -54,7 +59,10 @@ export function pageReducer(state: PageState, event: PageEvent): PageState {
       };
     case "submit":
       if (state.phase === "submitting") return state;
-      if (waitsForUploads(event.action) && event.uploadsInFlight > 0)
+      if (
+        (waitsForUploads(event.action) && event.uploadsInFlight > 0) ||
+        event.holdForRecord === true
+      )
         return { ...state, phase: "waiting_uploads", action: event.action };
       if (!state.online)
         return { ...state, phase: "waiting_online", action: event.action, resend: event.action };

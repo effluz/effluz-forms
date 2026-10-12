@@ -85,6 +85,7 @@ export const fileUpload: FieldRenderer = {
             remove: t(locale, "remove"),
             retry: t(locale, "retry"),
             removed: t(locale, "removed"),
+            removeFailed: t(locale, "remove_failed"),
             count: t(locale, "files_count"),
             countOne: t(locale, "files_count_one"),
             failed: message("upload_failed"),

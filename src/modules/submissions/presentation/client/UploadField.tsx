@@ -15,10 +15,11 @@ import { ErrorIcon } from "../ErrorIcon";
 import type { FileRowView } from "../fields/types";
 import { formatBytes, formatNumber } from "../format";
 import { styles } from "../styles";
-import { keepRows, keptRows, uploadFinished, uploadStarted } from "./bus";
+import { keepRows, keptRows } from "./bus";
 import { fill } from "./form-dom";
 import { RefusedFilesContext } from "./refused-files";
 import { middleEllipsis, precheckFile, queueReducer, type Row } from "./upload-queue";
+import { removeFile, sendUpload } from "./upload-request";
 
 export interface UploadFieldProps {
   slug: string;
@@ -42,6 +43,8 @@ export interface UploadFieldProps {
     remove: string;
     retry: string;
     removed: string;
+    // "{file}" is left in this one too.
+    removeFailed: string;
     count: string;
     countOne: string;
     // "{file}" is left in these for the client to fill.
@@ -73,22 +76,6 @@ function startingRows(props: UploadFieldProps): Row[] {
   return kept.filter((row) => row.state.status !== "uploading");
 }
 
-interface UploadAnswer {
-  ok?: unknown;
-  file?: { id?: unknown };
-  label?: unknown;
-  message?: unknown;
-}
-
-function parseAnswer(text: string): UploadAnswer | null {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return typeof parsed === "object" && parsed !== null ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 const MILESTONE = 25;
 
 function FilmIcon(): ReactElement {
@@ -104,8 +91,9 @@ function FilmIcon(): ReactElement {
  * The upload control of a file field (specs/ui-ux/renderer.md, "File upload"). Rendered on
  * the server it is the no-script control: a native file input posted with the page, the
  * staged files with a Remove button each, and the field's refused files in its error slot.
- * With script, each chosen file uploads at once with its own progress row, and the input is
- * cleared so the page post does not resend it.
+ * With script, each chosen file uploads early with its own progress row (at once, or one at a
+ * time until the page has an in-progress record; see `bus.ts`), and the input is cleared so the
+ * page post does not resend it.
  */
 export function UploadField(props: UploadFieldProps): ReactElement {
   const refused = useContext(RefusedFilesContext).filter((r) => r.fieldKey === props.fieldKey);
@@ -123,6 +111,8 @@ export function UploadField(props: UploadFieldProps): ReactElement {
   const [dragging, setDragging] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const [alert, setAlert] = useState("");
+  // Rows whose removal failed, by local id, with the message shown under them.
+  const [removeFailed, setRemoveFailed] = useState<Readonly<Record<string, string>>>({});
   const chosen = useRef(new Map<string, File>());
   const nextLocalId = useRef(0);
   const input = useRef<HTMLInputElement>(null);
@@ -139,62 +129,32 @@ export function UploadField(props: UploadFieldProps): ReactElement {
   const shortName = (row: Row): string => middleEllipsis(row.name);
 
   function upload(localId: string, file: File, name: string): void {
-    const body = new FormData();
-    body.set("field", props.fieldKey);
-    body.set("_locale", locale);
-    body.set("file", file);
-    const request = new XMLHttpRequest();
-    let open = true;
     let milestone = 0;
-    const settle = (): void => {
-      if (!open) return;
-      open = false;
-      uploadFinished();
-    };
-    const fail = (message: string): void => {
-      dispatch({ type: "fail", localId, message });
-      setAlert(message);
-    };
-    request.upload.onprogress = (event) => {
-      if (!event.lengthComputable || event.total === 0) return;
-      const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
-      dispatch({ type: "progress", localId, percent });
-      const reached = Math.floor(percent / MILESTONE) * MILESTONE;
-      if (reached > milestone && reached < 100) {
-        milestone = reached;
-        setAnnouncement(
-          `${middleEllipsis(name)}, ${fill(text.uploading, { percent: formatNumber(reached, locale) })}`,
-        );
-      }
-    };
-    request.onload = () => {
-      settle();
-      const answer = parseAnswer(request.responseText);
-      const id = answer?.file?.id;
-      if (
-        request.status >= 200 &&
-        request.status < 300 &&
-        answer?.ok === true &&
-        typeof id === "string"
-      ) {
-        const label = typeof answer.label === "string" ? answer.label : name;
-        dispatch({ type: "done", localId, id, label });
-        setAnnouncement(`${middleEllipsis(name)}, ${text.uploaded}`);
-        return;
-      }
-      const message = typeof answer?.message === "string" ? answer.message : text.failed;
-      fail(fill(message, { file: middleEllipsis(name) }));
-    };
-    request.onerror =
-      request.onabort =
-      request.ontimeout =
-        () => {
-          settle();
-          fail(fill(text.failed, { file: middleEllipsis(name) }));
-        };
-    request.open("POST", `/f/${encodeURIComponent(props.slug)}/files`);
-    uploadStarted();
-    request.send(body);
+    sendUpload(
+      { slug: props.slug, fieldKey: props.fieldKey, locale, file },
+      {
+        progress: (percent) => {
+          dispatch({ type: "progress", localId, percent });
+          const reached = Math.floor(percent / MILESTONE) * MILESTONE;
+          if (reached > milestone && reached < 100) {
+            milestone = reached;
+            setAnnouncement(
+              `${middleEllipsis(name)}, ${fill(text.uploading, { percent: formatNumber(reached, locale) })}`,
+            );
+          }
+        },
+        settled: (outcome) => {
+          if (outcome.ok) {
+            dispatch({ type: "done", localId, id: outcome.id, label: outcome.label ?? name });
+            setAnnouncement(`${middleEllipsis(name)}, ${text.uploaded}`);
+            return;
+          }
+          const message = fill(outcome.message ?? text.failed, { file: middleEllipsis(name) });
+          dispatch({ type: "fail", localId, message });
+          setAlert(message);
+        },
+      },
+    );
   }
 
   function choose(files: readonly File[]): void {
@@ -254,19 +214,23 @@ export function UploadField(props: UploadFieldProps): ReactElement {
     upload(row.localId, file, file.name);
   }
 
+  const forgetRemoveFailure = (localId: string): void => {
+    setRemoveFailed((failures) =>
+      localId in failures
+        ? Object.fromEntries(Object.entries(failures).filter(([id]) => id !== localId))
+        : failures,
+    );
+  };
+
   async function remove(row: Row): Promise<void> {
-    if (row.id !== null) {
-      try {
-        const response = await fetch(
-          `/f/${encodeURIComponent(props.slug)}/files/${encodeURIComponent(row.id)}`,
-          { method: "DELETE" },
-        );
-        // A 404 means the file is already gone.
-        if (!response.ok && response.status !== 404) return;
-      } catch {
-        return;
-      }
+    if (row.id !== null && (await removeFile(props.slug, row.id)) === "failed") {
+      // The row stays, with its Remove button, and says why.
+      const message = fill(text.removeFailed, { file: shortName(row) });
+      setRemoveFailed((failures) => ({ ...failures, [row.localId]: message }));
+      setAlert(message);
+      return;
     }
+    forgetRemoveFailure(row.localId);
     if (row.thumb !== null) URL.revokeObjectURL(row.thumb);
     chosen.current.delete(row.localId);
     dispatch({ type: "remove", localId: row.localId });
@@ -347,6 +311,15 @@ export function UploadField(props: UploadFieldProps): ReactElement {
                   uploaded={text.uploaded}
                   locale={locale}
                 />
+                {removeFailed[row.localId] === undefined ? null : (
+                  <span
+                    id={`${row.localId}-remove-failed`}
+                    className={[styles.fileStatus, styles.errorLine].join(" ")}
+                  >
+                    <ErrorIcon />
+                    {removeFailed[row.localId]}
+                  </span>
+                )}
               </span>
             ) : (
               <span id={`${row.localId}-name`} className={styles.fileName}>
@@ -380,7 +353,11 @@ export function UploadField(props: UploadFieldProps): ReactElement {
                 <button
                   type="button"
                   onClick={() => void remove(row)}
-                  aria-describedby={`${row.localId}-name`}
+                  aria-describedby={
+                    removeFailed[row.localId] === undefined
+                      ? `${row.localId}-name`
+                      : `${row.localId}-name ${row.localId}-remove-failed`
+                  }
                   className={styles.removeButton}
                 >
                   {text.remove}

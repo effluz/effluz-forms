@@ -69,6 +69,7 @@ export function FormPage(props: FormPageProps): ReactElement {
         locale={locale}
         renderId={page.renderedAt.toISOString()}
         navigated={page.hasRecord && page.pending === null}
+        hasRecord={page.hasRecord}
         refusedFiles={props.refusedFiles}
         text={{
           submitting: t(locale, "submitting"),

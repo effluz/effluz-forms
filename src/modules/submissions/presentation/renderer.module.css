@@ -78,6 +78,13 @@
   outline-offset: 2px;
 }
 
+/* The same ring on a control the script focused (after a failed post), where the browser may
+   not match :focus-visible: 2 px color.focus.ring, offset 2 px (border.width.focus). */
+.page [data-focus-ring]:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 /* Skip link: off-screen until focused (space.2), space.3 / space.4 padding, surface.card, radius.md. */
 .skip {
   position: absolute;
@@ -677,21 +684,27 @@
   color: var(--tertiary-hover);
 }
 
-/* Status line: color.text.error, space.4 below the form, hidden when empty. */
+/* Status line: color.text.error, space.4 below the form. A live region, so it stays in the
+   accessibility tree when empty and only gives up its margin (0, no token needed). */
 .status {
   margin: 16px 0 0;
   color: var(--error);
 }
 
 .status:empty {
-  display: none;
+  margin: 0;
 }
 
-/* Banner: space.4 padding on surface.subtle. */
+/* Banner: space.4 padding on surface.subtle, radius.md. A live region: empty, it keeps its
+   place in the accessibility tree with no padding (0, no token needed), so nothing shows. */
 .banner {
   padding: 16px;
   background: var(--surface-subtle);
   border-radius: 12px;
+}
+
+.banner:empty {
+  padding: 0;
 }
 
 /* Confirmation reference: flex wrap; the code is monospace on a card with border.default, selected whole on click. */
