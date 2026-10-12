@@ -39,7 +39,7 @@ function scriptUrls(html: string): string[] {
 }
 
 describe("the renderer budgets", () => {
-  it("keeps every page's HTML under 30 KB and its scripts under 150 KB, compressed", async () => {
+  it("keeps every page's HTML under 30 KB and all their scripts under 150 KB, compressed", async () => {
     const { slug } = await publishReferenceForm(pool);
     const v = new Visitor(inject("baseUrl"));
     const pages: { page: string; html: string }[] = [];
@@ -56,10 +56,11 @@ describe("the renderer budgets", () => {
       expect(size, `${page}: ${String(size)} bytes of gzip HTML`).toBeLessThan(HTML_BUDGET);
     }
 
-    // The method: the scripts page 1 makes the browser load (see `scriptUrls`), each body
-    // fetched from the app, gzipped on its own at the default level, and the sizes summed.
-    // KB is 1024 bytes. The failure message carries the measured total.
-    const urls = scriptUrls(pages[0]?.html ?? "");
+    // The method: the union of the scripts the five pages make the browser load (see
+    // `scriptUrls`), so a chunk only one page loads (the photos page's upload field) counts too;
+    // each body fetched from the app once, gzipped on its own at the default level, and the
+    // sizes summed. KB is 1024 bytes. The failure message carries the measured total.
+    const urls = [...new Set(pages.flatMap(({ html }) => scriptUrls(html)))];
     expect(urls.length).toBeGreaterThan(0);
     let total = 0;
     for (const url of urls) {
@@ -69,11 +70,13 @@ describe("the renderer budgets", () => {
     }
     expect(
       total,
-      `${String(total)} bytes of gzip script over ${String(urls.length)} files`,
+      `${String(total)} bytes of gzip script over ${String(urls.length)} files, the union of the five pages' scripts`,
     ).toBeLessThan(SCRIPT_BUDGET);
   });
 
-  it("renders page 1 in under 200 ms at the 95th percentile", async () => {
+  // One retry for this case only: a shared runner can stall for a moment; two slow runs in a
+  // row are a finding.
+  it("renders page 1 in under 200 ms at the 95th percentile", { retry: 1 }, async () => {
     const { slug } = await publishReferenceForm(pool);
     const v = new Visitor(inject("baseUrl"));
     for (let i = 0; i < 5; i += 1) await v.get(`/f/${slug}`);
@@ -86,6 +89,11 @@ describe("the renderer budgets", () => {
     }
     samples.sort((a, b) => a - b);
     const p95 = samples[Math.floor(40 * 0.95) - 1] ?? Infinity;
-    expect(p95, `p95 ${p95.toFixed(1)} ms`).toBeLessThan(RENDER_BUDGET_MS);
+    // The method: 40 sequential GETs of page 1 after 5 warm-ups, timed to the end of the body;
+    // the 38th fastest is the 95th percentile.
+    expect(
+      p95,
+      `p95 ${p95.toFixed(1)} ms over 40 sequential GETs of page 1 after 5 warm-ups`,
+    ).toBeLessThan(RENDER_BUDGET_MS);
   });
 });
