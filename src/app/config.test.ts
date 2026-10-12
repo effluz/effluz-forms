@@ -98,10 +98,12 @@ describe("loadConfig", () => {
     expect(loadConfig({ ...base, WORKER_LEASE_SECONDS: "30" }).worker.leaseSeconds).toBe(30);
   });
   it("requires NODE_ENV and names it, so no entry point falls back to development", () => {
-    const env = { ...base };
-    delete env.NODE_ENV;
-    expect(() => loadConfig(env)).toThrow("Invalid configuration: NODE_ENV");
-    expect(() => loadConfig({ ...base, NODE_ENV: "staging" })).toThrow(/NODE_ENV/);
+    // Typed loosely: the ambient ProcessEnv declares NODE_ENV as always present.
+    const env: Record<string, string | undefined> = { ...base };
+    delete env["NODE_ENV"];
+    expect(() => loadConfig(env as NodeJS.ProcessEnv)).toThrow("Invalid configuration: NODE_ENV");
+    const staging: Record<string, string | undefined> = { ...base, NODE_ENV: "staging" };
+    expect(() => loadConfig(staging as NodeJS.ProcessEnv)).toThrow(/NODE_ENV/);
   });
   it.each(["SMTP2GO_API_URL", "DROPBOX_API_URL", "DROPBOX_CONTENT_URL"])(
     "refuses a plain-http %s in production and names only the variable",
