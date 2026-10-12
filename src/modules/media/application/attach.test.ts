@@ -37,7 +37,7 @@ describe("attachToSubmission", () => {
       updatedAt: deps.clock.now(),
     });
     expect(deps.queue.ofType("media.upload")).toEqual([
-      { type: "media.upload", payload: { mediaId: file.id }, opts: {} },
+      { type: "media.upload", payload: { mediaId: file.id }, opts: { maxAttempts: 16 } },
     ]);
   });
 });

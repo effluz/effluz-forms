@@ -2,7 +2,7 @@ import type { Clock } from "@/shared/application/ports/clock";
 import type { JobQueue } from "@/shared/application/ports/job-queue";
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 import type { StagedFile } from "../domain/media";
-import { MEDIA_JOB_TYPES } from "./job-types";
+import { MEDIA_JOB_MAX_ATTEMPTS, MEDIA_JOB_TYPES } from "./job-types";
 import type { MediaRepository } from "./ports/media-repository";
 
 export interface AttachedFile {
@@ -40,6 +40,11 @@ export async function attachToSubmission(
       createdAt: at,
       updatedAt: at,
     });
-    await deps.queue.enqueue(uow, MEDIA_JOB_TYPES.upload, { mediaId: file.id });
+    await deps.queue.enqueue(
+      uow,
+      MEDIA_JOB_TYPES.upload,
+      { mediaId: file.id },
+      { maxAttempts: MEDIA_JOB_MAX_ATTEMPTS },
+    );
   }
 }

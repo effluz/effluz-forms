@@ -160,7 +160,7 @@ counts.
 
 | Type | Trigger | Effect |
 |---|---|---|
-| `media.upload` | Submission stored | Staging to durable storage, media row to `stored` with its reference, staging copy deleted; on the last attempt the row becomes `failed` and staging is kept |
+| `media.upload` | Submission stored | Staging to durable storage, media row to `stored` with its reference, staging copy deleted; the row becomes `failed` and staging is kept when the job is on its last attempt, or at once when the staging copy is missing (a permanent failure) |
 | `media.delete` | Retention purge or admin delete | Remove the durable file, the staging copy and the media row, in that order |
 | `email.submitter_confirmation` | Submission stored, version defines one | Confirmation in the submitter's locale |
 | `email.staff_notification` | Submission stored, form cadence is per submission | Link to the manager, no content |
@@ -169,5 +169,11 @@ counts.
 | `backup.database` | Nightly schedule | Encrypted dump to Dropbox backup folder |
 | `jobs.cleanup` | Daily schedule | Prune old succeeded jobs, expired in-progress records and their staged files |
 | `identity.cleanup` | Daily schedule | Delete expired sign-in attempts and expired admin sessions, no audit entries |
+
+Every `media.*` and `email.*` job is enqueued with `max_attempts` 16 instead of
+the default 8. With the backoff above (2^attempt seconds, capped at one hour),
+16 attempts keep retrying for about five hours (the waits reach the cap from
+the twelfth attempt), so an outage of Dropbox or the email provider of a few
+hours does not leave dead jobs that nothing re-runs.
 
 Payloads: `media.*` carry `{ mediaId }`, `email.*` carry `{ submissionId }`.

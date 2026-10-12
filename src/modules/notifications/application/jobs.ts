@@ -13,6 +13,13 @@ export const EMAIL_JOB_TYPES = {
   staffNotification: "email.staff_notification",
 } as const;
 
+/**
+ * Attempt limit for every `email.*` job: with the backoff of 2^attempt seconds
+ * capped at one hour, 16 attempts cover about five hours of provider outage. See
+ * specs/system/jobs.md, "Job types in the first release".
+ */
+export const EMAIL_JOB_MAX_ATTEMPTS = 16;
+
 function submissionIdOf(payload: JobPayload): string {
   const id = payload.submissionId;
   if (typeof id !== "string") throw new PermanentJobError("payload has no submissionId");

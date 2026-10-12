@@ -1,6 +1,6 @@
 import type { JobQueue } from "@/shared/application/ports/job-queue";
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
-import { EMAIL_JOB_TYPES } from "./jobs";
+import { EMAIL_JOB_MAX_ATTEMPTS, EMAIL_JOB_TYPES } from "./jobs";
 
 /**
  * Enqueues the emails a submission asks for, inside the intake transaction.
@@ -12,10 +12,11 @@ export async function enqueueSubmissionEmails(
   input: { submissionId: string; submitterConfirmation: boolean; staffNotification: boolean },
 ): Promise<void> {
   const payload = { submissionId: input.submissionId };
+  const opts = { maxAttempts: EMAIL_JOB_MAX_ATTEMPTS };
   if (input.submitterConfirmation) {
-    await queue.enqueue(uow, EMAIL_JOB_TYPES.submitterConfirmation, payload);
+    await queue.enqueue(uow, EMAIL_JOB_TYPES.submitterConfirmation, payload, opts);
   }
   if (input.staffNotification) {
-    await queue.enqueue(uow, EMAIL_JOB_TYPES.staffNotification, payload);
+    await queue.enqueue(uow, EMAIL_JOB_TYPES.staffNotification, payload, opts);
   }
 }
