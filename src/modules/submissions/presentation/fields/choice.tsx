@@ -81,7 +81,7 @@ export const multipleChoice: FieldRenderer = {
     const id = ids(props.field.key);
     const checked = many(props.values, props.field.key);
     return (
-      <GroupShell props={props}>
+      <GroupShell props={props} sayRequired>
         <div className={styles.options}>
           {settings.options.map((o, index) => (
             <label key={o.key} className={styles.option}>

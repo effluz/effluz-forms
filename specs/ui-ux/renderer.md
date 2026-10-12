@@ -49,7 +49,9 @@ Use case: `use-cases/fill-and-submit-form.md`. Model: `form-definition.md`.
   "{form title}: {page title}" as the browser title on later pages.
 - Required legend once per page, above the first field: "Fields marked with
   * are required". The star sits after the label with `aria-hidden`, and the
-  input carries `required` and `aria-required`.
+  input carries `required` and `aria-required`. A checkbox group
+  (`multiple_choice`), whose controls cannot carry `required`, says
+  `group_required` in its legend instead, visually hidden, after the star.
 - Navigation row: "Back" (not on page 1), then "Next", or "Submit" on the
   last visible page. Submit is visually primary; Next is primary; Back is
   secondary. Enter in a single-line field triggers Next, never Submit, unless
@@ -129,7 +131,7 @@ the control so screen readers hear it before entering.
 | `date` | Three inputs: day, month, year, in the locale's order, grouped in a `<fieldset>` with the label as `<legend>` | Native date pickers are inconsistent on phones and inaccessible in places. |
 | `single_choice` radio | `<fieldset>` with `<legend>`, one `<input type="radio">` per option, each with a full-width tappable label | Vertical list always. |
 | `single_choice` dropdown | `<select>` with a placeholder option "Choose one" | Used only when staff chose dropdown and there are more than 6 options; otherwise the renderer falls back to radio. |
-| `multiple_choice` | `<fieldset>`, `<input type="checkbox">` per option | Min and max selected shown in help automatically. |
+| `multiple_choice` | `<fieldset>`, `<input type="checkbox">` per option | Min and max selected shown in help automatically, as plain text after the staff help. |
 | `checkbox` | Single checkbox with its label | |
 | `consent` | A bordered block containing the consent text, then a checkbox labeled "I have read and agree" | The text is the `<legend>`. Cannot be pre-checked. |
 | `file_upload` | See File upload | |
@@ -385,6 +387,7 @@ The only strings the renderer owns. Everything else is staff-authored.
 | files_count_one | {count} of 1 file | {count} de 1 archivo |
 | file_unnamed | File {n} | Archivo {n} |
 | remove_failed | {file} was not removed. Check your connection and try again | No se pudo quitar {file}. Revisa tu conexión e inténtalo de nuevo |
+| group_required | required | obligatorio |
 
 `{contact}` is the configured privacy contact address. `{size}` and `{date}`
 are formatted per locale.
@@ -395,7 +398,9 @@ in the file messages is `kinds_images`, `kinds_videos` or `kinds_mixed`.
 `file_row` names a staged file without script. `honeypot_label` labels the
 hidden anti-spam field, which assistive technology never reaches. `file_unnamed`
 stands for `{file}` in a refused file's message when the name did not fit in the
-cookie; `{n}` is the file's place among the refused ones.
+cookie; `{n}` is the file's place among the refused ones. `group_required` is
+read after a required checkbox group's legend (see "Form page"). On a screen in
+both languages, a space separates the second language from the first.
 
 ## Confirmation email, fixed parts
 

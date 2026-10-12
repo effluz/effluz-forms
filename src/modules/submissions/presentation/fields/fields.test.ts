@@ -27,6 +27,7 @@ function render(field: Field, props: Partial<FieldProps> = {}): string {
       slug: "probe-form",
       label: "Probe",
       help: null,
+      hints: [],
       required: false,
       values: {},
       error: null,
@@ -157,6 +158,56 @@ describe("field renderers", () => {
     expect(html).toContain(
       'accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,video/mp4,video/quicktime"',
     );
+  });
+
+  it("multiple choice: a required group, which cannot carry required, says so in its legend; a radio group does not need to", () => {
+    const options = [
+      { key: asKey("opt_a"), label: { en: "A", es: "A" } },
+      { key: asKey("opt_b"), label: { en: "B", es: "B" } },
+    ];
+    const many = base({ type: "multiple_choice", required: true, settings: { options } });
+    const legend = (html: string): string =>
+      /<legend[^>]*>[\s\S]*?<\/legend>/.exec(html)?.[0] ?? "";
+    expect(legend(render(many, { required: true }))).toMatch(
+      /<span aria-hidden="true"[^>]*> \*<\/span><span class="[^"]*"> required<\/span>/,
+    );
+    expect(legend(render(many, { required: true, locale: "es", label: "Sonda" }))).toContain(
+      " obligatorio</span>",
+    );
+    expect(legend(render(many, { required: false }))).not.toContain("required");
+    const radio = base({ type: "single_choice", required: true, settings: { options } });
+    expect(legend(render(radio, { required: true }))).not.toContain("required");
+  });
+
+  it("generated hints are plain text after the staff help, inside the described help block", () => {
+    const options = [{ key: asKey("opt_a"), label: { en: "A", es: "A" } }];
+    const field = base({ type: "multiple_choice", settings: { options } });
+    const html = render(field, {
+      help: "Staff **help**",
+      hints: ["Select at least 2 options for Pick **two**"],
+    });
+    expect(html).toContain("<strong>help</strong>");
+    expect(html).toContain("Select at least 2 options for Pick **two**");
+    expect(html).not.toContain("<strong>two</strong>");
+    const help = html.slice(html.indexOf('<div id="f_probe-help">'), html.indexOf("<input"));
+    expect(help.indexOf("Staff")).toBeGreaterThan(-1);
+    expect(help.indexOf("Staff")).toBeLessThan(help.indexOf("Select at least"));
+    expect(html).toMatch(/<fieldset[^>]*aria-describedby="f_probe-help"/);
+    // Hints alone still make a described help block.
+    const only = render(field, { hints: ["Select no more than 1 option for Probe"] });
+    expect(only).toMatch(/<fieldset[^>]*aria-describedby="f_probe-help"/);
+    expect(only).toContain("Select no more than 1 option for Probe");
+  });
+
+  it("consent: the checkbox carries the error description as the fieldset does, marked for the client to keep it so", () => {
+    const field = base({
+      type: "consent",
+      settings: { text: { en: "Synthetic terms.", es: "Términos sintéticos." }, coveredItems: [] },
+    });
+    const html = render(field, { error: "You must agree to continue" });
+    const box = /<input[^>]*type="checkbox"[^>]*>/.exec(html)?.[0] ?? "";
+    expect(box).toContain('aria-describedby="f_probe-error"');
+    expect(box).toContain("data-own-error");
   });
 
   it("short text infers autocomplete only where safe", () => {

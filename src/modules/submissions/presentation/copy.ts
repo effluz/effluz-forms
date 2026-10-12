@@ -109,6 +109,7 @@ export const chrome = {
     en: "{file} was not removed. Check your connection and try again",
     es: "No se pudo quitar {file}. Revisa tu conexión e inténtalo de nuevo",
   },
+  group_required: { en: "required", es: "obligatorio" },
 } as const satisfies Record<string, Text>;
 
 /** Keyed by the rule name with spaces, as the catalog table writes it. */

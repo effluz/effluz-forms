@@ -1,5 +1,5 @@
 import { styles } from "../styles";
-import { describedBy, ErrorSlot, Help, Star } from "./FieldShell";
+import { describedBy, ErrorSlot, HelpBlock, Star } from "./FieldShell";
 import { type FieldRenderer, ids, one } from "./types";
 
 export const checkbox: FieldRenderer = {
@@ -10,11 +10,7 @@ export const checkbox: FieldRenderer = {
     const id = ids(props.field.key);
     return (
       <div className={styles.field} data-field={props.field.key}>
-        {props.help ? (
-          <div id={id.help}>
-            <Help props={props} />
-          </div>
-        ) : null}
+        <HelpBlock props={props} />
         <label htmlFor={id.control} className={styles.option}>
           <input
             id={id.control}

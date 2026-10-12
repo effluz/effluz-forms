@@ -49,20 +49,24 @@ function valuesFor(field: Field, page: PageView): FormValues {
   return fieldRenderers[field.type].encode(page.answers[field.key], field);
 }
 
-/** The staff help, then the selection limits a multiple choice field enforces. */
-function helpFor(field: Field, label: string, view: PageViewInput): string | null {
-  const { locale } = view.page;
-  const { languages } = view.version.document;
-  const parts: string[] = [];
-  const staff = field.help ? resolveText(field.help, locale, languages) : "";
-  if (staff !== "") parts.push(staff);
+/** The staff help, rich text, or null. */
+function helpFor(field: Field, view: PageViewInput): string | null {
+  const staff = field.help
+    ? resolveText(field.help, view.page.locale, view.version.document.languages)
+    : "";
+  return staff === "" ? null : staff;
+}
+
+/** The selection limits a multiple choice field enforces, as plain text (labels are plain). */
+function hintsFor(field: Field, label: string, locale: PageView["locale"]): string[] {
+  const hints: string[] = [];
   for (const rule of field.validation) {
     if (rule.rule === "min_selected")
-      parts.push(issueMessage({ code: "choice_min", params: { n: rule.value } }, label, locale));
+      hints.push(issueMessage({ code: "choice_min", params: { n: rule.value } }, label, locale));
     if (rule.rule === "max_selected")
-      parts.push(issueMessage({ code: "choice_max", params: { n: rule.value } }, label, locale));
+      hints.push(issueMessage({ code: "choice_max", params: { n: rule.value } }, label, locale));
   }
-  return parts.length === 0 ? null : parts.join("\n\n");
+  return hints;
 }
 
 /**
@@ -96,7 +100,8 @@ export function pageFieldViews(
         languages,
         slug: view.slug,
         label,
-        help: helpFor(field, label, view),
+        help: helpFor(field, view),
+        hints: hintsFor(field, label, page.locale),
         required: def.isInput && (field.required || def.alwaysRequired === true),
         values: valuesFor(field, page),
         error: issue ? issueMessage(issue, label, page.locale) : null,

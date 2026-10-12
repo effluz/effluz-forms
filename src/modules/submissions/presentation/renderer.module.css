@@ -212,6 +212,11 @@
   margin-bottom: 0;
 }
 
+/* The renderer's hints after the staff help: space.2 between the two blocks. */
+.help + .help {
+  margin-top: 8px;
+}
+
 /* The form: a column with space.5 gap. */
 .form {
   display: flex;

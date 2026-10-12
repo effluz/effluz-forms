@@ -4,7 +4,7 @@ import { t } from "../copy";
 import { acceptAttribute, formatMegabytes, limitsKey } from "../format";
 import { fileIssueMessage, filesCount } from "../messages";
 import { styles } from "../styles";
-import { Help, Star } from "./FieldShell";
+import { hasHelp, HelpBlock, Star } from "./FieldShell";
 import { type FieldRenderer, ids } from "./types";
 
 const BYTES_PER_MB = 1024 * 1024;
@@ -35,7 +35,7 @@ export const fileUpload: FieldRenderer = {
       fileIssueMessage({ code, name: "{file}" }, limits, locale);
     const describedBy = [
       hasVideo ? noticeId : null,
-      props.help ? id.help : null,
+      hasHelp(props) ? id.help : null,
       limitsId,
       countId,
       props.error ? id.error : null,
@@ -53,11 +53,7 @@ export const fileUpload: FieldRenderer = {
           {props.label}
           <Star required={props.required} />
         </label>
-        {props.help ? (
-          <div id={id.help}>
-            <Help props={props} />
-          </div>
-        ) : null}
+        <HelpBlock props={props} />
         <p id={limitsId} className={styles.hint}>
           {t(locale, limitsKey(settings.kinds), {
             size: formatMegabytes(settings.maxSizeMb, locale),

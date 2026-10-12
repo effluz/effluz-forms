@@ -10,7 +10,8 @@ const other = (locale: Locale): Locale => (locale === "en" ? "es" : "en");
 
 /**
  * A chrome string in the page language and, on a bilingual form with no language chosen, the
- * other language after it in `<span lang>`. `vars` may differ per language (dates).
+ * other language after it in `<span lang>`, after a space so the two never run together in the
+ * text or the accessible name. `vars` may differ per language (dates).
  * See specs/ui-ux/renderer.md, "Closed, not yet open, not found".
  */
 export function Both(props: {
@@ -26,9 +27,12 @@ export function Both(props: {
     <>
       {t(props.locale, props.k, varsFor(props.locale))}
       {props.languages === "bilingual" ? (
-        <span lang={second} className={styles.secondLanguage}>
-          {t(second, props.k, varsFor(second))}
-        </span>
+        <>
+          {" "}
+          <span lang={second} className={styles.secondLanguage}>
+            {t(second, props.k, varsFor(second))}
+          </span>
+        </>
       ) : null}
     </>
   );

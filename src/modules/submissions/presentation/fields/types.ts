@@ -31,7 +31,10 @@ export interface FieldProps {
   languages: Languages;
   slug: string;
   label: string;
+  /** The staff help, rich text. */
   help: string | null;
+  /** Hints the renderer writes (selection limits), plain text after the staff help. */
+  hints: readonly string[];
   required: boolean;
   /** The page's posted values when refused, else the stored answer encoded. */
   values: FormValues;

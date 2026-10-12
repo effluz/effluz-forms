@@ -52,6 +52,8 @@ export const consent: FieldRenderer = {
             aria-required="true"
             aria-invalid={props.error ? true : undefined}
             aria-describedby={describedBy(props) || undefined}
+            // Described by the error as its fieldset is; a blur check keeps both (form-dom.ts).
+            data-own-error=""
           />
           <span>{t(props.locale, "consent_checkbox")}</span>
         </label>

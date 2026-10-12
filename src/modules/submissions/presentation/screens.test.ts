@@ -202,6 +202,8 @@ describe("RendererScreen", () => {
     const closedHtml = screen(closed);
     expect(closedHtml).toContain("Este formulario está cerrado");
     expect(closedHtml).toMatch(/<span lang="en"[^>]*>This form is closed/);
+    // A space keeps the two languages apart in the heading's text and accessible name.
+    expect(closedHtml).toContain('Este formulario está cerrado <span lang="en"');
     expect(closedHtml).not.toContain("<form");
 
     const notFound = renderToStaticMarkup(createElement(NotFoundScreen));
@@ -239,7 +241,7 @@ describe("RendererScreen", () => {
               {
                 key: "f_pick",
                 type: "multiple_choice",
-                label: { en: "Probe" },
+                label: { en: "Pick **two**" },
                 validation: [{ rule: "min_selected", value: 2 }],
                 settings: {
                   options: [
@@ -264,7 +266,10 @@ describe("RendererScreen", () => {
       expired: false,
     });
     if (view.screen === "not_found") throw new Error("not found");
-    expect(screen(view, "probe-form")).toContain("Select at least 2 options for Probe");
+    const html = screen(view, "probe-form");
+    // The label is plain text: the generated hint never turns it into markup.
+    expect(html).toContain("Select at least 2 options for Pick **two**");
+    expect(html).not.toContain("<strong>two</strong>");
   });
 
   it("gives the opening date in each language's own format", async () => {

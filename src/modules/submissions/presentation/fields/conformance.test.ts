@@ -51,6 +51,7 @@ describe("renderer conformance", () => {
               slug: "probe-form",
               label: locale === "en" ? "Probe" : "Sonda",
               help: null,
+              hints: [],
               required: def.isInput,
               values: {},
               error: def.isInput ? "Probe is required" : null,
@@ -63,6 +64,8 @@ describe("renderer conformance", () => {
           }
           expect(html).toMatch(/<label[^>]*for="f-f_probe"|<legend/);
           expect(html).toContain('id="f_probe-error"');
+          // Linked, not only present: some control or group is described by the error.
+          expect(html).toMatch(/aria-describedby="[^"]*f_probe-error/);
           expect(html).toContain('aria-invalid="true"');
           expect(html).toContain("Probe is required");
           expect(html).not.toMatch(/type="number"|type="date"/);
