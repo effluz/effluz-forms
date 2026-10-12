@@ -88,3 +88,32 @@ export function storyVersion(): Version {
   if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues));
   return parsed.version;
 }
+
+/** Two pages: when (a date of birth and an email), then a note. */
+export function datedVersion(): Version {
+  const parsed = parseDraft(
+    {
+      languages: "bilingual",
+      title: text("Dates", "Fechas"),
+      confirmation: { screen: text("Thank you.", "Gracias.") },
+      pages: [
+        {
+          key: "page_when",
+          title: text("When", "Cuándo"),
+          fields: [
+            { key: "f_born", type: "date", label: text("Born", "Nacimiento") },
+            { key: "f_email", type: "email", label: text("Email", "Correo") },
+          ],
+        },
+        {
+          key: "page_note",
+          title: text("Note", "Nota"),
+          fields: [{ key: "f_note", type: "short_text", label: text("Note", "Nota") }],
+        },
+      ],
+    },
+    registry,
+  );
+  if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues));
+  return parsed.version;
+}

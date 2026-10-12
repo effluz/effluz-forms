@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { fakeImage } from "@/modules/media/application/testing/fakes";
+import { seedPublished } from "@/modules/definitions/application/testing/fakes";
 import { asKey } from "@/shared/domain/form-model";
+import { datedVersion } from "../domain/testing/versions";
 import { postContext } from "./post-context";
 import { savePage } from "./save-page";
 import { makeSubmissionsDeps, post, publishStory, type FakeSubmissionsDeps } from "./testing/fakes";
@@ -237,6 +239,35 @@ describe("savePage", () => {
       answers: { f_name: "Ana" },
       pending: { pageKey: "page_contact", raw: { f_name: "Ana", f_email: "half@" }, issues: [] },
     });
+  });
+
+  it("keeps a date's typed parts on a refused Next and on a language switch", async () => {
+    const parts = { "f_born.day": "3", "f_born.month": "4", "f_born.year": "2020" };
+    for (const action of [{ kind: "next" }, { kind: "language", locale: "en" }] as const) {
+      const deps = makeSubmissionsDeps();
+      await seedPublished(deps.definitions, { slug: "dated-form", document: datedVersion() });
+      const ctx = await postContext(deps, {
+        slug: "dated-form",
+        state: { kind: "none" },
+        submitToken: null,
+      });
+      if (!ctx.ok) throw new Error(ctx.outcome.kind);
+      const out = await savePage(
+        deps,
+        ctx,
+        post({
+          pageKey: "page_when",
+          action,
+          answers: { f_born: "2020-04-03", f_email: "half@" },
+          raw: { ...parts, f_email: "half@" },
+        }),
+      );
+      if (out.kind !== "refused" && out.kind !== "show") throw new Error(out.kind);
+      expect(deps.inProgress.rows.get(out.recordId)?.pending?.raw).toEqual({
+        ...parts,
+        f_email: "half@",
+      });
+    }
   });
 
   it("never writes an upload input, or a key of another page, to pending.raw", async () => {

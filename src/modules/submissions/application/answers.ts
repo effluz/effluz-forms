@@ -1,4 +1,9 @@
-import type { FieldTypeRegistry, ValidationIssue, Version } from "@/shared/domain/form-model";
+import {
+  LIMITS,
+  type FieldTypeRegistry,
+  type ValidationIssue,
+  type Version,
+} from "@/shared/domain/form-model";
 import type { RawValues } from "../domain/in-progress";
 
 /**
@@ -53,10 +58,35 @@ export function omitKeys(
 export const pick = (source: Readonly<Record<string, unknown>>, keys: readonly string[]) =>
   Object.fromEntries(keys.filter((k) => Object.hasOwn(source, k)).map((k) => [k, source[k]]));
 
-/** Typed text of the page's answer inputs only: never an upload input, never another page's key. */
+/** The most characters of one typed value kept: the longest answer any field takes. */
+const RAW_VALUE_MAX = LIMITS.longTextMax;
+/** The most values of one input name kept: the most options a choice field has. */
+const RAW_VALUES_MAX = LIMITS.optionsPerChoice;
+
+/** `value` cut to `RAW_VALUE_MAX` code units, never ending on half of a surrogate pair. */
+function cut(value: string): string {
+  if (value.length <= RAW_VALUE_MAX) return value;
+  const head = value.slice(0, RAW_VALUE_MAX);
+  const last = head.charCodeAt(head.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? head.slice(0, -1) : head;
+}
+
+/**
+ * Typed text of the page's answer inputs only: never an upload input, never
+ * another page's key. A control posting several parts (a date's `<key>.day`,
+ * `<key>.month`, `<key>.year`) keeps every part. Each value is cut to the
+ * longest answer a field takes, so a refused post cannot store or render back
+ * more than a valid one.
+ */
 export function pageRaw(raw: RawValues, keys: readonly string[]): RawValues {
+  const owned = (name: string) => keys.some((k) => name === k || name.startsWith(`${k}.`));
   return Object.fromEntries(
-    keys.filter((k) => Object.hasOwn(raw, k)).map((k) => [k, raw[k] ?? ""]),
+    Object.entries(raw)
+      .filter(([name]) => owned(name))
+      .map(([name, value]) => [
+        name,
+        Array.isArray(value) ? value.slice(0, RAW_VALUES_MAX).map(cut) : cut(value),
+      ]),
   );
 }
 
