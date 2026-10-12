@@ -431,7 +431,7 @@ test("silently accepts a Submit inside the minimum time: the decoy confirmation,
 });
 
 // Waits for group 4's fix of final-review-c1.md item 1 (focus the confirmation heading on mount).
-test.fixme("moves focus to the confirmation heading after a scripted Submit", async ({ page }) => {
+test("moves focus to the confirmation heading after a scripted Submit", async ({ page }) => {
   const pool = newPool();
   try {
     const { slug } = await publishReference(pool);
