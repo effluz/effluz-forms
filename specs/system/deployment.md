@@ -24,7 +24,7 @@ once per server and kept current. It is the only way a server is set up.
   compose.yml          production stack, copied from the repo at deploy
   .env                 secrets, mode 600, owned by deploy, never in git
   data/postgres/       database volume
-  data/staging/        photos awaiting upload
+  data/staging/        files awaiting upload
   data/caddy/          certificates and proxy state
   backups/             last local copy of the nightly dump before upload
 ```

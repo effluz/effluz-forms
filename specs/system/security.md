@@ -125,7 +125,9 @@ The step-by-step flow is in `use-cases/sign-in.md`.
 
 Layered, cheapest first:
 
-1. **Proxy rate limit** per IP on form submission routes.
+1. **Proxy rate limit** per IP on form submission routes. Not built yet: it
+   is part of the deployment plan, and until it lands anonymous uploads are
+   bounded only by the per-submission size and the daily staging sweep.
 2. **Honeypot field** hidden from humans: an input named `website-url`
    placed off-screen, `aria-hidden="true"`, `tabindex="-1"`,
    `autocomplete="off"`. A filled honeypot on any page post is a silent
