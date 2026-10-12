@@ -313,6 +313,59 @@ describe("test-only boundary exception (ADR 0026)", () => {
     expectClean(rules);
   });
 
+  it("lets a module's test import tests/fakes", async () => {
+    const rules = await probe(
+      "src/modules/probe-c/infrastructure/boundary-probe-fake.test.ts",
+      "syntheticMp4",
+      "../../../../tests/fakes/media-files",
+    );
+    expectClean(rules);
+  });
+
+  // No exception is needed for these two: the layer rules already let the test reach them, and
+  // the restricted-imports rule exempts test files.
+  it("lets a module's domain test import its own domain/testing helpers", async () => {
+    const rules = await probe(
+      "src/modules/submissions/domain/boundary-probe-own-testing.test.ts",
+      "storyVersion",
+      "./testing/versions",
+    );
+    expectClean(rules);
+  });
+
+  it("lets a module's presentation test import shared/presentation/testing", async () => {
+    const rules = await probe(
+      "src/modules/submissions/presentation/boundary-probe-spec-copy.test.ts",
+      "specCopyRows",
+      "@/shared/presentation/testing/spec-copy",
+    );
+    expectClean(rules);
+  });
+
+  it("refuses production code importing tests/fakes", async () => {
+    const rules = await probe(
+      "src/modules/definitions/infrastructure/boundary-probe-fake.ts",
+      "syntheticMp4",
+      "../../../../tests/fakes/media-files",
+    );
+    expect(ruleIds(rules)).toContain("no-restricted-imports");
+  });
+
+  it("refuses production code importing its own domain/testing or shared/presentation/testing", async () => {
+    const own = await probe(
+      "src/modules/submissions/domain/boundary-probe-own-testing.ts",
+      "storyVersion",
+      "./testing/versions",
+    );
+    expect(ruleIds(own)).toContain("no-restricted-imports");
+    const shared = await probe(
+      "src/modules/submissions/presentation/boundary-probe-spec-copy.ts",
+      "specCopyRows",
+      "@/shared/presentation/testing/spec-copy",
+    );
+    expect(ruleIds(shared)).toContain("no-restricted-imports");
+  });
+
   it("refuses production code importing another module's testing fakes", async () => {
     const rules = await probe(
       "src/modules/definitions/application/boundary-probe-fakes.ts",

@@ -15,10 +15,17 @@ test data from `tests/fixtures/` and `tests/fakes/`.
 - Files matching `src/**/*.test.{ts,tsx}` or `src/**/testing/**` may import
   any module's `application/testing/*` and any file under `tests/fixtures/`
   or `tests/fakes/`.
+- Tests also use their own module's `domain/testing/*` and the kernel's
+  `src/shared/application/testing/*` and `src/shared/presentation/testing/*`.
+  These need no exception: the layer rules already let a test reach its own
+  module's domain and the shared layers its layer may use, and the
+  restricted-imports rule below does not apply to test files.
 - Production code keeps the single entry point: no other file may import a
   `testing` folder (`**/testing`, `**/testing/**`) or anything under
   `tests/` (`**/tests/**`), its own module's included.
-- `eslint.config.mjs` encodes both rules; `tests/boundaries/` probes them.
+- `eslint.config.mjs` encodes both rules; `tests/boundaries/` probes each
+  allowance (`application/testing/*`, `tests/fixtures/`, `tests/fakes/`,
+  `domain/testing/*`, `shared/presentation/testing/*`) and each refusal.
 
 ## Consequences
 
