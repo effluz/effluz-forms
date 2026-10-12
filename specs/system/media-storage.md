@@ -20,7 +20,7 @@ Each tier is an adapter of the same port.
 | `exists(ref)` | Existence check; uploads rely on `put` overwriting by key. |
 | `read(ref)` | Staging only: the bytes, for the upload job. |
 | `deletePrefix(prefix)` | Staging only: remove every file under a prefix. |
-| `listPrefixes(root)` | Staging only: the prefixes directly under a root, each with the last time its contents changed; none when nothing was ever staged. The staging sweep uses it. |
+| `listPrefixes(root)` | Staging only (the local disk adapter implements it, the Dropbox adapter does not): each first-level prefix under a root with the time its contents last changed; none when nothing was ever staged. The staging sweep uses it. |
 
 Keys are human-readable so staff can browse the Dropbox folder, and carry
 no personal data:

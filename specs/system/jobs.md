@@ -180,7 +180,7 @@ counts.
 | `email.staff_digest` | Daily schedule per form with daily cadence | List of new references with links, skipped when empty |
 | `retention.purge` | Daily schedule | Delete submissions past their form's retention setting |
 | `backup.database` | Nightly schedule | Encrypted dump to Dropbox backup folder |
-| `jobs.cleanup` | Daily schedule | Prune old succeeded jobs, expired in-progress records and their staged files, and staging prefixes no record claims |
+| `jobs.cleanup` | Daily schedule | Prune old succeeded jobs, expired in-progress records and their staged files, and, with `submissions.sweep_staging`, staging prefixes older than 24 hours that no in-progress row and no media staging reference claims |
 | `identity.cleanup` | Daily schedule | Delete expired sign-in attempts and expired admin sessions, no audit entries |
 
 Every `media.*` and `email.*` job is enqueued with `max_attempts` 36 instead of
