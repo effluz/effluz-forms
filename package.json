@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "worker": "tsx src/app/worker.ts",
     "db:migrate": "tsx src/app/cli/migrate.ts",
     "sessions:revoke": "tsx src/app/cli/revoke-sessions.ts",

@@ -41,7 +41,12 @@ As built (`.github/workflows/ci.yml`):
   `integration-report` artifact when the job fails. `unit` does the same with
   `reports/unit.xml`.
 - `build` runs the Next.js production build, `pnpm build`. Building the image
-  joins it with the deployment plan, and `e2e` with the renderer plan.
+  joins it with the deployment plan.
+- `e2e` builds the app, starts it with `next start` against a throwaway
+  database and temporary media directories, and drives the reference form over
+  HTTP exactly as a browser without script does, plus the budgets of
+  `ui-ux/renderer.md`. It writes `reports/e2e.xml`, uploaded as the
+  `e2e-report` artifact when the job fails.
 - A final job named `ci` waits for all the others and fails unless each one
   succeeded. It is the single status check branch protection requires.
 
