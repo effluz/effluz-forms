@@ -131,18 +131,26 @@ Layered, cheapest first:
    `autocomplete="off"`. A filled honeypot on any page post is a silent
    accept: the in-progress record and its staged files are deleted and
    nothing is stored.
-3. **Minimum time-to-submit** of 3 seconds, measured from the render of
-   page 1: the first post carries the render time in the hidden field
-   `_rendered`, clamped to the last 24 hours and stored on the in-progress
-   record as `started_at`; an absent or unreadable value counts as the time
-   of that first post. Faster than that is a silent accept. A person cannot
-   read and complete even a one-field form with consent in 3 seconds.
+3. **Minimum time-to-submit** of 3 seconds, checked at Submit only and
+   measured from the render of page 1: the first post carries the render
+   time in the hidden field `_rendered`, and so does the first early upload
+   when it is what opens the record. The value is clamped to the last 24
+   hours and stored on the in-progress record as `started_at`; an absent or
+   unreadable value counts as the time of that first post. A Submit faster
+   than that is a silent accept. A person cannot read and complete even a
+   one-field form with consent in 3 seconds.
 4. **Bot challenge** (Cloudflare Turnstile, proposed) only on the final step
    and only when the form's settings enable it. It costs accessibility and
    must never be the first line. Not built yet: a form with it enabled
    renders without it.
-5. **Upload limits** enforced at the proxy (body size) and the app (count,
-   type by content, decode success).
+5. **Upload limits** enforced at the reverse proxy (body size per path,
+   `deployment.md`), in the app's body limits, and by content (count, type
+   by content, decode success). The app caps a page post at 101 MB (the
+   100 MB per submission plus 1 MB for the text fields), for the Next
+   proxy and the Server Action alike, and an early upload at 10 MB plus
+   64 KB. A page post above 101 MB is refused before the action runs, so
+   the visitor gets the error screen rather than `submission too large`
+   (`ui-ux/renderer.md`, "Error").
 
 Silent accepts return the normal success screen. Telling a bot it was caught
 teaches it.
@@ -213,12 +221,15 @@ untrusted input:
   bootstrap on the renderer, allowed by a per-request nonce,
   `frame-ancestors 'none'`, `Referrer-Policy: no-referrer` on admin pages so
   Dropbox temporary links never leak through referrers.
-- The renderer's pages (`/f/<slug>`, both the page and its form posts) get a
-  per-request nonce from the proxy:
+- The renderer's pages get a per-request nonce from the proxy. The policy
+  applies to `/f/<slug>` only, the page and its form posts, not to the
+  `files`, `check` and `restart` routes below it: `default-src 'self'`,
   `script-src 'self' 'nonce-<n>' 'strict-dynamic'` (plus `'unsafe-eval'` in
   development only), `style-src 'self' 'unsafe-inline'`,
-  `img-src 'self' blob: data:`, `connect-src 'self'`, `object-src 'none'`,
-  `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`.
+  `img-src 'self' blob: data:`, `font-src 'self'`, `connect-src 'self'`,
+  `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`,
+  `frame-ancestors 'none'`. The reverse proxy adds no policy of its own on
+  `/f/*` (`deployment.md`).
 - Admin routes are not linked from public pages and are excluded from search
   indexing.
 

@@ -8,6 +8,7 @@ vi.mock("@/app/container", async (importOriginal) => ({
 
 import { loadConfig } from "@/app/config";
 import { buildContainer, getContainer } from "@/app/container";
+import { seedPublished } from "@/modules/definitions/application/testing/fakes";
 import { fakeImage } from "@/modules/media/application/testing/fakes";
 import { postContext, savePage } from "@/modules/submissions/application";
 import {
@@ -252,6 +253,43 @@ describe("the public routes", () => {
     expect(clearing).toContain("Secure");
     expect(clearing).toContain("Path=/f/story-form");
     expect(clearing).toContain("Max-Age=0");
+  });
+});
+
+describe("the first early upload", () => {
+  it("starts the record at the posted render time, so the minimum time counts from the render", async () => {
+    // The story form with its photos page first and always shown: an upload can open the record.
+    const story = await deps.versions.get(
+      deps.definitions,
+      [...deps.definitions.store.forms.values()][0]?.currentVersionId ?? "",
+    );
+    if (!story) throw new Error("no story version");
+    const [contact, baby, consent] = story.document.pages;
+    if (!contact || !baby || !consent) throw new Error("story pages");
+    const photosPage = { ...baby };
+    delete photosPage.visibility;
+    await seedPublished(deps.definitions, {
+      slug: "photos-first",
+      document: { ...story.document, pages: [photosPage, contact, consent] },
+    });
+    const rendered = new Date(deps.clock.now().getTime() - 60_000);
+    const res = await upload(
+      new Request("https://forms.example.com/f/photos-first/files", {
+        method: "POST",
+        body: (() => {
+          const body = new FormData();
+          body.append("field", "f_photos");
+          body.append("_locale", "es");
+          body.append("_rendered", rendered.toISOString());
+          body.append("file", new File([new Uint8Array(fakeImage())], "upload"));
+          return body;
+        })(),
+      }),
+      { params: Promise.resolve({ slug: "photos-first" }) },
+    );
+    expect(res.status).toBe(200);
+    const [record] = [...deps.inProgress.rows.values()];
+    expect(record?.startedAt.toISOString()).toBe(rendered.toISOString());
   });
 });
 

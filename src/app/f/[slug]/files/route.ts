@@ -22,7 +22,7 @@ import {
 import { uploadRefusalMessage } from "@/modules/submissions/presentation/messages";
 import { visiblePages, type FieldTypeRegistry, type Version } from "@/shared/domain/form-model";
 import { resolveText } from "@/shared/domain/localized-text";
-import { errorClass, isForeignRequest, requestLocale } from "../_lib/respond";
+import { errorClass, isForeignRequest, postedInstant, requestLocale } from "../_lib/respond";
 
 /** The browser fills `{file}` with the name it kept; the server never sees it. */
 const FILE = "{file}";
@@ -88,7 +88,7 @@ export async function POST(
     const outcome = await uploadFile(deps, context, {
       fieldKey: target.field.key,
       bytes: new Uint8Array(await file.arrayBuffer()),
-      renderedAt: null,
+      renderedAt: postedInstant(form.get("_rendered")),
       acceptLanguage,
     });
     if (!outcome.ok) {

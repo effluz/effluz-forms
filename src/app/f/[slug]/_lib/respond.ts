@@ -45,6 +45,16 @@ export function isForeignRequest(headers: Headers, publicOrigin: string): boolea
   return site === "cross-site" || site === "same-site";
 }
 
+/**
+ * A posted ISO instant such as `_rendered`, or null when it is absent or unreadable. The first
+ * early upload carries the page's render time, so a record it opens starts where the page did.
+ */
+export function postedInstant(value: FormDataEntryValue | null): Date | null {
+  if (typeof value !== "string") return null;
+  const instant = new Date(value);
+  return Number.isNaN(instant.getTime()) ? null : instant;
+}
+
 /** The form's public link. */
 export function formPath(slug: string): string {
   return `/f/${encodeURIComponent(slug)}`;
