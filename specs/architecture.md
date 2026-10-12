@@ -104,7 +104,7 @@ or a module's public API:
 | Port | Responsibility | First adapter | Spec |
 |---|---|---|---|
 | `UnitOfWork` | Transaction boundary; lets a use case persist state and enqueue jobs atomically | Postgres | `system/database.md` |
-| `MediaStorage` | Store a file, return a reference, produce a time-limited view URL, delete; staging adds read and prefix delete | Local disk (staging), Dropbox (durable) | `system/media-storage.md` |
+| `MediaStorage` | Store a file, return a reference, produce a time-limited view URL, delete; staging adds read, prefix delete and prefix listing | Local disk (staging), Dropbox (durable) | `system/media-storage.md` |
 | `JobQueue` | Enqueue typed jobs with retry and scheduling semantics | Postgres outbox table | `system/jobs.md` |
 | `EmailSender` | Send one rendered transactional message | SMTP2GO (Mailpit locally) | `system/email.md` |
 | `EmailRenderer` | Render the two messages from their data; the implementation is the template module in `src/shared/presentation/email` | Templates, wired at the composition root | `system/email.md` |
@@ -145,7 +145,9 @@ Server actions live only in `src/app/**/actions.ts`: the Settings tab's save and
 the renderer's page form (`src/app/f/[slug]/actions.ts`), which, like the
 Settings save, always ends in a redirect (303); a refused page post carries its
 refused files to the page in the short-lived cookie `effluz_fill_state`. The
-renderer's uploads, blur checks and restart are route handlers beside it. A use
+renderer's early upload (`POST /f/<slug>/files`), file removal
+(`DELETE /f/<slug>/files/<id>`), blur checks (`POST /f/<slug>/check`) and
+restart (`/f/<slug>/restart`) are route handlers beside it. A use
 case must be callable from a test, from the worker, and from a route handler
 without change. No React or Next.js import may appear in `domain/`,
 `application/`, or `infrastructure/`.
@@ -177,21 +179,26 @@ page's `<html lang>` follows the submitter; `src/app/global-not-found.tsx`
    and renders page one in the chosen locale.
 2. Each page posts to `app`. Server-side, the form model evaluates conditions
    and validation rules against the version. Answers to hidden fields are
-   discarded. Photos are re-encoded with metadata (EXIF, including GPS)
-   stripped and written to the local staging directory under
+   discarded. Files arrive early with script (`POST /f/<slug>/files`, one
+   request per file, while the visitor fills in the page) or with the page
+   post without script. Photos are re-encoded with metadata (EXIF, including
+   GPS) stripped; videos are stored as received after a container check. Both
+   are written to the local staging directory under
    `in-progress/<record id>/<file id>.<ext>`.
 3. On the final page, in **one database transaction**, the use case stores
    the submission with its answers document and version id, one media record
-   per photo with status `staged`, and the jobs: one `media.upload` per
-   photo, one `email.submitter_confirmation` if the version defines one and
-   the form has a submitter email field, one `email.staff_notification` per
-   submission, sent as one message to the form's recipient list as it stands
-   when the job runs.
+   per file (photo or video) with status `staged`, deletes the in-progress
+   record, and enqueues the jobs: one `media.upload` per file, one
+   `email.submitter_confirmation` if the version defines one and the form has
+   a submitter email field, one `email.staff_notification` per submission,
+   sent as one message to the form's recipient list as it stands when the job
+   runs.
 4. The transaction commits. The user sees the success screen. Nothing external
    has been called yet, so a provider outage never loses a submission.
-5. `worker` picks jobs up. Uploads move each photo to Dropbox, mark the media
-   record `stored` with its provider reference, and delete the staging copy.
-   Email jobs call the provider.
+5. `worker` picks jobs up. Uploads move each file to durable storage (Dropbox
+   in production, local disk elsewhere), mark the media record `stored` with
+   its provider reference, and delete the staging copy. Email jobs call the
+   provider.
 6. The manager lists submissions per form and renders each answer through
    its field type's review display, using the pinned version for labels. For
    each photo it serves the staging copy if still present, otherwise a
