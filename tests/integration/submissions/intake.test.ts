@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,6 +9,7 @@ import {
   postContext,
   savePage,
   submitForm,
+  sweepStaging,
   uploadFile,
   type PagePost,
   type PostOutcome,
@@ -389,6 +390,25 @@ describe("the intake against Postgres", () => {
     expect(removed).toBe(1);
     expect(await count("submission_in_progress")).toBe(0);
     expect(await stagedFiles()).toEqual([]);
+  });
+
+  it("sweepStaging removes only the day-old staging prefixes no record or media row claims", async () => {
+    const deps = pgSubmissionsDeps(pool, dirs());
+    const logger = new RecordingLogger();
+    expect(await sweepStaging(deps, { now: new Date(), logger })).toBe(0);
+    const submitted = await reachConsent(deps);
+    expect((await submit(deps, submitted)).kind).toBe("submitted");
+    const live = await reachConsent(deps);
+    const orphan = randomUUID();
+    const root = path.join(dirs().staging, "in-progress");
+    await mkdir(path.join(root, orphan), { recursive: true });
+    await writeFile(path.join(root, orphan, `${randomUUID()}.jpg`), "synthetic");
+    const dayOld = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    for (const id of [submitted, live, orphan]) await utimes(path.join(root, id), dayOld, dayOld);
+
+    expect(await sweepStaging(deps, { now: new Date(), logger })).toBe(1);
+    expect((await readdir(root)).sort()).toEqual([submitted, live].sort());
+    expect(await stagedFiles()).toHaveLength(4);
   });
 
   it("closes through the lifecycle use case and the open tab is refused", async () => {

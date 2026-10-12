@@ -169,6 +169,21 @@ export class PgInProgressRepository implements InProgressRepository {
     return rows.length > 0;
   }
 
+  async claimedStaging(recordIds: readonly string[]): Promise<Set<string>> {
+    const ids = recordIds.filter(isUuid);
+    if (ids.length === 0) return new Set();
+    // Read-only look at media's staging_ref: the staging prefix layout is
+    // `in-progress/<record id>/` (specs/system/media-storage.md).
+    const { rows } = await this.pool.query<{ id: string }>(
+      `select c.id::text as id from unnest($1::uuid[]) as c(id)
+        where exists (select 1 from submission_in_progress p where p.id = c.id)
+           or exists (select 1 from media m
+                       where m.staging_ref like 'in-progress/' || c.id::text || '/%')`,
+      [ids],
+    );
+    return new Set(rows.map((r) => r.id));
+  }
+
   async listExpired(now: Date, limit: number): Promise<string[]> {
     const { rows } = await this.pool.query<{ id: string }>(
       `select id from submission_in_progress

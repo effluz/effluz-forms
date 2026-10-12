@@ -28,7 +28,7 @@ import type { MediaDeps } from "../deps";
 import type { ContentSniffer } from "../ports/content-sniffer";
 import type { EncodedImage, ImageEncoder } from "../ports/image-encoder";
 import type { MediaRepository } from "../ports/media-repository";
-import type { StagingStorage } from "../ports/media-storage";
+import type { ListedPrefix, StagingStorage } from "../ports/media-storage";
 
 const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
 const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
@@ -42,17 +42,35 @@ export function fakeImage(type = "image/jpeg", size = 64): Uint8Array {
 }
 
 export class InMemoryStorage implements StagingStorage {
-  readonly files = new Map<string, { bytes: Uint8Array; contentType: string }>();
+  readonly files = new Map<string, { bytes: Uint8Array; contentType: string; at: Date }>();
   failPut = false;
+
+  /** `now` dates each write, for `listPrefixes`. */
+  constructor(private readonly now: () => Date = () => new Date()) {}
 
   put(bytes: Uint8Array, key: string, contentType: string): Promise<string> {
     if (this.failPut) return Promise.reject(new Error("storage unavailable"));
-    this.files.set(key, { bytes: bytes.slice(), contentType });
+    this.files.set(key, { bytes: bytes.slice(), contentType, at: this.now() });
     return Promise.resolve(key);
   }
 
   refForKey(key: string): string {
     return key;
+  }
+
+  listPrefixes(root: string): Promise<ListedPrefix[]> {
+    const base = root.endsWith("/") ? root : `${root}/`;
+    const latest = new Map<string, Date>();
+    for (const [key, { at }] of this.files) {
+      if (!key.startsWith(base)) continue;
+      const name = key.slice(base.length).split("/")[0] ?? "";
+      if (name === "" || !key.slice(base.length).includes("/")) continue;
+      const seen = latest.get(name);
+      if (!seen || at > seen) latest.set(name, at);
+    }
+    return Promise.resolve(
+      [...latest].map(([name, modifiedAt]) => ({ prefix: `${base}${name}/`, modifiedAt })),
+    );
   }
 
   viewUrl(ref: string): Promise<string> {
@@ -159,8 +177,9 @@ export interface FakeMediaDeps extends MediaDeps {
 }
 
 export function makeMediaDeps(overrides: Partial<FakeMediaDeps> = {}): FakeMediaDeps {
+  const clock = overrides.clock ?? new FixedClock();
   return {
-    staging: new InMemoryStorage(),
+    staging: new InMemoryStorage(() => clock.now()),
     durable: new InMemoryStorage(),
     sniffer: new FakeSniffer(),
     encoder: new FakeEncoder(),
@@ -168,7 +187,7 @@ export function makeMediaDeps(overrides: Partial<FakeMediaDeps> = {}): FakeMedia
     queue: new InMemoryJobQueue(),
     uow: new FakeUnitOfWorkFactory(),
     ids: new SequentialIdGenerator(),
-    clock: new FixedClock(),
+    clock,
     ...overrides,
   };
 }

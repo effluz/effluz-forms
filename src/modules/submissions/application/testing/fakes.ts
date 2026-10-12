@@ -3,7 +3,8 @@
  *
  * - `InMemoryInProgressRepository`: `rows` by id, copies in and out; `insert`
  *   rejects an existing id and `update` a missing one, as the table would;
- *   `findForUpdate` is `find` (one process needs no locks).
+ *   `findForUpdate` is `find` (one process needs no locks); `claimedStaging`
+ *   also sees the media fake's staging references.
  * - `InMemorySubmissionRepository`: `rows` by id; `insert` answers
  *   `duplicate_token` when any row has the submit token.
  * - `makeSubmissionsDeps()`: one clock, one id generator and one queue shared
@@ -42,6 +43,9 @@ import { VersionCache } from "../version-cache";
 export class InMemoryInProgressRepository implements InProgressRepository {
   readonly rows = new Map<string, InProgress>();
 
+  /** `stagingRefs` lists the media rows' staging references, for `claimedStaging`. */
+  constructor(private readonly stagingRefs: () => Iterable<string | null> = () => []) {}
+
   insert(_uow: UnitOfWork, record: InProgress): Promise<void> {
     if (this.rows.has(record.id)) return Promise.reject(new Error(`record ${record.id} exists`));
     this.rows.set(record.id, structuredClone(record));
@@ -72,6 +76,18 @@ export class InMemoryInProgressRepository implements InProgressRepository {
   lockExpired(_uow: UnitOfWork, id: string, now: Date): Promise<boolean> {
     const row = this.rows.get(id);
     return Promise.resolve(row !== undefined && row.expiresAt.getTime() <= now.getTime());
+  }
+
+  claimedStaging(recordIds: readonly string[]): Promise<Set<string>> {
+    const refs = [...this.stagingRefs()];
+    return Promise.resolve(
+      new Set(
+        recordIds.filter(
+          (id) =>
+            this.rows.has(id) || refs.some((ref) => ref?.startsWith(`in-progress/${id}/`) === true),
+        ),
+      ),
+    );
   }
 
   listExpired(now: Date, limit: number): Promise<string[]> {
@@ -121,10 +137,13 @@ export function makeSubmissionsDeps(): FakeSubmissionsDeps {
   const queue = new InMemoryJobQueue();
   const uow = new FakeUnitOfWorkFactory();
   const registry = buildDefaultRegistry();
+  const media = makeMediaDeps({ clock, ids, queue, uow });
   return {
     definitions: makeDefinitionsDeps({ clock, ids, uow, registry }),
-    media: makeMediaDeps({ clock, ids, queue, uow }),
-    inProgress: new InMemoryInProgressRepository(),
+    media,
+    inProgress: new InMemoryInProgressRepository(() =>
+      [...media.media.rows.values()].map((row) => row.stagingRef),
+    ),
     submissions: new InMemorySubmissionRepository(),
     queue,
     uow,

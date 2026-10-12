@@ -167,7 +167,8 @@ export function mergeBatch(
 
 /**
  * Removes staged files after the fact. A failure only logs: the record's
- * prefix delete at expiry catches what is left.
+ * prefix delete at expiry, or the staging sweep once no row claims the
+ * prefix, catches what is left.
  */
 export async function discardQuietly(
   deps: SubmissionsDeps,

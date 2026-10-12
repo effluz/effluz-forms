@@ -19,6 +19,14 @@ export interface InProgressRepository {
    * False for an unknown, unexpired or non-UUID id.
    */
   lockExpired(uow: UnitOfWork, id: string, now: Date): Promise<boolean>;
+  /**
+   * The ids among `recordIds` whose staged files something still needs: an
+   * in-progress row with that id, or a media row whose staging copy lies under
+   * the record's prefix (a submitted file `media.upload` has not moved, or one
+   * that failed). Read in one statement, so a Submit committing meanwhile is
+   * seen either as the row or as its media rows.
+   */
+  claimedStaging(recordIds: readonly string[]): Promise<Set<string>>;
   /** Ids of records with `expiresAt <= now`, oldest first, at most `limit`. */
   listExpired(now: Date, limit: number): Promise<string[]>;
 }

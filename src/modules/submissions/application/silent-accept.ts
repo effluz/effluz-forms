@@ -27,8 +27,8 @@ export async function silentAccept(
 
 /**
  * After a silent accept has committed: the post's staged files, then the
- * record's whole staging prefix. A failure only logs, since the prefix goes at
- * expiry anyway.
+ * record's whole staging prefix. A failure only logs: the row is gone, so the
+ * staging sweep of `jobs.cleanup` removes the prefix a day later.
  */
 export async function discardAfterSilentAccept(
   deps: SubmissionsDeps,

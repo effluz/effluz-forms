@@ -12,7 +12,11 @@ import {
   createSubmitterConfirmationHandler,
   type NotificationsDeps,
 } from "@/modules/notifications/application";
-import { expireInProgress, type SubmissionsDeps } from "@/modules/submissions/application";
+import {
+  expireInProgress,
+  sweepStaging,
+  type SubmissionsDeps,
+} from "@/modules/submissions/application";
 import type { JobHandler } from "@/shared/application/ports/job-queue";
 import { createCleanupHandler } from "@/shared/infrastructure/jobs/handlers/cleanup";
 import type { PgJobStore } from "@/shared/infrastructure/jobs/pg-job-store";
@@ -25,10 +29,10 @@ export const RECURRING: RecurringJob[] = [
 ];
 
 /**
- * Every job type this release handles, keyed by type. The expired in-progress
- * step is the only housekeeping `jobs.cleanup` needs from submissions: it
- * removes staged files with each record. See specs/system/jobs.md, "Recurring
- * jobs" and "Job types in the first release".
+ * Every job type this release handles, keyed by type. `jobs.cleanup` runs two
+ * submissions steps: expired in-progress records with their staged files,
+ * then the staging prefixes no record or media row claims. See
+ * specs/system/jobs.md, "Recurring jobs" and "Job types in the first release".
  */
 export function workerHandlers(input: {
   store: Pick<PgJobStore, "pruneSucceeded">;
@@ -43,6 +47,13 @@ export function workerHandlers(input: {
         name: "submissions.expire_in_progress",
         run: (ctx) =>
           expireInProgress(input.submissions, { now: ctx.clock.now(), logger: ctx.logger }).then(
+            () => undefined,
+          ),
+      },
+      {
+        name: "submissions.sweep_staging",
+        run: (ctx) =>
+          sweepStaging(input.submissions, { now: ctx.clock.now(), logger: ctx.logger }).then(
             () => undefined,
           ),
       },

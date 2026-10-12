@@ -149,9 +149,19 @@ because handlers are idempotent.
 Initial set: `retention.purge` daily, `email.staff_digest` daily per form,
 `backup.database` nightly, `jobs.cleanup` daily, `identity.cleanup` daily. Only
 the last two are scheduled today. `jobs.cleanup` deletes succeeded jobs finished
-more than 30 days ago and logs the count; it also removes in-progress submission
-records past their 24 hours, their staged files first, through cleanup steps the
-worker's composition root passes in, so `shared` never imports `submissions`.
+more than 30 days ago and logs the count, then runs the cleanup steps the
+worker's composition root passes in, so `shared` never imports `submissions`:
+
+- `submissions.expire_in_progress` removes in-progress records past their 24
+  hours, their staged files first. It locks each row by id and expiry without
+  reading it, so a row that no longer parses still goes.
+- `submissions.sweep_staging` removes the `in-progress/<id>/` staging prefixes
+  untouched for 24 hours that no `submission_in_progress` row and no
+  `media.staging_ref` claims: files left by a delete that failed after commit
+  (a silent accept, the discarded files of a Submit) or by a crash between
+  staging and the first commit. Logs carry the count, and a hash of the record
+  id for a prefix it could not remove, never the id.
+
 `identity.cleanup` deletes sign-in attempts past their expiry and admin sessions
 past the idle or absolute limit, writes no audit entries, and logs the two
 counts.

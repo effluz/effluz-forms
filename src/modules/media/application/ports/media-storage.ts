@@ -10,8 +10,21 @@ export interface MediaStorage {
   exists(ref: string): Promise<boolean>;
 }
 
-/** The staging area also reads files back and removes a whole record prefix. */
+/** One prefix directly under a listed root, with the last time its contents changed. */
+export interface ListedPrefix {
+  /** `<root>/<name>/`. */
+  prefix: string;
+  modifiedAt: Date;
+}
+
+/**
+ * The staging area also reads files back, removes a whole record prefix and
+ * lists the record prefixes under its root, for the sweep of prefixes no row
+ * claims (specs/system/jobs.md, "Recurring jobs").
+ */
 export interface StagingStorage extends MediaStorage {
   read(ref: string): Promise<Uint8Array>;
   deletePrefix(prefix: string): Promise<void>;
+  /** The prefixes directly under `root`; none when nothing was ever staged there. */
+  listPrefixes(root: string): Promise<ListedPrefix[]>;
 }

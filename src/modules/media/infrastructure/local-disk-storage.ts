@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { StagingStorage } from "../application/ports/media-storage";
+import type { ListedPrefix, StagingStorage } from "../application/ports/media-storage";
 
 const ESCAPE_MESSAGE = "media ref escapes the storage root";
 
@@ -76,6 +76,32 @@ export class LocalDiskStorage implements StagingStorage {
     if (dir === this.root) throw new Error(ESCAPE_MESSAGE);
     await rm(dir, { recursive: true, force: true });
     await this.pruneEmptyParents(path.dirname(dir));
+  }
+
+  /** The directories directly under `root`, each with its modification time. */
+  async listPrefixes(root: string): Promise<ListedPrefix[]> {
+    const base = root.endsWith("/") ? root : `${root}/`;
+    const dir = this.resolve(base);
+    let names: string[];
+    try {
+      names = (await readdir(dir, { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+    const listed: ListedPrefix[] = [];
+    for (const name of names) {
+      try {
+        const { mtime } = await stat(path.join(dir, name));
+        listed.push({ prefix: `${base}${name}/`, modifiedAt: mtime });
+      } catch (error) {
+        // Removed between the listing and the stat: nothing left to report.
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+    return listed;
   }
 
   /** Resolves a ref under the root or throws; refuses absolute paths and backslashes. */

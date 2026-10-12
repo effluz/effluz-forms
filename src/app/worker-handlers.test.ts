@@ -161,4 +161,22 @@ describe("workerHandlers", () => {
     expect(submissions.media.staging.files.size).toBe(0);
     expect(submissions.submissions.rows.size).toBe(0);
   });
+
+  it("jobs.cleanup sweeps a staging prefix that outlived its record", async () => {
+    const submissions = makeSubmissionsDeps();
+    const orphan = "in-progress/00000000-0000-4000-8000-0000000000b1/f1.jpg";
+    await submissions.media.staging.put(fakeImage(), orphan, "image/jpeg");
+    const handlers = workerHandlers({
+      store,
+      pool: {} as Pool,
+      media: submissions.media,
+      notifications: makeNotificationsDeps(),
+      submissions,
+    });
+    const cleanup = handlers["jobs.cleanup"];
+    if (!cleanup) throw new Error("jobs.cleanup is not registered");
+    submissions.clock.advance(24 * 60 * 60 * 1000);
+    await cleanup({}, handlerContext({ clock: submissions.clock }));
+    expect(submissions.media.staging.files.has(orphan)).toBe(false);
+  });
 });
