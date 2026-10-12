@@ -1,12 +1,11 @@
 import { discardRecordFiles } from "@/modules/media/application";
 import type { Logger } from "@/shared/application/ports/logger";
 import { isExpired } from "../domain/in-progress";
+import { recordHash } from "../domain/record-hash";
 import type { SubmissionsDeps } from "./deps";
+import { errorClass } from "./staging";
 
 const BATCH = 500;
-
-const errorClass = (error: unknown): string =>
-  error instanceof Error ? error.constructor.name : typeof error;
 
 /**
  * The submissions step of `jobs.cleanup` (specs/system/jobs.md, "Recurring
@@ -36,7 +35,7 @@ export async function expireInProgress(
         if (gone) removedNow += 1;
       } catch (error) {
         input.logger.warn("expired in-progress record not removed", {
-          recordId: id,
+          recordHash: recordHash(id),
           errorClass: errorClass(error),
         });
       }

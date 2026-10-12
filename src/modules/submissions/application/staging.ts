@@ -14,6 +14,7 @@ import {
   type StagedUpload,
 } from "../domain/in-progress";
 import { uploadFields, visibleStagedBytes } from "../domain/intake";
+import { recordHash } from "../domain/record-hash";
 import { pageInputKeys } from "./answers";
 import type { SubmissionsDeps } from "./deps";
 import type { IncomingFile } from "./fill-state";
@@ -105,7 +106,7 @@ export async function stageIncoming(
         total += result.file.size;
       } catch (error) {
         deps.logger.warn("file staging failed", {
-          recordId: input.recordId,
+          recordHash: recordHash(input.recordId),
           errorClass: errorClass(error),
         });
         batch.refused.push({ fieldKey: field.key, code: "upload_failed", name: file.name });

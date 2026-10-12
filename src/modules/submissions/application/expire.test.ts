@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeImage } from "@/modules/media/application/testing/fakes";
+import { recordHash } from "../domain/record-hash";
 import { expireInProgress } from "./expire";
 import { postContext } from "./post-context";
 import { savePage } from "./save-page";
@@ -79,8 +80,10 @@ describe("expireInProgress", () => {
     const later = new Date(deps.clock.now().getTime() + 24 * 60 * 60 * 1000);
     expect(await expireInProgress(deps, { now: later, logger: deps.logger })).toBe(0);
     expect(deps.inProgress.rows.has(id)).toBe(true);
-    expect(deps.logger.lines.some((l) => l.level === "warn" && l.fields.recordId === id)).toBe(
-      true,
-    );
+    expect(
+      deps.logger.lines.some((l) => l.level === "warn" && l.fields.recordHash === recordHash(id)),
+    ).toBe(true);
+    // The record id is the cookie value and never reaches a log.
+    expect(JSON.stringify(deps.logger.lines)).not.toContain(id);
   });
 });

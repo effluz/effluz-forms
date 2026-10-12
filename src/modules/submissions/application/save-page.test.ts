@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fakeImage } from "@/modules/media/application/testing/fakes";
 import { seedPublished } from "@/modules/definitions/application/testing/fakes";
 import { asKey } from "@/shared/domain/form-model";
+import { recordHash } from "../domain/record-hash";
 import { datedVersion } from "../domain/testing/versions";
 import { postContext } from "./post-context";
 import { savePage } from "./save-page";
@@ -451,6 +452,24 @@ describe("savePage", () => {
       refusedFiles: [{ fieldKey: "f_photos", code: "upload_failed", name: "a.jpg" }],
     });
     expect(JSON.stringify(deps.logger.lines)).not.toContain("a.jpg");
+    // The record id is the cookie value: logs carry its hash only.
+    expect(JSON.stringify(deps.logger.lines)).not.toContain(id);
+    expect(deps.logger.lines.some((l) => l.fields.recordHash === recordHash(id))).toBe(true);
+  });
+
+  it("logs a failed staging cleanup after a silent accept without the record id", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishStory(deps);
+    const id = await startOnPhotos(deps);
+    deps.media.staging.deletePrefix = () => Promise.reject(new Error("disk unavailable"));
+    const out = await savePage(
+      deps,
+      await context(deps, { kind: "record", id }),
+      post({ pageKey: "page_baby", honeypot: "x" }),
+    );
+    expect(out.kind).toBe("decoy");
+    expect(deps.logger.lines.some((l) => l.fields.recordHash === recordHash(id))).toBe(true);
+    expect(JSON.stringify(deps.logger.lines)).not.toContain(id);
   });
 
   it("removes the files it staged when the save fails", async () => {

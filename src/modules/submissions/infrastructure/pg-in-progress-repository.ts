@@ -54,16 +54,16 @@ interface InProgressRow {
 }
 
 function toInProgress(row: InProgressRow): InProgress {
-  // A stored row that fails is corruption. The messages name the record only:
-  // answers and typed values are personal data.
+  // A stored row that fails is corruption. The messages name no record: its id
+  // is the cookie value, and answers and typed values are personal data.
   const answers = answersSchema.safeParse(row.answers);
-  if (!answers.success) throw new Error(`stored answers of in-progress ${row.id} are corrupt`);
+  if (!answers.success) throw new Error("stored answers of an in-progress record are corrupt");
   const files = filesSchema.safeParse(row.files);
-  if (!files.success) throw new Error(`stored files of in-progress ${row.id} are corrupt`);
+  if (!files.success) throw new Error("stored files of an in-progress record are corrupt");
   let pending: PendingPage | null = null;
   if (row.pending !== null) {
     const parsed = pendingSchema.safeParse(row.pending);
-    if (!parsed.success) throw new Error(`stored pending page of in-progress ${row.id} is corrupt`);
+    if (!parsed.success) throw new Error("stored pending page of an in-progress record is corrupt");
     // The issue codes and field keys were validated when they were written.
     pending = parsed.data as PendingPage;
   }
@@ -152,7 +152,7 @@ export class PgInProgressRepository implements InProgressRepository {
         record.updatedAt,
       ],
     );
-    if (res.rowCount === 0) throw new Error(`in-progress ${record.id} does not exist`);
+    if (res.rowCount === 0) throw new Error("the in-progress record does not exist");
   }
 
   async delete(uow: UnitOfWork, id: string): Promise<void> {

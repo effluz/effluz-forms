@@ -2,8 +2,9 @@ import type { Form } from "@/modules/definitions/application";
 import { discardRecordFiles } from "@/modules/media/application";
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 import { decoyReference } from "../domain/protection";
+import { recordHash } from "../domain/record-hash";
 import type { SubmissionsDeps } from "./deps";
-import { discardQuietly } from "./staging";
+import { discardQuietly, errorClass } from "./staging";
 
 /**
  * A silent accept inside the caller's unit of work: the locked in-progress
@@ -38,8 +39,8 @@ export async function discardAfterSilentAccept(
     await discardRecordFiles(deps.media, input.recordId);
   } catch (error) {
     deps.logger.warn("staged files not removed", {
-      recordId: input.recordId,
-      errorClass: error instanceof Error ? error.constructor.name : typeof error,
+      recordHash: recordHash(input.recordId),
+      errorClass: errorClass(error),
     });
   }
 }
