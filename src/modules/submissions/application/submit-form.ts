@@ -27,10 +27,10 @@ import {
   type PlannedFile,
 } from "../domain/intake";
 import { pickLocale } from "../domain/locale";
-import { firstPageKey, pagePosition } from "../domain/navigation";
+import { firstPageKey, nextPageKey, pagePosition } from "../domain/navigation";
 import { isSilentAccept } from "../domain/protection";
 import type { Submission } from "../domain/submission";
-import { pageInputKeys, pageRaw } from "./answers";
+import { pageInputKeys, pageRaw, pick } from "./answers";
 import type { SubmissionsDeps } from "./deps";
 import type { PagePost, PostOutcome } from "./fill-state";
 import type { OpenContext } from "./post-context";
@@ -115,8 +115,16 @@ export async function submitForm(
   const { record: existing } = context;
   const doc = context.version.document;
   if (!doc.pages.some((p) => p.key === post.pageKey)) return { kind: "expired" };
-  // A one-page form is submitted from page 1 before any record exists.
-  if (!existing && post.pageKey !== firstPageKey(doc, deps.registry)) return { kind: "expired" };
+  // A one-page form is submitted from page 1 before any record exists: page 1 must also be
+  // the last visible page, so a crafted Submit cannot skip the pages after it.
+  if (!existing) {
+    const onPage = pick(post.answers, pageInputKeys(doc, deps.registry, post.pageKey).answers);
+    if (
+      post.pageKey !== firstPageKey(doc, deps.registry) ||
+      nextPageKey(doc, onPage, deps.registry, post.pageKey) !== null
+    )
+      return { kind: "expired" };
+  }
 
   const recordId = existing?.id ?? deps.ids.newId();
   const batch = await stageIncoming(deps, {

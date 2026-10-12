@@ -373,7 +373,9 @@ describe("submitForm", () => {
 });
 
 describe("submitForm races and one-page forms", () => {
-  it("answers submitted and stores no media or jobs when the insert meets the token", async () => {
+  // The fake unit of work cannot roll back: the reference given back is proved against
+  // Postgres in tests/integration/submissions/intake.test.ts.
+  it("answers submitted and enqueues nothing when the insert meets the token", async () => {
     const deps = makeSubmissionsDeps();
     await publishStory(deps);
     const id = await reachConsent(deps);
@@ -459,6 +461,23 @@ describe("submitForm races and one-page forms", () => {
       pending: { issues: [{ field: "f_consent" }] },
     });
     expect(deps.submissions.rows.size).toBe(0);
+  });
+
+  it("refuses a Submit without a record on page 1 of a multi-page form as expired", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishStory(deps);
+    const out = await submitForm(
+      deps,
+      await ctxOf(deps, null),
+      post({
+        action: { kind: "submit" },
+        answers: { f_name: "Ana Prueba", f_baby: "no_opt" },
+        renderedAt: new Date(deps.clock.now().getTime() - 60_000),
+      }),
+    );
+    expect(out).toEqual({ kind: "expired" });
+    expect(deps.submissions.rows.size).toBe(0);
+    expect(deps.inProgress.rows.size).toBe(0);
   });
 
   it("refuses a later page without a record as expired", async () => {
