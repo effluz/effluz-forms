@@ -141,10 +141,12 @@ the control so screen readers hear it before entering.
 
 Without script: a native `<input type="file" multiple accept="...">`. Files
 are sent with the page's form post and validated server-side; the page
-re-renders with results. With or without script, the visible control is a label
-styled as a secondary button reading `choose_files`; the native input is
-visually hidden but focusable, its focus ring drawn on that label, so the
-browser's own text (in the browser's language) never shows.
+re-renders with results. Without script the native input stays visible, so the
+chosen files are named before the post. Once the script has mounted the field,
+the visible control is a label styled as a secondary button reading
+`choose_files`; the native input is then visually hidden but focusable, its
+focus ring drawn on that label, so the browser's own text (in the browser's
+language) does not show.
 
 Without script, each staged file is listed as `file_row` (the original name is
 not kept) with a Remove button that submits the page form with that file; the

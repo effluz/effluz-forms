@@ -456,8 +456,21 @@
   border-color: var(--border-focus);
 }
 
-/* The native input: visually hidden but focusable, so the browser's own text never shows. */
+/* Without script the native input is the control (it names the chosen files before the post):
+   full width, a size.touchTarget (44) target, font.size.public.button, color.text.default. */
 .fileInput {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* Once the script has mounted the field (data-enhanced), the native input is visually hidden
+   but focusable, and the styled label below is the control. */
+.dropzone[data-enhanced] .fileInput {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -470,9 +483,15 @@
   opacity: 0;
 }
 
-/* Its label is the visible control: a secondary button (action.secondary bg, plum border,
-   hoverBg), size.controlHeight (48) high, 0 / space.4 padding, radius.md, font.size.public.button, medium. */
+/* The styled control: hidden (out of the accessibility tree too) until the field is enhanced. */
 .chooseButton {
+  display: none;
+}
+
+/* Enhanced, its label is the visible control: a secondary button (action.secondary bg, plum
+   border, hoverBg), size.controlHeight (48) high, 0 / space.4 padding, radius.md,
+   font.size.public.button, medium. */
+.dropzone[data-enhanced] .chooseButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;

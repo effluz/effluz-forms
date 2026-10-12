@@ -24,6 +24,13 @@ import { middleEllipsis, precheckFile, queueReducer, type Row } from "./upload-q
 import { removeFile, sendUpload, type UploadHandle } from "./upload-request";
 import { createRowActions, reannouncing, rowButtons } from "./upload-rows";
 
+/**
+ * The dropzone's `data-enhanced`: set only once the script has mounted the field. The server
+ * render leaves it off, so without script the native input shows the chosen files' names and
+ * the styled "Choose files" control stays hidden (renderer.module.css).
+ */
+export const enhancedAttribute = (enhanced: boolean): "" | undefined => (enhanced ? "" : undefined);
+
 /** Runs after the next frame was drawn, so a cleared live region is seen empty first. */
 const afterNextFrame = (run: () => void): void => {
   requestAnimationFrame(() => {
@@ -106,8 +113,9 @@ function FilmIcon(): ReactElement {
  * staged files with a Remove button each, and the field's refused files in its error slot.
  * With script, each chosen file uploads early with its own progress row (at once, or one at a
  * time until the page has an in-progress record; see `bus.ts`), and the input is cleared so the
- * page post does not resend it. The native input is visually hidden but focusable; its label
- * carries `choose_files` as the visible control.
+ * page post does not resend it. Once enhanced, the native input is visually hidden but
+ * focusable and its label carries `choose_files` as the visible control; without script the
+ * native input shows, so the chosen files are named before the post.
  */
 export function UploadField(props: UploadFieldProps): ReactElement {
   const refused = useContext(RefusedFilesContext).filter((r) => r.fieldKey === props.fieldKey);
@@ -288,6 +296,8 @@ export function UploadField(props: UploadFieldProps): ReactElement {
     >
       <div
         className={styles.dropzone}
+        data-dropzone=""
+        data-enhanced={enhancedAttribute(enhanced)}
         data-drag={enhanced && dragging ? "" : undefined}
         onDragOver={enhanced ? onDragOver : undefined}
         onDragLeave={
@@ -312,8 +322,8 @@ export function UploadField(props: UploadFieldProps): ReactElement {
           aria-describedby={describedBy}
           onChange={enhanced ? onChange : undefined}
         />
-        {/* The control's visible text, in the page's language; the input itself is hidden but
-            focusable, and its focus ring is drawn here. */}
+        {/* With script, the control's visible text in the page's language; the input is then hidden
+            but focusable, and its focus ring is drawn here. Hidden without script. */}
         <label htmlFor={props.inputId} className={styles.chooseButton}>
           {text.chooseFiles}
         </label>

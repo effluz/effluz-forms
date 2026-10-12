@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { keepRows, resetRowsFor } from "./bus";
 import { RefusedFilesContext } from "./refused-files";
 import type { Row } from "./upload-queue";
-import { UploadField, type UploadFieldProps } from "./UploadField";
+import { enhancedAttribute, UploadField, type UploadFieldProps } from "./UploadField";
 
 const FILE_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -87,12 +87,26 @@ describe("UploadField without script", () => {
     expect(html.indexOf('type="file"')).toBeLessThan(html.indexOf(">Choose files<"));
   });
 
+  it("leaves the native input visible in the server render: the styled control waits for the script", () => {
+    const html = renderToStaticMarkup(createElement(UploadField, props()));
+    const dropzone = /<div[^>]*data-dropzone=""[^>]*>/.exec(html)?.[0] ?? "";
+    expect(dropzone).not.toBe("");
+    expect(dropzone).not.toContain("data-enhanced");
+  });
+
   it("falls back to the stored error when no refused file belongs to the field", () => {
     const html = renderToStaticMarkup(
       createElement(UploadField, props({ error: "Photos is required" })),
     );
     expect(html).toMatch(/id="f_photos-error"[^>]*>[\s\S]*Photos is required/);
     expect(html).toContain('aria-invalid="true"');
+  });
+});
+
+describe("enhancedAttribute", () => {
+  it("is present only once the script has taken over the field", () => {
+    expect(enhancedAttribute(false)).toBeUndefined();
+    expect(enhancedAttribute(true)).toBe("");
   });
 });
 
@@ -123,6 +137,11 @@ describe("UploadField with script (rows kept from before a remount)", () => {
     expect(html).toMatch(/<span id="f_photos-new-2-name"[^>]*>photo\.jpg<\/span>/);
     expect(html).toMatch(/<span class="[^"]*">12 kB<\/span>/);
     expect(html).not.toContain("photo.jpg, 12 kB");
+  });
+
+  it("marks the dropzone enhanced, so the native input is hidden behind the styled control", () => {
+    const html = enhancedHtml([failed]);
+    expect(/<div[^>]*data-dropzone=""[^>]*>/.exec(html)?.[0]).toContain('data-enhanced=""');
   });
 
   it("keeps its announcement regions in the page, empty", () => {
