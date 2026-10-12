@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { unstable_rethrow } from "next/navigation";
 import type { ViewResult } from "@/modules/submissions/application";
 import { decodeFillPostState, FILL_STATE_COOKIE } from "@/modules/submissions/presentation/cookies";
 import { type ChromeKey, t } from "@/modules/submissions/presentation/copy";
@@ -99,6 +100,8 @@ export default async function RendererPage(props: { params: Params; searchParams
     loaded = await loadView(slug, one(query.expired) === "1");
     stateCookie = (await cookies()).get(FILL_STATE_COOKIE)?.value;
   } catch (error) {
+    // Next's own control flow (a prerender bailout, a redirect) is not a failure.
+    unstable_rethrow(error);
     rendererLogger().error("form render failed", { slug, error: errorClass(error) });
     return <ErrorScreen tryAgainHref={formPath(slug)} />;
   }

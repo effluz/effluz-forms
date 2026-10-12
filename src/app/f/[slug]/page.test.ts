@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -53,6 +54,18 @@ describe("the renderer page", () => {
       robots: { index: false },
     });
     expect(logger.lines).toHaveLength(1);
+  });
+
+  it("lets Next's own control flow through instead of logging it as a failure", async () => {
+    let signal: unknown = null;
+    try {
+      redirect("/f/story-form");
+    } catch (thrown) {
+      signal = thrown;
+    }
+    vi.mocked(loadView).mockRejectedValue(signal);
+    await expect(RendererPage(props())).rejects.toBe(signal);
+    expect(logger.lines).toEqual([]);
   });
 
   it("renders the error screen a failed page post redirected to, without loading the view", async () => {
