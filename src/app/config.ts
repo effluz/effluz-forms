@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  // Required: `next start` sets it but `tsx` does not, and every production guard keys on it.
+  NODE_ENV: z.enum(["development", "test", "production"]),
   SERVICE: z.enum(["app", "worker"]).default("app"),
   APP_VERSION: z.string().min(1).default("dev"),
   PUBLIC_BASE_URL: z.url(),
@@ -33,13 +34,21 @@ const envSchema = z.object({
   EMAIL_REPLY_TO: z.email().optional(),
 });
 
-/** Variables `.env.example` ships blank; a blank value means unset. */
+/** Variables `.env.example` ships blank; a blank or whitespace-only value means unset. */
 const BLANK_MEANS_UNSET = [
   "DROPBOX_APP_KEY",
   "DROPBOX_APP_SECRET",
   "DROPBOX_REFRESH_TOKEN",
   "SMTP2GO_API_KEY",
   "EMAIL_REPLY_TO",
+] as const;
+
+/** URLs production refuses unless they are https. */
+const HTTPS_IN_PRODUCTION = [
+  "GOOGLE_ISSUER",
+  "SMTP2GO_API_URL",
+  "DROPBOX_API_URL",
+  "DROPBOX_CONTENT_URL",
 ] as const;
 
 export interface AppConfig {
@@ -91,7 +100,8 @@ export interface AppConfig {
 export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   const cleaned = Object.fromEntries(
     Object.entries(env).filter(
-      ([name, value]) => !(value === "" && (BLANK_MEANS_UNSET as readonly string[]).includes(name)),
+      ([name, value]) =>
+        !(value?.trim() === "" && (BLANK_MEANS_UNSET as readonly string[]).includes(name)),
     ),
   );
   const parsed = envSchema.safeParse(cleaned);
@@ -104,8 +114,12 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   if (publicBaseUrl === null) throw new Error("Invalid configuration: PUBLIC_BASE_URL");
   if (e.NODE_ENV === "production" && !publicBaseUrl.startsWith("https://"))
     throw new Error("Invalid configuration: PUBLIC_BASE_URL must be https in production");
-  if (e.NODE_ENV === "production" && !e.GOOGLE_ISSUER.startsWith("https://"))
-    throw new Error("Invalid configuration: GOOGLE_ISSUER must be https in production");
+  if (e.NODE_ENV === "production") {
+    // These carry secrets or submitter addresses; plain http exists only for local fakes.
+    for (const name of HTTPS_IN_PRODUCTION)
+      if (!e[name].startsWith("https://"))
+        throw new Error(`Invalid configuration: ${name} must be https in production`);
+  }
   const notificationAllowedDomains = parseDomains(
     e.GOOGLE_ALLOWED_HOSTED_DOMAIN,
     e.NOTIFICATION_ALLOWED_DOMAINS,

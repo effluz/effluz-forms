@@ -97,6 +97,27 @@ describe("loadConfig", () => {
     );
     expect(loadConfig({ ...base, WORKER_LEASE_SECONDS: "30" }).worker.leaseSeconds).toBe(30);
   });
+  it("requires NODE_ENV and names it, so no entry point falls back to development", () => {
+    const env = { ...base };
+    delete env.NODE_ENV;
+    expect(() => loadConfig(env)).toThrow("Invalid configuration: NODE_ENV");
+    expect(() => loadConfig({ ...base, NODE_ENV: "staging" })).toThrow(/NODE_ENV/);
+  });
+  it.each(["SMTP2GO_API_URL", "DROPBOX_API_URL", "DROPBOX_CONTENT_URL"])(
+    "refuses a plain-http %s in production and names only the variable",
+    (name) => {
+      const prod: NodeJS.ProcessEnv = {
+        ...base,
+        ...productionAdapters,
+        NODE_ENV: "production",
+        PUBLIC_BASE_URL: "https://forms.example.com",
+      };
+      const attempt = () => loadConfig({ ...prod, [name]: "http://relay.example.com" });
+      expect(attempt).toThrow(`Invalid configuration: ${name} must be https in production`);
+      expect(attempt).not.toThrow(/relay\.example/);
+      expect(() => loadConfig({ ...base, [name]: "http://127.0.0.1:9999" })).not.toThrow();
+    },
+  );
   it("rejects an unknown SERVICE or LOG_LEVEL", () => {
     expect(() => loadConfig({ ...base, SERVICE: "cron" })).toThrow(/SERVICE/);
     expect(() => loadConfig({ ...base, LOG_LEVEL: "verbose" })).toThrow(/LOG_LEVEL/);
@@ -228,6 +249,15 @@ describe("media and email configuration", () => {
     });
     expect(c.media.provider).toBe("local");
     expect(c.email).toMatchObject({ provider: "mailpit", replyTo: "privacy@example.com" });
+  });
+
+  it("treats a whitespace-only optional secret as unset", () => {
+    expect(() => loadConfig({ ...base, EMAIL_PROVIDER: "smtp2go", SMTP2GO_API_KEY: "  " })).toThrow(
+      "Invalid configuration: SMTP2GO_API_KEY",
+    );
+    expect(loadConfig({ ...base, EMAIL_REPLY_TO: " \t" }).email.replyTo).toBe(
+      "privacy@example.com",
+    );
   });
 
   it("uses EMAIL_REPLY_TO when set and never puts a value in an error", () => {
