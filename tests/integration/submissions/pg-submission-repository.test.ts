@@ -38,6 +38,15 @@ describe("PgSubmissionRepository", () => {
     expect(await repo.findById("nope")).toBeNull();
   });
 
+  it("finds by submit token inside a unit of work, on its connection", async () => {
+    const submission = await sample();
+    await uow.run(async (u) => {
+      await repo.insert(u, submission);
+      expect(await repo.findBySubmitToken(submission.submitToken, u)).toEqual(submission);
+      expect(await repo.findBySubmitToken(submission.submitToken)).toBeNull();
+    });
+  });
+
   it("stores a submission without consent", async () => {
     const submission = await sample({ consent: null });
     await uow.run((u) => repo.insert(u, submission));
@@ -50,7 +59,8 @@ describe("PgSubmissionRepository", () => {
     await uow.run(async (u) => {
       expect(await repo.insert(u, first)).toBe("inserted");
       expect(await repo.insert(u, second)).toBe("duplicate_token");
-      expect(await repo.findById(first.id)).toBeNull();
+      // The transaction still answers queries, and sees its own uncommitted insert.
+      expect(await repo.findBySubmitToken(first.submitToken, u)).toEqual(first);
     });
     expect(await repo.findById(first.id)).toEqual(first);
     expect(await repo.findById(second.id)).toBeNull();
@@ -63,6 +73,11 @@ describe("PgSubmissionRepository", () => {
       pool.query("update submission set answers = '{}' where id = $1", [submission.id]),
     ).rejects.toThrow(/immutable/);
     await pool.query("update submission set status = 'viewed' where id = $1", [submission.id]);
+    const { rows } = await pool.query<{ status: string }>(
+      "select status from submission where id = $1",
+      [submission.id],
+    );
+    expect(rows[0]?.status).toBe("viewed");
     expect(await repo.findById(submission.id)).toEqual(submission);
   });
 });

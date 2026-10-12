@@ -63,10 +63,11 @@ const submitted = (submitToken: string): PostOutcome => ({ kind: "submitted", su
 
 async function isSubmitted(
   deps: SubmissionsDeps,
+  uow: UnitOfWork,
   formId: string,
   submitToken: string,
 ): Promise<boolean> {
-  const found = await deps.submissions.findBySubmitToken(submitToken);
+  const found = await deps.submissions.findBySubmitToken(submitToken, uow);
   return found?.formId === formId;
 }
 
@@ -163,7 +164,7 @@ async function intake(
     // A double click: the first Submit committed and deleted the row.
     if (!locked)
       return nothing(
-        (await isSubmitted(deps, form.id, existing.submitToken))
+        (await isSubmitted(deps, uow, form.id, existing.submitToken))
           ? submitted(existing.submitToken)
           : { kind: "expired" },
       );
@@ -249,7 +250,7 @@ async function intake(
   }
 
   // A token already used answers before any reference is taken, so a duplicate commits nothing.
-  if (locked && (await isSubmitted(deps, form.id, record.submitToken)))
+  if (locked && (await isSubmitted(deps, uow, form.id, record.submitToken)))
     return nothing(submitted(record.submitToken));
 
   const allocated = await allocateReference(deps.definitions, uow, form.id);

@@ -157,6 +157,27 @@ describe("submitForm", () => {
     expect(deps.submissions.rows.size).toBe(1);
   });
 
+  it("looks the submit token up inside the intake's unit of work, never on another connection", async () => {
+    for (const recordGone of [false, true]) {
+      const deps = makeSubmissionsDeps();
+      await publishStory(deps);
+      const id = await reachConsent(deps);
+      const token = deps.inProgress.rows.get(id)?.submitToken ?? null;
+      const ctx = await ctxOf(deps, id, token);
+      // A double click: the first Submit committed and deleted the row.
+      if (recordGone) deps.inProgress.rows.delete(id);
+      const real = deps.submissions.findBySubmitToken.bind(deps.submissions);
+      const withUow: boolean[] = [];
+      deps.submissions.findBySubmitToken = (t, uow) => {
+        withUow.push(uow !== undefined);
+        return real(t, uow);
+      };
+      await submitForm(deps, ctx, submitPost(id, { submitToken: token }));
+      expect(withUow.length).toBeGreaterThan(0);
+      expect(withUow.every(Boolean)).toBe(true);
+    }
+  });
+
   it("answers a token already used with the confirmation before taking a reference", async () => {
     const deps = makeSubmissionsDeps();
     const { formId, versionId } = await publishStory(deps);

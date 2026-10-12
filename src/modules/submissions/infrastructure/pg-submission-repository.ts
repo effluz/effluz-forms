@@ -96,9 +96,10 @@ export class PgSubmissionRepository implements SubmissionRepository {
     return rows.length === 0 ? "duplicate_token" : "inserted";
   }
 
-  async findBySubmitToken(token: string): Promise<Submission | null> {
+  async findBySubmitToken(token: string, uow?: UnitOfWork): Promise<Submission | null> {
     if (!isUuid(token)) return null;
-    const { rows } = await this.pool.query<SubmissionRow>(
+    const db = uow ? txOf(uow).client : this.pool;
+    const { rows } = await db.query<SubmissionRow>(
       `select ${COLUMNS} from submission where submit_token = $1`,
       [token],
     );
