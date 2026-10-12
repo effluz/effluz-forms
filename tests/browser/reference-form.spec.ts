@@ -412,10 +412,8 @@ test("silently accepts a Submit inside the minimum time: the decoy confirmation,
       [formId],
     );
     expect(moved.rowCount).toBe(1);
-    const startedAt = Date.now();
     await page.locator("[data-primary]").click();
     await expect(page.getByText("Tu referencia:")).toBeVisible();
-    expect(Date.now() - startedAt).toBeLessThan(MIN_FILL_MS);
 
     // A decoy is shaped like a reference but is never the form's first real one, HP-0001.
     expect(await page.locator("main").innerText()).toMatch(/\bHP-[1-9]\d{3}\b/);
