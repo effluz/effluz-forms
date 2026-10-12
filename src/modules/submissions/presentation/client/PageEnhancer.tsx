@@ -25,6 +25,7 @@ import {
 import {
   applyDraft,
   draftKey,
+  dropEmptyFiles,
   fieldFormData,
   fieldKeyOf,
   fieldShowsError,
@@ -360,6 +361,10 @@ export function PageEnhancer(props: PageEnhancerProps): ReactElement {
     const onOffline = (): void => {
       send({ type: "offline" });
     };
+    // Every entry list of the page form, the one React builds for the action included.
+    const onFormData = (event: FormDataEvent): void => {
+      if (event.target === pageForm()) dropEmptyFiles(event.formData);
+    };
     const offUploads = onUploadsChange((count) => {
       if (count === 0) send({ type: "uploads_settled" });
     });
@@ -368,6 +373,7 @@ export function PageEnhancer(props: PageEnhancerProps): ReactElement {
     document.addEventListener("input", onInput);
     document.addEventListener("change", onChange);
     document.addEventListener("focusout", onFocusOut);
+    document.addEventListener("formdata", onFormData, true);
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
     return () => {
@@ -375,6 +381,7 @@ export function PageEnhancer(props: PageEnhancerProps): ReactElement {
       document.removeEventListener("input", onInput);
       document.removeEventListener("change", onChange);
       document.removeEventListener("focusout", onFocusOut);
+      document.removeEventListener("formdata", onFormData, true);
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
       offUploads();

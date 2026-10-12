@@ -21,6 +21,26 @@ export function fieldFormData(form: HTMLFormElement, key: string): FormData {
   return body;
 }
 
+const isEmptyPart = (value: FormDataEntryValue): boolean =>
+  typeof value !== "string" && value.size === 0 && value.name === "";
+
+/**
+ * Leaves out the empty part a file input with nothing chosen adds to a post. With script each
+ * file uploads early and the input is cleared, and the Server Action's encoding turns that
+ * nameless part into a file named "blob", which the server would refuse as a wrong type. A
+ * file chosen before the script took over still goes with the post. See
+ * specs/ui-ux/renderer.md, "File upload".
+ */
+export function dropEmptyFiles(data: FormData): void {
+  const names = new Set<string>();
+  for (const [name, value] of data) if (isEmptyPart(value)) names.add(name);
+  for (const name of names) {
+    const kept = data.getAll(name).filter((value) => !isEmptyPart(value));
+    data.delete(name);
+    for (const value of kept) data.append(name, value);
+  }
+}
+
 /** Replaces `{word}` placeholders; unknown ones stay as written. */
 export const fill = (text: string, vars: Record<string, string>): string =>
   text.replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole);

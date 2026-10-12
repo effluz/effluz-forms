@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clearDrafts,
+  dropEmptyFiles,
   FOCUS_RING_ATTRIBUTE,
   focusSubmitterAfterFailure,
   type SubmitterLike,
@@ -144,5 +145,34 @@ describe("clearDrafts", () => {
     expect(() => {
       clearDrafts("story-form", blocked);
     }).not.toThrow();
+  });
+});
+
+describe("dropEmptyFiles", () => {
+  it("leaves the cleared file input's empty part out of a page post, and keeps every other entry", () => {
+    const data = new FormData();
+    data.append("_page", "page5");
+    data.append("photos", new File([], ""));
+    data.append("video", new File([], ""));
+    data.append("video", new File([new Uint8Array([1, 2, 3])], "chosen-before-script.mp4"));
+    data.append("consent", "accepted");
+
+    dropEmptyFiles(data);
+
+    expect(data.has("photos")).toBe(false);
+    expect(data.getAll("video").map((v) => (typeof v === "string" ? v : v.name))).toEqual([
+      "chosen-before-script.mp4",
+    ]);
+    expect(data.get("_page")).toBe("page5");
+    expect(data.get("consent")).toBe("accepted");
+  });
+
+  it("keeps an empty file the person chose by name, for the server to refuse", () => {
+    const data = new FormData();
+    data.append("photos", new File([], "empty.jpg"));
+
+    dropEmptyFiles(data);
+
+    expect(data.getAll("photos")).toHaveLength(1);
   });
 });

@@ -156,6 +156,11 @@ With script, the same input is enhanced:
   no record, so the next one goes alone again. Once a record exists, uploads
   run in parallel. The multipart file name is always `upload`; the original
   name never leaves the browser.
+- The page post leaves out the empty part of a file input with nothing
+  chosen (the input is cleared after each early upload). The Server Action
+  would otherwise send it as a file named "blob", which the server refuses
+  as a wrong type. A file chosen before the script took over still goes
+  with the post.
 
 ## Validation and errors
 
