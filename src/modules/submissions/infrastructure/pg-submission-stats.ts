@@ -41,9 +41,14 @@ export class PgSubmissionStats implements SubmissionStats {
 
   async countOlderThan(formId: string, months: number, now: Date): Promise<number> {
     if (!isUuid(formId)) return 0;
+    // Month arithmetic on a timestamptz follows the session time zone; it runs on UTC
+    // wall-clock time instead, so the cutoff never depends on the server's setting.
     const { rows } = await this.pool.query<{ n: number }>(
       `select count(*)::int as n from submission
-        where form_id = $1 and received_at < $3::timestamptz - make_interval(months => $2)`,
+        where form_id = $1
+          and received_at <
+            ((($3::timestamptz) at time zone 'UTC') - make_interval(months => $2))
+              at time zone 'UTC'`,
       [formId, months, now],
     );
     return rows[0]?.n ?? 0;

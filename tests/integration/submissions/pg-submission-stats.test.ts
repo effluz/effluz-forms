@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Pool } from "pg";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PgSubmissionRepository } from "@/modules/submissions/infrastructure/pg-submission-repository";
 import { PgSubmissionStats } from "@/modules/submissions/infrastructure/pg-submission-stats";
@@ -53,6 +54,34 @@ describe("PgSubmissionStats", () => {
     );
     expect(await stats.hasAny(formId)).toBe(true);
     expect(await stats.hasAny(other)).toBe(false);
+  });
+
+  it("counts months back from now in UTC, whatever the session's time zone", async () => {
+    const { formId, versionId } = await seedPublishedForm(pool);
+    await uow.run((u) =>
+      repo.insert(u, {
+        id: randomUUID(),
+        formId,
+        versionId,
+        locale: "en",
+        answers: {},
+        consent: null,
+        receivedAt: new Date("2026-02-28T00:00:00Z"),
+        reference: "ST-0001",
+        submitToken: randomUUID(),
+      }),
+    );
+    // In UTC one month before 2026-03-30T12:00Z is 2026-02-28T12:00Z, so the submission is
+    // older. At UTC+14 the local date is already the 31st, giving 2026-02-27T12:00Z.
+    const client = await pool.connect();
+    try {
+      await client.query("set time zone 'Pacific/Kiritimati'");
+      const local = new PgSubmissionStats(client as unknown as Pool);
+      expect(await local.countOlderThan(formId, 1, new Date("2026-03-30T12:00:00Z"))).toBe(1);
+    } finally {
+      await client.query("reset time zone");
+      client.release();
+    }
   });
 
   it("gives zero figures for a form id that is not a UUID", async () => {
