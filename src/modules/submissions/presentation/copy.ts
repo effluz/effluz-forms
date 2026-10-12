@@ -131,7 +131,7 @@ export const catalog = {
   },
   "email syntax": {
     en: "Enter a valid email address, like name@example.com",
-    es: "Escribe un correo válido, como nombre@ejemplo.com",
+    es: "Escribe un correo válido, como nombre@example.com",
   },
   "number min": { en: "{label} must be at least {n}", es: "{label} debe ser al menos {n}" },
   "number max": { en: "{label} must be no more than {n}", es: "{label} no debe ser más de {n}" },

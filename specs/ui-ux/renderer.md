@@ -240,7 +240,7 @@ With script, the same input is enhanced:
 | min length | {label} must have at least {n} characters | {label} debe tener al menos {n} caracteres |
 | max length | {label} must have no more than {n} characters | {label} no debe tener más de {n} caracteres |
 | pattern | {label} is not in the expected format | {label} no tiene el formato esperado |
-| email syntax | Enter a valid email address, like name@example.com | Escribe un correo válido, como nombre@ejemplo.com |
+| email syntax | Enter a valid email address, like name@example.com | Escribe un correo válido, como nombre@example.com |
 | number min | {label} must be at least {n} | {label} debe ser al menos {n} |
 | number max | {label} must be no more than {n} | {label} no debe ser más de {n} |
 | integer | {label} must be a whole number | {label} debe ser un número entero |
@@ -337,7 +337,7 @@ for `{n}` (or `{count}`), the `… one` row is used, otherwise the plain row. In
 | Measure | Target |
 |---|---|
 | HTML for a page, compressed | under 30 KB |
-| Script for enhancement, compressed | under 150 KB for the renderer route's client bundle, loaded `defer` |
+| Script for enhancement, compressed | under 150 KB for the renderer route's client bundle, never render-blocking |
 | First page interactive on a throttled 3G profile | under 3 seconds |
 | Server render of a page | under 200 ms at the 95th percentile |
 | Images in the page | the wordmark as SVG, and on page 1 the optional header image at most 300 KB |
@@ -347,6 +347,10 @@ of the compressed scripts the page loads, and fails above these budgets.
 
 Fonts come from `design-system/` and are self-hosted with `font-display:
 swap`. No third-party scripts except the bot challenge when enabled.
+
+First pass: no font files ship yet. The stylesheet names Poppins first and
+falls back to system fonts (`font.family.sans`); the self-hosted files arrive
+with the design-system assets, as the wordmark does.
 
 ## Fixed chrome copy
 
