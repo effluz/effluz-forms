@@ -34,7 +34,7 @@
   /* color.action.disabledBg, color.action.disabledFg, color.action.tertiary.hoverFg */
   --disabled-bg: #eff0f5;
   --disabled-fg: #774c60;
-  --tertiary-hover: #b75d69;
+  --tertiary-hover: #6c344e;
   /* color.focus.ring (rose, 3.9:1 on the page and cards) */
   --focus: #b75d69;
   /* size.contentWidthPublic */
@@ -751,7 +751,7 @@
   cursor: not-allowed;
 }
 
-/* Tertiary: 44 px (size.touchTarget), underlined, color.action.tertiary (hoverFg rose). */
+/* Tertiary: 44 px (size.touchTarget), underlined, color.action.tertiary (hoverFg berry). */
 .tertiary {
   min-height: 44px;
   padding: 0 12px;
