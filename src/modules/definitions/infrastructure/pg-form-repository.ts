@@ -170,6 +170,20 @@ export class PgFormRepository implements FormRepository {
     return row ? toForm(row) : null;
   }
 
+  async takeReferenceNumber(uow: UnitOfWork, formId: string): Promise<number> {
+    // Leaves updated_at alone: a submission is not a form edit.
+    const { rows } = isUuid(formId)
+      ? await txOf(uow).client.query<{ n: number }>(
+          `update form set next_reference = next_reference + 1
+            where id = $1 returning next_reference - 1 as n`,
+          [formId],
+        )
+      : { rows: [] };
+    const row = rows[0];
+    if (!row) throw new Error(`form ${formId} does not exist`);
+    return row.n;
+  }
+
   async list(tab: FormTab, search?: string): Promise<Form[]> {
     const params: unknown[] = [STATUSES_OF_TAB[tab]];
     let filter = "";

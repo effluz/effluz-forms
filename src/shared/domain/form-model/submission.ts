@@ -115,3 +115,64 @@ export function validateSubmission(
   if (issues.length) return { ok: false, issues };
   return consent ? { ok: true, answers, consent } : { ok: true, answers };
 }
+
+export interface PageValidation {
+  /** Normalized answers of the page's visible input fields that passed. */
+  answers: Record<string, unknown>;
+  issues: ValidationIssue[];
+}
+
+/**
+ * Validates one page of a submission in progress (`specs/form-definition.md`,
+ * "Validation"; `specs/ui-ux/renderer.md`, "Navigation and state"). Earlier
+ * pages were validated when posted, so their values in `body` only feed the
+ * conditions; Submit validates the whole submission again with
+ * `validateSubmission`. With `enforceRequired` false (Back, the language
+ * switch) absent answers are skipped, while invalid ones still report.
+ */
+export function validatePage(
+  version: Version,
+  registry: FieldTypeRegistry,
+  body: Readonly<Record<string, unknown>>,
+  pageKey: string,
+  ctx: SubmissionContext,
+  opts: { enforceRequired: boolean },
+): PageValidation {
+  // The type promises an object, but the body comes off the wire, so guard it anyway.
+  const untrusted: unknown = body;
+  const values: Readonly<Record<string, unknown>> =
+    typeof untrusted === "object" && untrusted !== null
+      ? (untrusted as Record<string, unknown>)
+      : {};
+  const known: Record<string, unknown> = {};
+
+  for (const page of version.pages) {
+    const isTarget = page.key === pageKey;
+    const answers: Record<string, unknown> = {};
+    const issues: ValidationIssue[] = [];
+    const pageVisible = page.visibility ? evaluateCondition(page.visibility, known) : true;
+    for (const field of page.fields) {
+      const def = registry.get(field.type);
+      if (!def.isInput) continue;
+      // A never-hidden type (consent) cannot be skipped by any condition.
+      const visible =
+        def.neverHidden === true ||
+        (pageVisible && (field.visibility ? evaluateCondition(field.visibility, known) : true));
+      if (!visible) continue;
+      const own = Object.hasOwn(values, field.key) ? values[field.key] : undefined;
+      if (!isTarget) {
+        if (own !== undefined) known[field.key] = own;
+        continue;
+      }
+      if (!opts.enforceRequired && isAbsent(own)) continue;
+      const result = issuesFor(field, registry, own, ctx);
+      issues.push(...result.issues);
+      if (result.issues.length === 0 && result.normalized !== undefined) {
+        answers[field.key] = result.normalized;
+        known[field.key] = result.normalized;
+      }
+    }
+    if (isTarget) return { answers, issues };
+  }
+  return { answers: {}, issues: [] };
+}

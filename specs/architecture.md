@@ -79,7 +79,7 @@ this table and go through each module's public application API.
 |---|---|---|
 | `identity` | Staff sign-in, sessions, audit log | `shared` |
 | `media` | `MediaStorage` port and adapters, photo processing, media records | `shared` |
-| `notifications` | Email templates and the `EmailSender` port; job handlers for email | `shared` |
+| `notifications` | Email rendering and sending ports, delivery receipts, job handlers for email; templates live in `src/shared/presentation/email/` | `shared` |
 | `definitions` | Forms, drafts, versions, lifecycle, operational settings, QR codes, translation suggestions | `identity` |
 | `submissions` | Public rendering of a published version, server validation, intake transaction, enqueuing jobs | `definitions`, `media`, `notifications` |
 | `review` | Listing, viewing, exporting, downloading and deleting submissions; curation status and text edits; dead job retry | `definitions`, `submissions`, `media`, `identity` |
@@ -104,13 +104,15 @@ or a module's public API:
 | Port | Responsibility | First adapter | Spec |
 |---|---|---|---|
 | `UnitOfWork` | Transaction boundary; lets a use case persist state and enqueue jobs atomically | Postgres | `system/database.md` |
-| `MediaStorage` | Store a file, return a reference, produce a time-limited view URL, delete | Local disk (staging), Dropbox (durable) | `system/media-storage.md` |
+| `MediaStorage` | Store a file, return a reference, produce a time-limited view URL, delete; staging adds read, prefix delete and prefix listing | Local disk (staging), Dropbox (durable) | `system/media-storage.md` |
 | `JobQueue` | Enqueue typed jobs with retry and scheduling semantics | Postgres outbox table | `system/jobs.md` |
-| `EmailSender` | Send a bilingual transactional message | SMTP2GO | `system/email.md` |
+| `EmailSender` | Send one rendered transactional message | SMTP2GO (Mailpit locally) | `system/email.md` |
+| `EmailRenderer` | Render the two messages from their data; the implementation is the template module in `src/shared/presentation/email` | Templates, wired at the composition root | `system/email.md` |
+| `MessageSource` | The data an email job needs, looked up at run time from a submission id. Owned by `notifications`, implemented by `submissions` | Postgres (`submissions`) | `system/email.md` |
 | `AdminIdentity` | Start a staff sign-in and complete it into verified claims or a refusal reason; the admission policy is identity's own domain rule | Google OpenID Connect | `system/security.md` |
 | `AuditLog` | Append one entry to the audit log inside the current unit of work. Owned by `identity`, which exports it and the audit action list for other modules | Postgres (`audit_log`, append-only by trigger) | `system/security.md` |
 | `AuditLogReader` | List audit entries for a target, newest first and capped, paged by the composite cursor `(created_at, id)` (`before` plus `beforeId`), plus the distinct actors for a filter menu. Owned by `identity`, which exports it for other modules' activity views | Postgres (`audit_log`) | `system/security.md` |
-| `SubmissionStats` | Read-only submission figures `definitions` needs: totals and last received time per form, submissions since a time, submissions older than a retention age, answers per field key, whether any exist. Owned by `definitions` | None: a null adapter answers zeros until the `submissions` module supplies one | `ui-ux/manager.md` |
+| `SubmissionStats` | Read-only submission figures `definitions` needs: totals and last received time per form, submissions since a time, submissions older than a retention age, answers per field key, whether any exist. Owned by `definitions` | Postgres, supplied by `submissions` (`PgSubmissionStats`) | `ui-ux/manager.md` |
 | `Clock`, `IdGenerator`, `Logger` | Determinism in tests; structured logging with defensive redaction | System clock, random UUIDs, pino | `system/observability.md` (`Logger`) |
 | `FieldTypeRegistry` | Look up a field type's validator, normalizer, exporter | In-code registry in `shared/domain/form-model` | `form-definition.md` |
 | `Translator` | Suggest a translation of staff-authored text; available to `definitions` only | DeepL API | `decisions/0010` |
@@ -119,6 +121,10 @@ or a module's public API:
 Repositories belong to the module that owns the aggregate (`definitions` owns
 forms and versions, `submissions` owns submissions) and are defined as ports
 in that module's `application/` with adapters in its `infrastructure/`.
+`submissions` also owns `submission_in_progress`. `definitions` exports read
+use cases for the renderer (`resolvePublicForm`, `loadVersion`, `loadForm`)
+and `allocateReference`, so `submissions` never reads or writes `definitions`
+tables.
 
 `identity` keeps three ports to itself: `AdminIdentity`, `SessionRepository`
 (rows in `admin_session`) and `SignInAttemptStore` (single-use rows in
@@ -135,10 +141,21 @@ as to `src/app/`. ESLint admits exactly that file (and its test) through the
 the boundaries check. The composition root may also import the shared domain,
 to wire registries such as `buildDefaultRegistry()`. Route handlers and server
 actions are thin: parse input, call a use case, map the result to a response.
-Server actions live only in `src/app/**/actions.ts`; today that is the
-Settings tab's save. A use case must be callable from a test, from the
-worker, and from a route handler without change. No React or Next.js import
-may appear in `domain/`, `application/`, or `infrastructure/`.
+Server actions live only in `src/app/**/actions.ts`: the Settings tab's save and
+the renderer's page form (`src/app/f/[slug]/actions.ts`), which, like the
+Settings save, always ends in a redirect (303); a refused page post carries its
+refused files to the page in the short-lived cookie `effluz_fill_state`. The
+renderer's early upload (`POST /f/<slug>/files`), file removal
+(`DELETE /f/<slug>/files/<id>`), blur checks (`POST /f/<slug>/check`) and
+restart (`/f/<slug>/restart`) are route handlers beside it. A use
+case must be callable from a test, from the worker, and from a route handler
+without change. No React or Next.js import may appear in `domain/`,
+`application/`, or `infrastructure/`.
+
+Each surface has its own root layout (`src/app/admin/layout.tsx`,
+`src/app/(home)/layout.tsx`, `src/app/f/[slug]/layout.tsx`), so the public
+page's `<html lang>` follows the submitter; `src/app/global-not-found.tsx`
+(enabled by `experimental.globalNotFound`) answers paths outside the three.
 
 ## Publishing data flow
 
@@ -162,26 +179,34 @@ may appear in `domain/`, `application/`, or `infrastructure/`.
    and renders page one in the chosen locale.
 2. Each page posts to `app`. Server-side, the form model evaluates conditions
    and validation rules against the version. Answers to hidden fields are
-   discarded. Photos are written to the local staging directory under random
-   names with metadata (EXIF, including GPS) stripped.
+   discarded. Files arrive early with script (`POST /f/<slug>/files`, one
+   request per file, while the visitor fills in the page) or with the page
+   post without script. Photos are re-encoded with metadata (EXIF, including
+   GPS) stripped; videos are stored as received after a container check. Both
+   are written to the local staging directory under
+   `in-progress/<record id>/<file id>.<ext>`.
 3. On the final page, in **one database transaction**, the use case stores
    the submission with its answers document and version id, one media record
-   per photo with status `staged`, and the jobs: one `media.upload` per
-   photo, one `email.submitter_confirmation` if the version defines one and
-   the form has a submitter email field, one `email.staff_notification` per
-   configured recipient group.
+   per file (photo or video) with status `staged`, deletes the in-progress
+   record, and enqueues the jobs: one `media.upload` per file, one
+   `email.submitter_confirmation` if the version defines one and the form has
+   a submitter email field, one `email.staff_notification` per submission,
+   sent as one message to the form's recipient list as it stands when the job
+   runs.
 4. The transaction commits. The user sees the success screen. Nothing external
    has been called yet, so a provider outage never loses a submission.
-5. `worker` picks jobs up. Uploads move each photo to Dropbox, mark the media
-   record `stored` with its provider reference, and delete the staging copy.
-   Email jobs call the provider.
+5. `worker` picks jobs up. Uploads move each file to durable storage (Dropbox
+   in production, local disk elsewhere), mark the media record `stored` with
+   its provider reference, and delete the staging copy. Email jobs call the
+   provider.
 6. The manager lists submissions per form and renders each answer through
    its field type's review display, using the pinned version for labels. For
    each photo it serves the staging copy if still present, otherwise a
    short-lived Dropbox link.
 
-The staff notification links to the submission in the manager and carries
-no answers or photos. Email is the least controlled channel we have.
+The staff notification links to the form's page in the manager until the
+review plan adds the submission page, and carries no answers or photos. Email
+is the least controlled channel we have.
 
 ## Environments
 
@@ -230,6 +255,8 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 | OpenID Connect client | `openid-client` v6 behind the `AdminIdentity` port; sessions and sign-in attempts in our own tables | accepted | `decisions/0018` |
 | Logging | `pino` behind the `Logger` port, JSON to stdout with redaction | accepted | `decisions/0019` |
 | QR codes | `qrcode` library, rendered locally in `definitions` infrastructure | accepted | `decisions/0021` |
+| Image processing | sharp, with libheif-js for HEIC; file-type for content sniffing | accepted | `decisions/0023` |
+| Browser end-to-end tests | Playwright, Chromium only | accepted | `decisions/0024` |
 | Error tracking | Sentry with PII scrubbing | proposed | `system/observability.md` |
 | Bot challenge | Cloudflare Turnstile on the final step | proposed | `system/security.md` |
 
@@ -238,7 +265,7 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 | Account | Identity | Used for |
 |---|---|---|
 | Google Workspace | `effluz.com` | Admin sign-in; OAuth client lives in a Google Cloud project owned by this Workspace |
-| Dropbox | Personal account `tluzcando@gmail.com` | App folder for durable media and encrypted backups |
+| Dropbox | The Effluz Dropbox account (identity in `private/`, outside version control) | App folder for durable media and encrypted backups |
 | SMTP2GO | Effluz account, sender domain `forms.effluz.com` | Transactional email |
 | InterServer | Effluz account | The VPS, United States region |
 | DeepL | Effluz account, API key | Translation suggestions in the builder; DeepL Write corrections in the manager |

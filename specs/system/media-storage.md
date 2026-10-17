@@ -13,10 +13,14 @@ Each tier is an adapter of the same port.
 
 | Operation | Behavior |
 |---|---|
-| `put(stream, key, contentType)` | Store the bytes. Returns a provider reference. Idempotent for the same key. |
+| `put(bytes, key, contentType)` | Store the bytes (files are capped at 10 MB, so no stream is needed). Returns a provider reference. Idempotent for the same key: Dropbox writes with `mode: overwrite`. |
+| `refForKey(key)` | The reference `put` returns for a key, without a call to the provider. `media.delete` uses it for a row whose upload never recorded a reference. |
 | `viewUrl(ref, ttl)` | A URL that serves the file for at most `ttl`. |
 | `delete(ref)` | Remove the file. Succeeds if it is already gone. |
-| `exists(ref)` | For upload idempotency checks. |
+| `exists(ref)` | Existence check; uploads rely on `put` overwriting by key. |
+| `read(ref)` | Staging only: the bytes, for the upload job. |
+| `deletePrefix(prefix)` | Staging only: remove every file under a prefix. |
+| `listPrefixes(root)` | Staging only (the local disk adapter implements it, the Dropbox adapter does not): each first-level prefix under a root with the time its contents last changed; none when nothing was ever staged. The staging sweep uses it. |
 
 Keys are human-readable so staff can browse the Dropbox folder, and carry
 no personal data:
@@ -30,23 +34,46 @@ backups/<YYYY-MM-DD>-db.dump.enc
 `nn` is the file's position within the field, `field slug` is an ASCII
 slug of the field label in the form's first language, truncated to 40
 characters. Example: `forms/historia-prematuro-2026/HP-0042/01-sube-hasta-10-fotos.jpg`.
-The original filename is never used.
+The original filename is never used. Two fields of one form never share a slug:
+the second and later fields with the same slug get `-2`, `-3`, and a suffix is
+raised until the slug is free (a label that is itself `Photos 2` cannot collide
+with the suffixed `Photos`). The base is trimmed first so the suffixed slug
+still fits 40 characters.
+
+Staged files are named `in-progress/<record id>/<file id>.<ext>`: random ids
+only, so expiring a record removes its files with one prefix delete. Both ids
+must be UUIDs: a prefix or key built from anything else is refused, so a bad id
+can never resolve to the staging root. Local refs
+are the key itself; Dropbox refs are the key with a leading `/` inside the App
+folder.
 
 ## Adapters
 
 **Local disk (staging).** Root at `/srv/effluz-forms/data/staging`, outside the
 web root. `viewUrl` returns an app route that streams the file to an
 authenticated admin only. Used by every environment, and the only durable tier
-in tests.
+in tests. `MEDIA_PROVIDER=local` (the default outside production) also uses
+local disk as the durable tier, rooted at `MEDIA_DURABLE_DIR` (default
+`./data/durable`); production refuses it.
 
-**Dropbox (durable).** An app registered under the Dropbox account
-`tluzcando@gmail.com` using an App folder, so the token can reach nothing
-else in that account. Uses the refresh-token
+**Dropbox (durable).** An app registered under the Effluz Dropbox account
+(its identity is recorded in `private/`, outside version control) using an App
+folder, so the token can reach nothing else in that account. Uses the refresh-token
 flow; the refresh token is an environment variable, access tokens are renewed
 in memory. `viewUrl` wraps the temporary-link API and the result is cached in
 process for slightly less than its validity window so the admin page does not
 hit the API on every render. Respects rate-limit responses by retrying through
 the job system, never inline.
+
+`MEDIA_PROVIDER=dropbox` with `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET` and
+`DROPBOX_REFRESH_TOKEN`. The adapter calls the HTTP API with `fetch` (no SDK):
+`oauth2/token` for the refresh-token exchange, `files/upload`,
+`files/get_metadata`, `files/delete_v2` and `files/get_temporary_link`.
+`DROPBOX_API_URL` and `DROPBOX_CONTENT_URL` exist so tests can point it at a
+local fake. A 401 renews the access token once. Any other non-2xx answer (429, 5xx, and
+also 4xx such as a refused path) fails the job, which the job system retries
+until it is dead; there is no permanent class for Dropbox answers. Every call
+stops waiting after 60 seconds, which counts as a failed attempt.
 
 Any further provider (S3-compatible, Supabase Storage, Google Drive) is a new
 adapter and an ADR. No other code changes.
@@ -62,10 +89,19 @@ Applied by the application layer before `put`, independent of provider:
 - **Images** are re-encoded, which strips all metadata (EXIF, XMP, GPS).
   Submitters rarely know their photos carry location. Anything that fails
   decoding is a validation error shown to the submitter, not a job failure.
-- **Videos** are stored as received: pass-through bytes, container and
-  codec checked by content only, no re-encoding, no metadata stripping
-  guarantee. The renderer tells the submitter this before they upload. A
-  file whose container cannot be parsed is rejected as a validation error.
+  JPEG, PNG and WebP are re-encoded to the same format with the EXIF orientation
+  applied first; HEIC is decoded with `libheif-js` and encoded as JPEG (ADR
+  0023). Inputs above 50 megapixels are refused as unreadable.
+- **Videos** are stored as received: pass-through bytes, container checked
+  by content (no codec inspection in the first release), no re-encoding, no
+  metadata stripping guarantee. The renderer tells the submitter this before
+  they upload. A file whose container cannot be parsed is rejected as a
+  validation error. The container check walks the ISO base media file format
+  boxes: the first box is `ftyp`, every box size fits the file, and a `moov`
+  box is present.
+- The size limit applies twice: to the received bytes, and again to the
+  re-encoded image, which can be larger than the original (a palette PNG, for
+  instance). A file over the limit after re-encoding is `file_too_large`.
 - Rename to the key scheme above. The original filename is not stored.
 
 ## Staff-uploaded header images
@@ -96,7 +132,24 @@ received  -->  staged (local disk, DB row)  -->  stored (Dropbox, staging delete
 
 Deletion for retention removes the Dropbox file, the staging copy if any, and
 the media row, in that order, through a job so a provider outage cannot leave
-the row pointing at nothing.
+the row pointing at nothing. The job finds the file through its row: the stored
+reference, or `refForKey` of the row's durable key when no reference was
+recorded. It never parses a key back into a reference.
+
+When a delete overlaps an upload, the upload's final write can land after the
+row is gone. Recording the reference then updates no row, and the upload job
+deletes the file it just wrote instead of leaving it in the folder.
+
+Staged files can outlive their row (a crash before the first commit, or a
+failed delete after a silent accept or a Submit). The recurring step
+`submissions.sweep_staging` (`system/jobs.md`, "Recurring jobs") lists the
+`in-progress/` prefixes, and removes those older than 24 hours that no
+`submission_in_progress` row and no `media.staging_ref` claims.
+
+`viewUrl` on local disk returns `/admin/media/local/<ref>`, the admin route
+that streams the file, and ignores the `ttl` (the route checks the session on
+every request). That route does not exist yet; it arrives with the review
+plan.
 
 ## Dropbox-specific risks to monitor
 

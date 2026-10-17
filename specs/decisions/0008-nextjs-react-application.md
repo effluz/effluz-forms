@@ -2,6 +2,10 @@
 
 Status: accepted
 Date: 2026-10-08
+Amended 2026-10-11: each surface has its own root layout so the public page's
+`<html lang>` follows the submitter, and the renderer's page form is a Server
+Action that always redirects (Post/Redirect/Get, as the Settings save does), a
+refused post's refused files travelling in a short-lived cookie.
 
 ## Context
 

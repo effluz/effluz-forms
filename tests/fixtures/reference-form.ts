@@ -225,7 +225,7 @@ export const referenceSubmission: Record<string, unknown> = {
   adult_name: "Lucía Prueba Ejemplo",
   phone: "+507 0000 0000",
   email: "familia@example.com",
-  instagram: "@familia_ejemplo",
+  instagram: "@prueba_0000_effluz",
   photo_auth: "yes_opt",
   contact_auth: "either",
   pregnancy: "single",

@@ -24,6 +24,12 @@
  *   another actor committing between a use case's read and its lock would.
  * - `seedForm(deps, overrides?)` creates a form through `createForm` and
  *   returns its id; `overrides.patch` then rewrites form columns directly.
+ * - `seedPublished(deps, input)` seeds a form whose version 1 is `document`,
+ *   current, with status `published` unless given; `publishAgain` stores the
+ *   next version and makes it current.
+ * - `takeReferenceNumber` keeps `store.referenceCounters` (the
+ *   `next_reference` column, default 1) and, like the adapter, leaves the
+ *   stored form, its `updatedAt` included, untouched.
  * - Clock, ids, unit of work and audit fakes come from the shared kernel.
  *
  * Synthetic data only. Not for production code.
@@ -37,10 +43,11 @@ import {
   InMemoryAuditLogReader,
   SequentialIdGenerator,
 } from "@/shared/application/testing/fakes";
-import { buildDefaultRegistry, type Key } from "@/shared/domain/form-model";
+import { buildDefaultRegistry, type Key, type Version } from "@/shared/domain/form-model";
 import type { Clock } from "@/shared/application/ports/clock";
 import type { Draft } from "../../domain/draft";
 import type { Form, FormStatus } from "../../domain/form";
+import type { FormSettings } from "../../domain/settings";
 import { createForm, type CreateFormInput } from "../create-form";
 import type { Actor, DefinitionsDeps } from "../deps";
 import type { DraftRepository } from "../ports/draft-repository";
@@ -81,6 +88,8 @@ export class DefinitionsStore {
   readonly versions = new Map<string, FormVersion>();
   /** Keyed by `${formId} ${email}`. */
   readonly visits = new Map<string, { formId: string; email: string; at: Date }>();
+  /** `form.next_reference` by form id; a missing entry is the column default, 1. */
+  readonly referenceCounters = new Map<string, number>();
 
   requireForm(formId: string): void {
     if (!this.forms.has(formId)) throw new Error(`fake store: form ${formId} does not exist`);
@@ -121,6 +130,7 @@ export class InMemoryFormRepository implements FormRepository {
       if (version.formId === id) throw new Error(`fake store: form ${id} has versions`);
     }
     this.store.forms.delete(id);
+    this.store.referenceCounters.delete(id);
     this.store.drafts.delete(id);
     for (const [key, visit] of this.store.visits) {
       if (visit.formId === id) this.store.visits.delete(key);
@@ -141,6 +151,15 @@ export class InMemoryFormRepository implements FormRepository {
     const id = this.slugOwner(slug);
     const form = id === undefined ? undefined : this.store.forms.get(id);
     return Promise.resolve(form ? structuredClone(form) : null);
+  }
+
+  takeReferenceNumber(_uow: UnitOfWork, formId: string): Promise<number> {
+    if (!UUID.test(formId) || !this.store.forms.has(formId)) {
+      return Promise.reject(new Error(`form ${formId} does not exist`));
+    }
+    const n = this.store.referenceCounters.get(formId) ?? 1;
+    this.store.referenceCounters.set(formId, n + 1);
+    return Promise.resolve(n);
   }
 
   list(tab: FormTab, search?: string): Promise<Form[]> {
@@ -401,4 +420,62 @@ export async function seedForm(
     if (stored) deps.store.forms.set(result.formId, { ...stored, ...structuredClone(patch) });
   }
   return result.formId;
+}
+
+export interface SeedPublishedInput {
+  slug: string;
+  document: Version;
+  settings?: Partial<FormSettings>;
+  /** Defaults to `published`. */
+  status?: FormStatus;
+}
+
+/** Stores the next version of the form with `document` and makes it current. */
+function storeVersion(deps: FakeDefinitionsDeps, formId: string, document: Version): string {
+  const form = deps.store.forms.get(formId);
+  if (!form) throw new Error(`fake store: form ${formId} does not exist`);
+  let number = 1;
+  for (const version of deps.store.versions.values()) {
+    if (version.formId === formId) number = Math.max(number, version.number + 1);
+  }
+  const id = deps.ids.newId();
+  deps.store.versions.set(id, {
+    id,
+    formId,
+    number,
+    document: structuredClone(document),
+    publishedAt: deps.clock.now(),
+    publishedBy: EDITOR.email,
+  });
+  deps.store.forms.set(formId, { ...form, currentVersionId: id, currentVersionNumber: number });
+  return id;
+}
+
+/**
+ * Creates a form named after `document` through `seedForm` and stores the
+ * document as its version 1, current, with the status and settings given.
+ */
+export async function seedPublished(
+  deps: FakeDefinitionsDeps,
+  input: SeedPublishedInput,
+): Promise<{ formId: string; versionId: string }> {
+  const formId = await seedForm(deps, {
+    slug: input.slug,
+    title: input.document.title,
+    languages: input.document.languages,
+  });
+  const versionId = storeVersion(deps, formId, input.document);
+  const form = deps.store.forms.get(formId);
+  if (!form) throw new Error(`fake store: form ${formId} does not exist`);
+  deps.store.forms.set(formId, {
+    ...form,
+    status: input.status ?? "published",
+    settings: { ...form.settings, ...structuredClone(input.settings ?? {}) },
+  });
+  return { formId, versionId };
+}
+
+/** Publishes `document` as the form's next version, made current; returns its id. */
+export function publishAgain(deps: FakeDefinitionsDeps, formId: string, document: Version): string {
+  return storeVersion(deps, formId, document);
 }

@@ -13,11 +13,20 @@
  * - `InMemoryAuditLogReader`: reads the same `entries`; ids are `audit-<n>` by
  *   insertion order. Mirrors `PgAuditLogReader` ordering, filters (including the `(createdAt, id)` cursor),
  *   cap (given to the constructor) and handling of malformed limits and cursors.
+ * - `InMemoryJobQueue`: `enqueued` as `{ type, payload, opts }`, `ofType(type)`;
+ *   ids are `job-<n>`; a `uniqueKey` already recorded returns null; `failAt`
+ *   makes the nth enqueue (0-based) throw. `opts` is recorded as passed (no
+ *   `runAt` or `maxAttempts` defaults are applied), and a unique key is never
+ *   released, unlike the real queue, which frees it once the job finishes.
+ * - `RecordingLogger`: `lines` as `{ level, msg, fields }`; children share them.
+ * - `handlerContext(over)`: a `JobHandlerContext` built from the fakes above.
  *
  * Synthetic data only. Not for production code.
  */
 import type { Clock } from "../ports/clock";
 import type { IdGenerator } from "../ports/id-generator";
+import type { EnqueueOptions, JobHandlerContext, JobPayload, JobQueue } from "../ports/job-queue";
+import type { LogFields, Logger, LogLevel } from "../ports/logger";
 import type { UnitOfWork, UnitOfWorkFactory } from "../ports/unit-of-work";
 
 export class FixedClock implements Clock {
@@ -187,4 +196,90 @@ export class InMemoryAuditLogReader {
     }
     return Promise.resolve([...actors].sort());
   }
+}
+
+export interface EnqueuedJob {
+  type: string;
+  payload: JobPayload;
+  opts: EnqueueOptions;
+}
+
+export class InMemoryJobQueue implements JobQueue {
+  readonly enqueued: EnqueuedJob[] = [];
+  /** When set, the nth enqueue (0-based, over this queue's life) throws. */
+  failAt: number | null = null;
+  private calls = 0;
+
+  enqueue(
+    _uow: UnitOfWork,
+    type: string,
+    payload: JobPayload,
+    opts: EnqueueOptions = {},
+  ): Promise<string | null> {
+    const call = this.calls;
+    this.calls += 1;
+    if (this.failAt === call) return Promise.reject(new Error("injected enqueue failure"));
+    if (
+      opts.uniqueKey !== undefined &&
+      this.enqueued.some((j) => j.opts.uniqueKey === opts.uniqueKey)
+    )
+      return Promise.resolve(null);
+    this.enqueued.push({ type, payload: { ...payload }, opts: { ...opts } });
+    return Promise.resolve(`job-${String(this.enqueued.length)}`);
+  }
+
+  ofType(type: string): EnqueuedJob[] {
+    return this.enqueued.filter((j) => j.type === type);
+  }
+}
+
+export interface LoggedLine {
+  level: LogLevel;
+  msg: string;
+  fields: LogFields;
+}
+
+export class RecordingLogger implements Logger {
+  constructor(
+    readonly lines: LoggedLine[] = [],
+    private readonly base: LogFields = {},
+  ) {}
+
+  debug(msg: string, fields?: LogFields): void {
+    this.write("debug", msg, fields);
+  }
+
+  info(msg: string, fields?: LogFields): void {
+    this.write("info", msg, fields);
+  }
+
+  warn(msg: string, fields?: LogFields): void {
+    this.write("warn", msg, fields);
+  }
+
+  error(msg: string, fields?: LogFields): void {
+    this.write("error", msg, fields);
+  }
+
+  child(fields: LogFields): Logger {
+    return new RecordingLogger(this.lines, { ...this.base, ...fields });
+  }
+
+  private write(level: LogLevel, msg: string, fields?: LogFields): void {
+    this.lines.push({ level, msg, fields: { ...this.base, ...fields } });
+  }
+}
+
+/** A handler context over the fakes; `over` replaces any of its parts. */
+export function handlerContext(over: Partial<JobHandlerContext> = {}): JobHandlerContext {
+  return {
+    jobId: "job-under-test",
+    attempt: 1,
+    maxAttempts: 8,
+    logger: new RecordingLogger(),
+    uow: new FakeUnitOfWorkFactory(),
+    queue: new InMemoryJobQueue(),
+    clock: new FixedClock(),
+    ...over,
+  };
 }

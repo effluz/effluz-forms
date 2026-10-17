@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Clock } from "@/shared/application/ports/clock";
-import type { JobHandler, JobHandlerContext } from "@/shared/application/ports/job-queue";
+import {
+  PermanentJobError,
+  type JobHandler,
+  type JobHandlerContext,
+} from "@/shared/application/ports/job-queue";
 import type { LogFields, Logger } from "@/shared/application/ports/logger";
 import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
 import { createCleanupHandler } from "@/shared/infrastructure/jobs/handlers/cleanup";
@@ -67,10 +71,12 @@ describe("Worker", () => {
   }
 
   async function job(id: string) {
-    const r = await pool.query<{ status: string; last_error: string | null; attempts: number }>(
-      "select status, last_error, attempts from job where id = $1",
-      [id],
-    );
+    const r = await pool.query<{
+      status: string;
+      last_error: string | null;
+      attempts: number;
+      finished_at: Date | null;
+    }>("select status, last_error, attempts, finished_at from job where id = $1", [id]);
     const row = r.rows[0];
     if (!row) throw new Error("job not found");
     return row;
@@ -259,5 +265,32 @@ describe("Worker", () => {
     expect(lines.find((l) => l.msg === "pruned succeeded jobs")?.fields).toMatchObject({
       pruned: 1,
     });
+  });
+  it("marks a job dead at once when its handler throws PermanentJobError", async () => {
+    const id = await enqueue("test.permanent", {}, 8);
+    const worker = makeWorker({
+      "test.permanent": () => Promise.reject(new PermanentJobError("recipient rejected")),
+    });
+    await worker.tick();
+    expect(await job(id)).toMatchObject({
+      status: "dead",
+      attempts: 1,
+      last_error: "recipient rejected",
+    });
+    expect((await job(id)).finished_at).not.toBeNull();
+    expect(lines.some((l) => l.level === "error" && l.msg === "job failed permanently")).toBe(true);
+  });
+
+  it("tells the handler the job's attempt limit", async () => {
+    await enqueue("test.limits", {}, 3);
+    const seen: JobHandlerContext[] = [];
+    const worker = makeWorker({
+      "test.limits": (_p, ctx) => {
+        seen.push(ctx);
+        return Promise.resolve();
+      },
+    });
+    await worker.tick();
+    expect(seen[0]).toMatchObject({ attempt: 1, maxAttempts: 3 });
   });
 });

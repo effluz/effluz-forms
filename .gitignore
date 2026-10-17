@@ -7,6 +7,8 @@
 
 # testing
 /coverage
+/playwright-report/
+/test-results/
 
 # next.js
 /.next/
@@ -41,7 +43,6 @@ next-env.d.ts
 # tooling
 .vitest/
 coverage/
-playwright-report/
 
 # boundary-test probes
 src/modules/probe-*/
@@ -54,3 +55,6 @@ src/modules/probe-*/
 
 # subagent-driven-development scratch workspace
 .superpowers/
+
+# operator notes that must never be public: account identities, contacts, runbook secrets
+/private/

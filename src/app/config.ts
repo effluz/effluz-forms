@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  // Required: `next start` sets it but `tsx` does not, and every production guard keys on it.
+  NODE_ENV: z.enum(["development", "test", "production"]),
   SERVICE: z.enum(["app", "worker"]).default("app"),
   APP_VERSION: z.string().min(1).default("dev"),
   PUBLIC_BASE_URL: z.url(),
@@ -18,7 +19,37 @@ const envSchema = z.object({
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(4),
   WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(100).default(1000),
   WORKER_LEASE_SECONDS: z.coerce.number().int().min(30).default(90),
+  MEDIA_PROVIDER: z.enum(["local", "dropbox"]).default("local"),
+  MEDIA_DURABLE_DIR: z.string().min(1).default("./data/durable"),
+  DROPBOX_APP_KEY: z.string().min(1).optional(),
+  DROPBOX_APP_SECRET: z.string().min(1).optional(),
+  DROPBOX_REFRESH_TOKEN: z.string().min(1).optional(),
+  DROPBOX_API_URL: z.url().default("https://api.dropboxapi.com"),
+  DROPBOX_CONTENT_URL: z.url().default("https://content.dropboxapi.com"),
+  EMAIL_PROVIDER: z.enum(["mailpit", "smtp2go"]).default("mailpit"),
+  SMTP2GO_API_KEY: z.string().min(1).optional(),
+  SMTP2GO_API_URL: z.url().default("https://api.smtp2go.com/v3"),
+  MAILPIT_URL: z.url().default("http://127.0.0.1:8025"),
+  EMAIL_FROM: z.string().min(3).default("Effluz Forms <forms@forms.effluz.com>"),
+  EMAIL_REPLY_TO: z.email().optional(),
 });
+
+/** Variables `.env.example` ships blank; a blank or whitespace-only value means unset. */
+const BLANK_MEANS_UNSET = [
+  "DROPBOX_APP_KEY",
+  "DROPBOX_APP_SECRET",
+  "DROPBOX_REFRESH_TOKEN",
+  "SMTP2GO_API_KEY",
+  "EMAIL_REPLY_TO",
+] as const;
+
+/** URLs production refuses unless they are https. */
+const HTTPS_IN_PRODUCTION = [
+  "GOOGLE_ISSUER",
+  "SMTP2GO_API_URL",
+  "DROPBOX_API_URL",
+  "DROPBOX_CONTENT_URL",
+] as const;
 
 export interface AppConfig {
   nodeEnv: "development" | "test" | "production";
@@ -44,6 +75,21 @@ export interface AppConfig {
   worker: { concurrency: number; pollIntervalMs: number; leaseSeconds: number };
   /** Domains notification recipients may use; the Workspace hosted domain is always first. */
   notificationAllowedDomains: string[];
+  /** Where durable media goes. Staging is always local (`stagingDir`). */
+  media:
+    | { provider: "local"; durableDir: string }
+    | {
+        provider: "dropbox";
+        appKey: string;
+        appSecret: string;
+        refreshToken: string;
+        apiUrl: string;
+        contentUrl: string;
+      };
+  /** How email leaves the system; `from` and `replyTo` apply to every message. */
+  email:
+    | { provider: "mailpit"; url: string; from: string; replyTo: string }
+    | { provider: "smtp2go"; apiKey: string; apiUrl: string; from: string; replyTo: string };
 }
 
 /**
@@ -52,7 +98,13 @@ export interface AppConfig {
  * See specs/architecture.md, "Configuration and secrets".
  */
 export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
-  const parsed = envSchema.safeParse(env);
+  const cleaned = Object.fromEntries(
+    Object.entries(env).filter(
+      ([name, value]) =>
+        !(value?.trim() === "" && (BLANK_MEANS_UNSET as readonly string[]).includes(name)),
+    ),
+  );
+  const parsed = envSchema.safeParse(cleaned);
   if (!parsed.success) {
     const names = [...new Set(parsed.error.issues.map((i) => String(i.path[0])))].join(", ");
     throw new Error(`Invalid configuration: ${names}`);
@@ -62,14 +114,24 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   if (publicBaseUrl === null) throw new Error("Invalid configuration: PUBLIC_BASE_URL");
   if (e.NODE_ENV === "production" && !publicBaseUrl.startsWith("https://"))
     throw new Error("Invalid configuration: PUBLIC_BASE_URL must be https in production");
-  if (e.NODE_ENV === "production" && !e.GOOGLE_ISSUER.startsWith("https://"))
-    throw new Error("Invalid configuration: GOOGLE_ISSUER must be https in production");
+  if (e.NODE_ENV === "production") {
+    // These carry secrets or submitter addresses; plain http exists only for local fakes.
+    for (const name of HTTPS_IN_PRODUCTION)
+      if (!e[name].startsWith("https://"))
+        throw new Error(`Invalid configuration: ${name} must be https in production`);
+  }
   const notificationAllowedDomains = parseDomains(
     e.GOOGLE_ALLOWED_HOSTED_DOMAIN,
     e.NOTIFICATION_ALLOWED_DOMAINS,
   );
   if (notificationAllowedDomains === null)
     throw new Error("Invalid configuration: NOTIFICATION_ALLOWED_DOMAINS");
+  if (e.NODE_ENV === "production" && e.MEDIA_PROVIDER === "local")
+    throw new Error("Invalid configuration: MEDIA_PROVIDER must be dropbox in production");
+  if (e.NODE_ENV === "production" && e.EMAIL_PROVIDER === "mailpit")
+    throw new Error("Invalid configuration: EMAIL_PROVIDER must be smtp2go in production");
+  const media = mediaConfig(e);
+  const email = emailConfig(e);
   return {
     nodeEnv: e.NODE_ENV,
     service: e.SERVICE,
@@ -97,6 +159,49 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
       leaseSeconds: e.WORKER_LEASE_SECONDS,
     },
     notificationAllowedDomains,
+    media,
+    email,
+  };
+}
+
+type Env = z.infer<typeof envSchema>;
+
+function mediaConfig(e: Env): AppConfig["media"] {
+  if (e.MEDIA_PROVIDER === "local") return { provider: "local", durableDir: e.MEDIA_DURABLE_DIR };
+  const {
+    DROPBOX_APP_KEY: appKey,
+    DROPBOX_APP_SECRET: appSecret,
+    DROPBOX_REFRESH_TOKEN: token,
+  } = e;
+  if (appKey === undefined || appSecret === undefined || token === undefined) {
+    const missing = [
+      appKey === undefined ? "DROPBOX_APP_KEY" : null,
+      appSecret === undefined ? "DROPBOX_APP_SECRET" : null,
+      token === undefined ? "DROPBOX_REFRESH_TOKEN" : null,
+    ].filter((n) => n !== null);
+    throw new Error(`Invalid configuration: ${missing.join(", ")}`);
+  }
+  return {
+    provider: "dropbox",
+    appKey,
+    appSecret,
+    refreshToken: token,
+    apiUrl: e.DROPBOX_API_URL,
+    contentUrl: e.DROPBOX_CONTENT_URL,
+  };
+}
+
+function emailConfig(e: Env): AppConfig["email"] {
+  const replyTo = e.EMAIL_REPLY_TO ?? e.PRIVACY_CONTACT_EMAIL;
+  if (e.EMAIL_PROVIDER === "mailpit")
+    return { provider: "mailpit", url: e.MAILPIT_URL, from: e.EMAIL_FROM, replyTo };
+  if (e.SMTP2GO_API_KEY === undefined) throw new Error("Invalid configuration: SMTP2GO_API_KEY");
+  return {
+    provider: "smtp2go",
+    apiKey: e.SMTP2GO_API_KEY,
+    apiUrl: e.SMTP2GO_API_URL,
+    from: e.EMAIL_FROM,
+    replyTo,
   };
 }
 

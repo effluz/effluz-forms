@@ -9,6 +9,7 @@ export type {
   FieldTypeId,
   PublishIssueDraft,
   SettingsText,
+  UploadLimits,
   ValidationOutcome,
 } from "./field-type";
 export { defineFieldType, fieldTypeIds } from "./field-type";
@@ -25,10 +26,10 @@ export { ruleSchema, graphemeLength } from "./rules";
 export type { Rule, RuleId, RuleContext } from "./rules";
 export { versionSchema, parseDraft, inputFields, fieldIndex, conditionOwners } from "./version";
 export type { Version, Page, Field, ParseIssue, ParseResult, ConditionOwner } from "./version";
-export { evaluateVisibility } from "./visibility";
+export { evaluateVisibility, visiblePages } from "./visibility";
 export type { Visibility } from "./visibility";
-export { validateSubmission, isAbsent } from "./submission";
-export type { SubmissionContext, SubmissionResult } from "./submission";
+export { validateSubmission, validatePage, isAbsent } from "./submission";
+export type { SubmissionContext, SubmissionResult, PageValidation } from "./submission";
 export { checkDefinition, validateForPublish, parseVersion, collectsPersonalData } from "./publish";
 export type { PublishContext } from "./publish";
 export { exportColumns, exportRow } from "./export";

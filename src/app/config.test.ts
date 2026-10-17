@@ -13,6 +13,16 @@ const base: NodeJS.ProcessEnv = {
   GOOGLE_ALLOWED_HOSTED_DOMAIN: "example.com",
 };
 
+/** The remote adapters production requires. */
+const productionAdapters = {
+  MEDIA_PROVIDER: "dropbox",
+  DROPBOX_APP_KEY: "k",
+  DROPBOX_APP_SECRET: "s",
+  DROPBOX_REFRESH_TOKEN: "r",
+  EMAIL_PROVIDER: "smtp2go",
+  SMTP2GO_API_KEY: "api",
+};
+
 describe("loadConfig", () => {
   it("parses a complete environment with defaults applied", () => {
     const c = loadConfig(base);
@@ -40,6 +50,7 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...base, NODE_ENV: "production" })).toThrow(/PUBLIC_BASE_URL/);
     const c = loadConfig({
       ...base,
+      ...productionAdapters,
       NODE_ENV: "production",
       PUBLIC_BASE_URL: "https://forms.example.com",
     });
@@ -86,6 +97,29 @@ describe("loadConfig", () => {
     );
     expect(loadConfig({ ...base, WORKER_LEASE_SECONDS: "30" }).worker.leaseSeconds).toBe(30);
   });
+  it("requires NODE_ENV and names it, so no entry point falls back to development", () => {
+    // Typed loosely: the ambient ProcessEnv declares NODE_ENV as always present.
+    const env: Record<string, string | undefined> = { ...base };
+    delete env["NODE_ENV"];
+    expect(() => loadConfig(env as NodeJS.ProcessEnv)).toThrow("Invalid configuration: NODE_ENV");
+    const staging: Record<string, string | undefined> = { ...base, NODE_ENV: "staging" };
+    expect(() => loadConfig(staging as NodeJS.ProcessEnv)).toThrow(/NODE_ENV/);
+  });
+  it.each(["SMTP2GO_API_URL", "DROPBOX_API_URL", "DROPBOX_CONTENT_URL"])(
+    "refuses a plain-http %s in production and names only the variable",
+    (name) => {
+      const prod: NodeJS.ProcessEnv = {
+        ...base,
+        ...productionAdapters,
+        NODE_ENV: "production",
+        PUBLIC_BASE_URL: "https://forms.example.com",
+      };
+      const attempt = () => loadConfig({ ...prod, [name]: "http://relay.example.com" });
+      expect(attempt).toThrow(`Invalid configuration: ${name} must be https in production`);
+      expect(attempt).not.toThrow(/relay\.example/);
+      expect(() => loadConfig({ ...base, [name]: "http://127.0.0.1:9999" })).not.toThrow();
+    },
+  );
   it("rejects an unknown SERVICE or LOG_LEVEL", () => {
     expect(() => loadConfig({ ...base, SERVICE: "cron" })).toThrow(/SERVICE/);
     expect(() => loadConfig({ ...base, LOG_LEVEL: "verbose" })).toThrow(/LOG_LEVEL/);
@@ -145,5 +179,95 @@ describe("loadConfig", () => {
       });
       expect(c.notificationAllowedDomains).toEqual(["effluz.com", "a.example"]);
     });
+  });
+});
+
+describe("media and email configuration", () => {
+  it("defaults to local media and Mailpit outside production", () => {
+    const c = loadConfig(base);
+    expect(c.media).toEqual({ provider: "local", durableDir: "./data/durable" });
+    expect(c.email).toEqual({
+      provider: "mailpit",
+      url: "http://127.0.0.1:8025",
+      from: "Effluz Forms <forms@forms.effluz.com>",
+      replyTo: "privacy@example.com",
+    });
+  });
+
+  it("reads Dropbox and SMTP2GO, and names the missing variables", () => {
+    const c = loadConfig({
+      ...base,
+      MEDIA_PROVIDER: "dropbox",
+      DROPBOX_APP_KEY: "k",
+      DROPBOX_APP_SECRET: "s",
+      DROPBOX_REFRESH_TOKEN: "r",
+      EMAIL_PROVIDER: "smtp2go",
+      SMTP2GO_API_KEY: "api",
+    });
+    expect(c.media).toMatchObject({
+      provider: "dropbox",
+      appKey: "k",
+      apiUrl: "https://api.dropboxapi.com",
+    });
+    expect(c.email).toMatchObject({
+      provider: "smtp2go",
+      apiKey: "api",
+      apiUrl: "https://api.smtp2go.com/v3",
+    });
+    expect(() => loadConfig({ ...base, MEDIA_PROVIDER: "dropbox" })).toThrow(
+      "Invalid configuration: DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REFRESH_TOKEN",
+    );
+    expect(() => loadConfig({ ...base, EMAIL_PROVIDER: "smtp2go" })).toThrow(
+      "Invalid configuration: SMTP2GO_API_KEY",
+    );
+  });
+
+  it("refuses the local adapters in production", () => {
+    const prod: NodeJS.ProcessEnv = {
+      ...base,
+      NODE_ENV: "production",
+      PUBLIC_BASE_URL: "https://forms.example.com",
+    };
+    expect(() => loadConfig(prod)).toThrow(/MEDIA_PROVIDER/);
+    expect(() =>
+      loadConfig({
+        ...prod,
+        MEDIA_PROVIDER: "dropbox",
+        DROPBOX_APP_KEY: "k",
+        DROPBOX_APP_SECRET: "s",
+        DROPBOX_REFRESH_TOKEN: "r",
+      }),
+    ).toThrow(/EMAIL_PROVIDER/);
+  });
+
+  it("treats the blank values of .env.example as unset", () => {
+    const c = loadConfig({
+      ...base,
+      DROPBOX_APP_KEY: "",
+      DROPBOX_APP_SECRET: "",
+      DROPBOX_REFRESH_TOKEN: "",
+      SMTP2GO_API_KEY: "",
+      EMAIL_REPLY_TO: "",
+    });
+    expect(c.media.provider).toBe("local");
+    expect(c.email).toMatchObject({ provider: "mailpit", replyTo: "privacy@example.com" });
+  });
+
+  it("treats a whitespace-only optional secret as unset", () => {
+    expect(() => loadConfig({ ...base, EMAIL_PROVIDER: "smtp2go", SMTP2GO_API_KEY: "  " })).toThrow(
+      "Invalid configuration: SMTP2GO_API_KEY",
+    );
+    expect(loadConfig({ ...base, EMAIL_REPLY_TO: " \t" }).email.replyTo).toBe(
+      "privacy@example.com",
+    );
+  });
+
+  it("uses EMAIL_REPLY_TO when set and never puts a value in an error", () => {
+    expect(loadConfig({ ...base, EMAIL_REPLY_TO: "help@example.com" }).email.replyTo).toBe(
+      "help@example.com",
+    );
+    const attempt = () => loadConfig({ ...base, EMAIL_REPLY_TO: "not-an-address" });
+    expect(attempt).toThrow("Invalid configuration: EMAIL_REPLY_TO");
+    expect(attempt).not.toThrow("not-an-address");
   });
 });

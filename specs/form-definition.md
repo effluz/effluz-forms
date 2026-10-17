@@ -133,8 +133,10 @@ kept so validation can report them.
 
 Rules are declarative, attached per field, and chosen from the list the
 field type allows. The server evaluates them against the version on every
-submission. The client evaluates the same rules for immediate feedback and
-may not add or skip any.
+submission. The browser ships none of the rules: with script, a field is
+checked on blur by asking the server (`POST /f/<slug>/check`), and the only
+checks that run in the browser are the advisory size and declared-kind checks
+before a file upload (`ui-ux/renderer.md`, "Validation and errors").
 
 - `required` is a field property, not a rule, and is skipped for hidden fields.
 - `must_be_true` fails when the answer is false or absent, so omitting the
@@ -148,6 +150,37 @@ may not add or skip any.
   Backreferences and lookarounds are not supported and are rejected when the
   rule is saved. Patterns are at most 200 characters and compile to a bounded
   program size, so no pattern can stall the server.
+
+### Page-scoped validation
+
+The renderer posts one page at a time, so the form model exports validation
+for a single page next to the whole-submission check. Both are pure functions
+of the version, the field type registry and the answers, with no I/O.
+
+- `validateSubmission(version, registry, body, context)` validates every
+  visible input field of every page. Submit uses it, so the stored answers
+  never rest on page posts alone.
+- `validatePage(version, registry, body, pageKey, context, { enforceRequired })`
+  validates the input fields of the page named by `pageKey` and returns their
+  normalized answers and issues. Pages before it are not validated again (they
+  were when posted): their values in `body` only feed the conditions that decide
+  what is visible on the target page. A field the conditions hide, or a field on
+  a hidden page, is skipped and gives no answer.
+- `enforceRequired` is the difference between the two kinds of post. **Next**
+  passes `true`: an absent answer to a required field is an issue, as in
+  Submit. **Back** and a **language switch** pass `false`: an absent answer is
+  skipped without an issue, so the visitor can leave a page half filled, and an
+  answer that is present but invalid still reports its issue and is returned as
+  an issue, never as a normalized answer. Neither moves the visitor forward, so
+  nothing required is bypassed; Submit validates the whole submission again.
+- `visiblePages(version, answers, registry)` returns the pages the conditions
+  show, in document order, for navigation and progress. A hidden page is
+  skipped like a hidden field.
+
+A `file_upload` field takes part through the optional field type hook
+`uploadLimits(settings)`, which names the accepted kinds, the maximum file count
+and the maximum size, so the renderer and the intake treat any field type that
+takes files alike (ADR 0016, amendment of 2026-10-11).
 
 ## Conditional logic
 

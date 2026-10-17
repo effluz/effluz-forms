@@ -1,0 +1,889 @@
+/*
+ * The public renderer: one column, 640 px, 16 px gutters (24 px from 480 px), 44 px targets,
+ * inputs and body text at least 16 px. Every value is a token from design-system/tokens.json,
+ * named in a comment; see specs/ui-ux/renderer.md, "Layout", and specs/design.md.
+ */
+
+.page {
+  /* color.text.default (ink), color.text.muted (mauve), color.text.link, color.text.error */
+  --text: #1a1423;
+  --text-muted: #774c60;
+  --link: #372549;
+  --error: #9b1c1c;
+  /* color.surface.page.public, color.surface.card, color.surface.subtle, color.surface.error */
+  --surface-page: #fff3ef;
+  --surface-card: #ffffff;
+  --surface-subtle: #eff0f5;
+  --surface-error: #fbecec;
+  /* color.surface.warning, color.text.warning */
+  --surface-warning: #fff4d6;
+  --text-warning: #7a4b00;
+  /* color.border.default, color.border.input, color.border.inputFocus, color.border.error */
+  --border: #eff0f5;
+  --border-input: #774c60;
+  --border-focus: #372549;
+  --border-error: #9b1c1c;
+  /* color.action.primary: bg, fg, hoverBg */
+  --primary-bg: #372549;
+  --primary-fg: #fff3ef;
+  --primary-hover: #6c344e;
+  /* color.action.secondary: bg, border (plum), hoverBg */
+  --secondary-bg: #ffffff;
+  --secondary-border: #372549;
+  --secondary-hover: #eff0f5;
+  /* color.action.disabledBg, color.action.disabledFg, color.action.tertiary.hoverFg */
+  --disabled-bg: #eff0f5;
+  --disabled-fg: #774c60;
+  --tertiary-hover: #6c344e;
+  /* color.focus.ring (rose, 3.9:1 on the page and cards) */
+  --focus: #b75d69;
+  /* size.contentWidthPublic */
+  --content-width: 640px;
+  /* space.4, 16 px gutters on phones; space.5 from breakpoint.sm */
+  --gutter: 16px;
+
+  box-sizing: border-box;
+  min-height: 100vh;
+  /* color.surface.page.public, color.text.default */
+  background: var(--surface-page);
+  color: var(--text);
+  /* font.family.sans, font.size.public.body (17), font.lineHeight.body */
+  font-family: Poppins, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+@media (min-width: 480px) {
+  .page {
+    /* breakpoint.sm, space.5 */
+    --gutter: 24px;
+  }
+}
+
+.page *,
+.page *::before,
+.page *::after {
+  box-sizing: inherit;
+}
+
+/* Links read as links: underlined, color.text.link (specificity zero, so classes win). */
+:where(.page) a {
+  color: var(--link);
+  text-decoration: underline;
+}
+
+/* Focus: 2 px color.focus.ring, offset 2 px (border.width.focus), for every control. */
+.page :is(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* The same ring on a control the script focused (after a failed post), where the browser may
+   not match :focus-visible: 2 px color.focus.ring, offset 2 px (border.width.focus). */
+.page [data-focus-ring]:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Skip link: off-screen until focused (space.2), space.3 / space.4 padding, surface.card, radius.md. */
+.skip {
+  position: absolute;
+  top: -100px;
+  left: 8px;
+  z-index: 10;
+  padding: 12px 16px;
+  background: var(--surface-card);
+  border-radius: 12px;
+}
+
+.skip:focus {
+  top: 8px;
+}
+
+/* The page column: size.contentWidthPublic plus the gutters on both sides. */
+.header,
+.progress,
+.main,
+.footer {
+  width: 100%;
+  max-width: calc(var(--content-width) + 2 * var(--gutter));
+  margin: 0 auto;
+  padding-inline: var(--gutter);
+}
+
+/* Header: flex row, space between, min-height space.8 (64 px); wordmark font.size.public.wordmark (24), font.weight.semibold. */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 64px;
+}
+
+.wordmark {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--primary-bg);
+}
+
+.languages {
+  display: flex;
+  align-items: center;
+}
+
+/* Progress: font.size.public.small (15), color.text.muted; 4 px track on surface.subtle, radius.full. */
+.progress {
+  padding-block: 8px;
+}
+
+.progressText {
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.progressTrack {
+  height: 4px;
+  overflow: hidden;
+  background: var(--surface-subtle);
+  border-radius: 9999px;
+}
+
+/* color.action.primary.bg; motion.duration.medium (160 ms), motion.easing. */
+.progressFill {
+  height: 100%;
+  background: var(--primary-bg);
+  border-radius: 9999px;
+  transition: width 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Main: space.5 above, space.7 below. */
+.main {
+  padding-top: 24px;
+  padding-bottom: 48px;
+}
+
+.main:focus {
+  outline: none;
+}
+
+/* Title: font.size.public.display (28), font.lineHeight.tight, semibold. Focused by script, no outline. */
+.title {
+  margin: 0 0 16px;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.title:focus {
+  outline: none;
+}
+
+/* Subtitle and section title: font.size.public.heading (22), font.lineHeight.heading. */
+.subtitle,
+.sectionTitle {
+  margin: 0 0 8px;
+  font-size: 22px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.description {
+  margin: 0 0 24px;
+}
+
+.description > :first-child,
+.sectionBody > :first-child {
+  margin-top: 0;
+}
+
+/* Help: font.size.public.small (15), font.lineHeight.small, color.text.muted. */
+.help {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.help > * {
+  margin: 0 0 8px;
+}
+
+.help > :last-child {
+  margin-bottom: 0;
+}
+
+/* The renderer's hints after the staff help: space.2 between the two blocks. */
+.help + .help {
+  margin-top: 8px;
+}
+
+/* The form: a column with space.5 gap. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Field and group: a column with space.2 gap; the fieldset reset keeps legends in the flow. */
+.field,
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Label and legend: font.size.public.label (16), font.weight.medium, font.lineHeight.label. */
+.label {
+  padding: 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* The required star: color.text.error, reinforcement only (the legend and `required` say it). */
+.star {
+  color: var(--error);
+}
+
+/* Legend, hint and counter: font.size.public.small, color.text.muted. */
+.legend,
+.hint,
+.counter {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* Text controls: full width, size.controlHeight (48) high,space.3 padding, 17 px (above font.size.public.inputMin), card, 1 px border.input, radius.md. */
+.input,
+.textarea,
+.select {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px;
+  font: inherit;
+  font-size: 17px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--surface-card);
+  border: 1px solid var(--border-input);
+  border-radius: 12px;
+}
+
+/* Long text: at least size.textareaMin (144), resized vertically only. */
+.textarea {
+  min-height: 144px;
+  resize: vertical;
+}
+
+/* Placeholders in color.text.muted (7:1 on surface.card), never the browser's faint default. */
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+/* Focus: 2 px border.inputFocus, padding 11 px so the box does not move. */
+.input:focus,
+.textarea:focus,
+.select:focus {
+  padding: 11px;
+  border: 2px solid var(--border-focus);
+}
+
+/* Invalid: border.error (the message and icon carry the meaning too). */
+.input[aria-invalid="true"],
+.textarea[aria-invalid="true"],
+.select[aria-invalid="true"] {
+  border-color: var(--border-error);
+}
+
+/* Error slot: color.text.error, 15 px, flex with space.2 gap. An assertive live region, so
+   it stays in the accessibility tree when empty; it then has no height and gives back the
+   space.2 gap before it with a negative margin, so field spacing is unchanged. */
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--error);
+}
+
+.error:empty {
+  margin-top: -8px;
+}
+
+.error:has(.errorLine) {
+  flex-direction: column;
+}
+
+.errorLine {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.errorIcon {
+  flex: none;
+  margin-top: 4px;
+}
+
+/* Number with a unit: space.2 gap, unit color.text.muted. */
+.numberRow,
+.withUnit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.unit {
+  color: var(--text-muted);
+}
+
+/* Date: space.3 gap; parts size.datePart (88), the year size.datePartYear (112); sub-labels 15 px. */
+.dateParts,
+.dateRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.datePart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 88px;
+}
+
+.datePart:last-child {
+  width: 112px;
+}
+
+.dateLabel,
+.subLabel {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* Choices: a column, space.2 gap; each option is a 44 px target (size.touchTarget) on a card with border.default. */
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+/* The native control, 24 px (size.iconDefault), tinted action.primary.bg. */
+.option input {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--primary-bg);
+}
+
+/* Consent: a box of space.4 padding on a card with border.input; paragraphs are blocks, weight regular. */
+.group:has(.consentParagraph) {
+  padding: 16px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-input);
+  border-radius: 12px;
+}
+
+.consentParagraph {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 400;
+}
+
+/* Section: space.4 padding with border.default. */
+.section {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.sectionBody {
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+/* Notice: space.4 padding on surface.warning, color.text.warning. */
+.notice {
+  margin: 0;
+  padding: 16px;
+  color: var(--text-warning);
+  background: var(--surface-warning);
+  border-radius: 12px;
+}
+
+/* File upload: the dropzone is space.5 padding with a 2 px dashed border.input; dragging uses border.inputFocus. */
+.upload {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dropzone {
+  position: relative;
+  padding: 24px;
+  background: var(--surface-card);
+  border: 2px dashed var(--border-input);
+  border-radius: 12px;
+}
+
+.dropzone[data-drag] {
+  border-color: var(--border-focus);
+}
+
+/* Without script the native input is the control (it names the chosen files before the post):
+   full width, a size.touchTarget (44) target, font.size.public.button, color.text.default. */
+.fileInput {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* Once the script has mounted the field (data-enhanced), the native input is visually hidden
+   but focusable, and the styled label below is the control. */
+.dropzone[data-enhanced] .fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip: rect(0 0 0 0);
+  opacity: 0;
+}
+
+/* The styled control: hidden (out of the accessibility tree too) until the field is enhanced. */
+.chooseButton {
+  display: none;
+}
+
+/* Enhanced, its label is the visible control: a secondary button (action.secondary bg, plum
+   border, hoverBg), size.controlHeight (48) high, 0 / space.4 padding, radius.md,
+   font.size.public.button, medium. */
+.dropzone[data-enhanced] .chooseButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 16px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--link);
+  background: var(--secondary-bg);
+  border: 1px solid var(--secondary-border);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.chooseButton:hover {
+  background: var(--secondary-hover);
+}
+
+/* The input's focus shows on its label: 2 px color.focus.ring, offset 2 px (border.width.focus). */
+.fileInput:focus-visible + .chooseButton,
+.fileInput[data-focus-ring]:focus + .chooseButton {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.count {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+/* Staged files: a reset list, space.2 gap; each row is a grid of size.thumbnail (56) thumbnail, name, action. */
+.fileList,
+.fileRows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fileRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.fileRow:has(.thumb) {
+  grid-template-columns: 56px 1fr auto;
+}
+
+/* Thumbnail: size.thumbnail (56), radius.sm (8 px), surface.subtle. */
+.thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  background: var(--surface-subtle);
+  border-radius: 8px;
+}
+
+.fileName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Name then size on one line, space.2 apart; the size in color.text.muted never shrinks. */
+.fileLine {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fileSize {
+  flex: none;
+  color: var(--text-muted);
+}
+
+/* An enhanced row's middle column: name, size and status stacked with a space.1 gap. */
+.fileBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The row's status line: font.size.public.small, color.text.muted (errors keep color.text.error). */
+.fileStatus {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.fileStatus.errorLine {
+  color: var(--error);
+}
+
+/* Retry and Remove side by side, each a 44 px target. */
+.fileActions {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+/* Upload progress: 4 px bar on surface.subtle with an action.primary.bg fill. */
+.fileBar {
+  height: 4px;
+  overflow: hidden;
+  background: var(--surface-subtle);
+  border-radius: 9999px;
+}
+
+.fileBar > * {
+  display: block;
+  height: 100%;
+  background: var(--primary-bg);
+}
+
+/* The per-file Remove button is a tertiary action with a 44 px target. */
+.removeButton {
+  min-height: 44px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--link);
+  text-decoration: underline;
+  background: none;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.removeButton:hover {
+  /* color.action.tertiary.hoverFg */
+  color: var(--tertiary-hover);
+}
+
+/* Error summary: space.4 padding on surface.error in color.text.error; heading 22 px; links in the error color. */
+.summary {
+  padding: 16px;
+  color: var(--error);
+  background: var(--surface-error);
+  border-radius: 12px;
+}
+
+.summaryHeading {
+  margin: 0 0 8px;
+  font-size: 22px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.summaryHeading:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.summaryList {
+  margin: 0;
+  padding-left: 24px;
+}
+
+/* Each link a size.touchTarget (44) high target, space.2 above and below its text. */
+.summaryList a {
+  display: inline-block;
+  min-height: 44px;
+  padding-block: 8px;
+  color: var(--error);
+}
+
+/* Navigation: a column with space.3 gap; a row, space between, from breakpoint.sm. */
+.navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (min-width: 480px) {
+  .navigation {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  /* size.buttonMinWidth (160). */
+  .navigation > * {
+    min-width: 160px;
+  }
+
+  .navigation > :only-child {
+    margin-inline-start: auto;
+  }
+}
+
+/* Buttons: size.controlHeight (48) high,0 / 16 px padding, radius.md, font.size.public.button (16), medium, centered. */
+.primary,
+.primaryLink,
+.secondary,
+.secondaryLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+/* color.action.primary: bg, fg, hoverBg. */
+.primary,
+.primaryLink {
+  color: var(--primary-fg);
+  background: var(--primary-bg);
+}
+
+.primary:hover,
+.primaryLink:hover {
+  background: var(--primary-hover);
+}
+
+/* color.action.secondary: bg, plum border, hoverBg. */
+.secondary,
+.secondaryLink {
+  color: var(--link);
+  background: var(--secondary-bg);
+  border-color: var(--secondary-border);
+}
+
+.secondary:hover,
+.secondaryLink:hover {
+  background: var(--secondary-hover);
+}
+
+/* color.action.disabledBg, color.action.disabledFg. */
+.primary:disabled,
+.secondary:disabled,
+.primary[aria-disabled="true"],
+.secondary[aria-disabled="true"] {
+  color: var(--disabled-fg);
+  background: var(--disabled-bg);
+  border-color: transparent;
+  cursor: not-allowed;
+}
+
+/* Tertiary: 44 px (size.touchTarget), underlined, color.action.tertiary (hoverFg berry). */
+.tertiary {
+  min-height: 44px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--link);
+  text-decoration: underline;
+  background: none;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.tertiary:hover {
+  color: var(--tertiary-hover);
+}
+
+/* Restart form: space.4 above and below, as the paragraph the button used to sit in. */
+.restartForm {
+  margin: 16px 0;
+}
+
+/* Status line: color.text.error, space.4 below the form. A live region, so it stays in the
+   accessibility tree when empty and only gives up its margin (0, no token needed). */
+.status {
+  margin: 16px 0 0;
+  color: var(--error);
+}
+
+.status:empty {
+  margin: 0;
+}
+
+/* Banner: space.4 padding on surface.subtle, radius.md. A live region: empty, it keeps its
+   place in the accessibility tree with no padding (0, no token needed), so nothing shows. */
+.banner {
+  padding: 16px;
+  background: var(--surface-subtle);
+  border-radius: 12px;
+}
+
+.banner:empty {
+  padding: 0;
+}
+
+/* Confirmation reference: flex wrap; the code is monospace on a card with border.default, selected whole on click. */
+.reference {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.referenceCode {
+  padding: 4px 12px;
+  /* font.family.mono */
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  user-select: all;
+}
+
+/* The second language of a bilingual screen: its own line, color.text.muted, regular weight. */
+.secondLanguage {
+  display: block;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* Footer: font.size.public.small, color.text.muted, space.5 above and space.7 below. */
+.footer {
+  padding-top: 24px;
+  padding-bottom: 48px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.footer p {
+  margin: 0 0 8px;
+}
+
+/* Honeypot: off-screen, one pixel, clipped; bots fill it, people never reach it. */
+.honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* Visually hidden, still read by assistive technology (and the hidden default action). */
+.visuallyHidden,
+.defaultAction {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip: rect(0 0 0 0);
+}
+
+/* Spinner: a size.spinner (16) ring of border.width.focus (2) that turns in
+   motion.duration.spinner (800 ms). */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 9999px;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Reduced motion (tokens motion.reducedMotion): no progress transition, no spin. */
+@media (prefers-reduced-motion: reduce) {
+  .progressFill {
+    transition: none;
+  }
+
+  .spinner {
+    animation: none;
+  }
+}
