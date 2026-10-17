@@ -194,7 +194,8 @@ async function intake(
       versionId: pinned.id,
       locale: pickLocale(doc.languages, post.acceptLanguage),
       pageKey: post.pageKey,
-      submitToken: deps.ids.newId(),
+      // A one-page form's page 1 renders a token (view-form.ts), so a double click posts it twice.
+      submitToken: post.submitToken ?? deps.ids.newId(),
       startedAt,
       now,
     });
@@ -259,7 +260,10 @@ async function intake(
   }
 
   // A token already used answers before any reference is taken, so a duplicate commits nothing.
-  if (locked && (await isSubmitted(deps, uow, form.id, record.submitToken)))
+  if (
+    (locked || post.submitToken !== null) &&
+    (await isSubmitted(deps, uow, form.id, record.submitToken))
+  )
     return nothing(submitted(record.submitToken));
 
   const allocated = await allocateReference(deps.definitions, uow, form.id);

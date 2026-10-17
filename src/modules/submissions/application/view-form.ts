@@ -142,6 +142,7 @@ export async function viewForm(
 
   const { document } = current;
   const pageKey = firstPageKey(document, deps.registry);
+  const isLast = nextPageKey(document, {}, deps.registry, pageKey) === null;
   return {
     screen: "page",
     form,
@@ -151,11 +152,13 @@ export async function viewForm(
       pageKey,
       position: pagePosition(document, {}, deps.registry, pageKey),
       isFirst: true,
-      isLast: nextPageKey(document, {}, deps.registry, pageKey) === null,
+      isLast,
       answers: {},
       files: {},
       pending: null,
-      submitToken: null,
+      // A one-page form is submitted from here, before any record: a fresh token per render lets
+      // submitForm answer a double click with one submission (specs/system/security.md).
+      submitToken: isLast ? deps.ids.newId() : null,
       renderedAt: now,
       hasRecord: false,
     },

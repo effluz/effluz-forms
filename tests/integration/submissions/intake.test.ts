@@ -326,6 +326,51 @@ describe("the intake against Postgres", () => {
     expect(await formRow()).toEqual({ next_reference: 2, updated_at: before?.updated_at });
   });
 
+  it("answers two simultaneous Submits of a one-page form posting one token with one submission", async () => {
+    const story = storyVersion();
+    const consentPage = story.pages[2];
+    if (!consentPage) throw new Error("story has a consent page");
+    const onePage = await seedForm(
+      pool,
+      { ...story, pages: [consentPage] },
+      { notificationRecipients: ["stories@example.com"] },
+    );
+    const deps = pgSubmissionsDeps(pool, dirs());
+    // The token page 1 rendered; there is no record yet.
+    const token = randomUUID();
+    const once = async (): Promise<PostOutcome> => {
+      const ctx = await postContext(deps, {
+        slug: onePage.slug,
+        state: { kind: "none" },
+        submitToken: token,
+      });
+      if (!ctx.ok) return ctx.outcome;
+      return submitForm(
+        deps,
+        ctx,
+        basePost({
+          pageKey: "page_consent",
+          action: { kind: "submit" },
+          answers: { f_consent: consent },
+          renderedAt: new Date(Date.now() - 60_000),
+          submitToken: token,
+        }),
+      );
+    };
+    const [a, b] = await Promise.all([once(), once()]);
+    expect(a).toEqual({ kind: "submitted", submitToken: token });
+    expect(b).toEqual(a);
+    expect(await count("submission")).toBe(1);
+    // The staff notification only: the page asks no address and has no files.
+    expect(await count("job")).toBe(1);
+    expect(await count("submission_in_progress")).toBe(0);
+    const { rows } = await pool.query<{ next_reference: number }>(
+      "select next_reference from form where id = $1",
+      [onePage.formId],
+    );
+    expect(rows[0]?.next_reference).toBe(2);
+  });
+
   it("commits nothing for a submit token that already has a submission", async () => {
     const deps = pgSubmissionsDeps(pool, dirs());
     const id = await reachConsent(deps);

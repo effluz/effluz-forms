@@ -440,6 +440,30 @@ describe("submitForm races and one-page forms", () => {
     expect(deps.queue.ofType("email.staff_notification")).toHaveLength(1);
   });
 
+  it("stores one submission for two Submits of a one-page form posting the same token", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishOnePage(deps);
+    const token = "0b9c6f1e-2d4a-4c8b-9e7f-5a3d2c1b0a99";
+    const first = await submitForm(
+      deps,
+      await onePageContext(deps),
+      onePagePost(deps, { submitToken: token }),
+    );
+    const jobs = deps.queue.enqueued.length;
+    const second = await submitForm(
+      deps,
+      await onePageContext(deps),
+      onePagePost(deps, { submitToken: token }),
+    );
+    expect(first).toEqual({ kind: "submitted", submitToken: token });
+    expect(second).toEqual({ kind: "submitted", submitToken: token });
+    expect([...deps.submissions.rows.values()].map((s) => [s.reference, s.submitToken])).toEqual([
+      ["OP-0001", token],
+    ]);
+    expect(deps.queue.enqueued).toHaveLength(jobs);
+    expect(deps.inProgress.rows.size).toBe(0);
+  });
+
   it("measures a one-page form's fill time from the render and keeps a refusal as a record", async () => {
     const deps = makeSubmissionsDeps();
     await publishOnePage(deps);

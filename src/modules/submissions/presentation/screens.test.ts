@@ -108,6 +108,31 @@ describe("RendererScreen", () => {
     expect(html).toContain('href="mailto:privacy@example.com"');
   });
 
+  it("renders a submit token on page 1 only when page 1 is also the last page", async () => {
+    const { html: multiPage } = await pageHtml();
+    expect(multiPage).not.toContain('name="_token"');
+
+    const deps = makeSubmissionsDeps();
+    const story = storyVersion();
+    const consentPage = story.pages[2];
+    if (!consentPage) throw new Error("story has a consent page");
+    await seedPublished(deps.definitions, {
+      slug: "one-page",
+      document: { ...story, pages: [consentPage] },
+    });
+    const view = await viewForm(deps, {
+      slug: "one-page",
+      state: { kind: "none" },
+      acceptLanguage: "en",
+      expired: false,
+    });
+    if (view.screen !== "page") throw new Error(view.screen);
+    const token = tagsOf(screen(view, "one-page"), "input").find((tag) =>
+      tag.includes('name="_token"'),
+    );
+    expect(token).toMatch(/value="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"/);
+  });
+
   it("puts the hidden default action first, so Enter means Next", async () => {
     const { html } = await pageHtml();
     expect(html.indexOf('value="next"')).toBeGreaterThan(-1);

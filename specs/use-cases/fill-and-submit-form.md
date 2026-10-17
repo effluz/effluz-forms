@@ -69,9 +69,13 @@ code.
   honeypot is checked on every post (Next, Back, the language switch, a Remove
   and Submit); the minimum time at Submit only. Both delete the in-progress
   record and its staged files.
-- **Duplicate submit** (double click, retry). The in-progress record carries
-  a one-time token; a second submit with the same token returns the same
-  confirmation without a second submission.
+- **Duplicate submit** (double click, retry). The last page carries a
+  one-time token in the hidden field `_token`; a second submit with the same
+  token returns the same confirmation without a second submission. Once a
+  record exists the token is the record's. A one-page form is submitted from
+  page 1 before any record exists, so page 1 of such a form renders a fresh
+  token of its own, and the first Submit stores the submission under it. A
+  reload renders a new token, so a Submit after a reload is a new submission.
 
 ## Rules
 
