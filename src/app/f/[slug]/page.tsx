@@ -88,11 +88,12 @@ export async function generateMetadata(props: {
 export default async function RendererPage(props: { params: Params; searchParams: SearchParams }) {
   const { slug } = await props.params;
   const query = await props.searchParams;
-  // Not thrown to a boundary, and not `notFound()`: under this root layout, whose `slug` is a
-  // root parameter, Next 16.4.0 answers anything thrown while rendering with an empty error
-  // document and the screen only in the RSC payload, so without script the visitor would see a
-  // blank page. Rendered here it is real HTML; the status stays 200 and the metadata keeps it
-  // out of search indexes.
+  // Not thrown to a boundary, not `notFound()`, not `redirect()`: with Cache Components on,
+  // Next 16.4.0 serves the prerendered shell's status (200) and has no server-side error
+  // boundary, so anything thrown or redirected while rendering reaches the browser as an empty
+  // document with the screen only in the RSC payload, whatever the layout tree (measured, ADR
+  // 0027). Rendered here it is real HTML; the status stays 200 and the metadata keeps it out
+  // of search indexes.
   if (one(query.error) === "1") return <ErrorScreen tryAgainHref={formPath(slug)} slug={slug} />;
   let loaded: Awaited<ReturnType<typeof loadView>>;
   let stateCookie: string | undefined;

@@ -103,11 +103,13 @@ As built:
   configuration is invalid) answers 200 with the error screen and
   `noindex`, logged once as `form render failed` with the slug and the
   error class. A missing form answers 200 with the not-found screen and
-  `noindex`. Both are rendered by the page instead of thrown, because under
-  the renderer's root layout, whose `slug` is a root parameter, Next 16.4
-  answers anything thrown while rendering with an empty document and the
-  screen only in the script payload, so a visitor without script would see
-  a blank page.
+  `noindex`. Both are rendered by the page instead of thrown or redirected,
+  because with Cache Components on, Next 16.4 serves the prerendered shell's
+  status and has no server-side error boundary: anything thrown or
+  redirected while rendering reaches the browser as an empty document with
+  the screen only in the script payload, whatever the layout tree, so a
+  visitor without script would see a blank page. Measured and recorded in
+  ADR 0027, which also lists the options that were rejected.
 - A page post that fails unexpectedly, with or without script, is logged as
   `form post failed` with the slug and the error class and redirects (303)
   to `GET /f/<slug>?error=1`, which renders the error screen. The cookies
