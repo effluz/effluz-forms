@@ -770,6 +770,11 @@
   color: var(--tertiary-hover);
 }
 
+/* Restart form: space.4 above and below, as the paragraph the button used to sit in. */
+.restartForm {
+  margin: 16px 0;
+}
+
 /* Status line: color.text.error, space.4 below the form. A live region, so it stays in the
    accessibility tree when empty and only gives up its margin (0, no token needed). */
 .status {

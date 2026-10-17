@@ -175,9 +175,11 @@ checks where the request came from. Next refuses a Server Action post whose
 `DELETE /f/<slug>/files/<id>` and `POST /f/<slug>/check`) answer `403` when
 `Origin` is present and is not the origin of `PUBLIC_BASE_URL`, or when
 `Sec-Fetch-Site` is `cross-site` or `same-site`. With those checks the public
-routes need no CSRF token. `GET /f/<slug>/restart` is a link, so a
-navigation from any site reaches it with the cookie: when `Sec-Fetch-Site`
-is `cross-site` it redirects to the page without clearing the cookie.
+routes need no CSRF token. `POST /f/<slug>/restart` clears the cookie only after the same origin
+check as the script routes (a foreign `Origin`, or a `Sec-Fetch-Site` of
+`cross-site` or `same-site`, gets 403); a no-script form post from the page
+carries its own origin. A GET to it answers 405 and changes nothing, so a
+link, redirect or prefetch from any site cannot clear a visitor's progress.
 
 `effluz_fill_state` (same path and flags, `Max-Age=600`) carries a refused
 page post's files to the page it redirects to, as the Settings tab does,

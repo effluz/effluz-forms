@@ -20,7 +20,7 @@ import {
 import { POST as check } from "./check/route";
 import { DELETE as remove } from "./files/[fileId]/route";
 import { POST as upload } from "./files/route";
-import { GET as restart } from "./restart/route";
+import { GET as restartGet, POST as restart } from "./restart/route";
 
 const config = loadConfig({
   NODE_ENV: "test",
@@ -200,27 +200,54 @@ describe("the public routes", () => {
     expect(unknown.status).toBe(400);
   });
 
-  it("restarts by clearing the cookie", async () => {
+  it("restarts by clearing the cookie on a same-origin POST", async () => {
     const res = await restart(
       new Request("https://forms.example.com/f/story-form/restart", {
-        headers: { "sec-fetch-site": "same-origin" },
+        method: "POST",
+        headers: { origin: "https://forms.example.com", "sec-fetch-site": "same-origin" },
       }),
       params({}),
     );
     expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe("/f/story-form");
     expect(res.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(res.headers.get("cache-control")).toBe("no-store");
   });
 
-  it("returns a cross-site restart to the page without clearing the cookie", async () => {
+  it("restarts a no-script POST that carries only an Origin", async () => {
     const res = await restart(
       new Request("https://forms.example.com/f/story-form/restart", {
-        headers: { "sec-fetch-site": "cross-site" },
+        method: "POST",
+        headers: { origin: "https://forms.example.com" },
       }),
       params({}),
     );
     expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toBe("/f/story-form");
+    expect(res.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+
+  it("refuses a restart posted from another origin without clearing the cookie", async () => {
+    for (const headers of [
+      { origin: "https://evil.example.net" },
+      { origin: "https://forms.example.com", "sec-fetch-site": "cross-site" },
+      { "sec-fetch-site": "same-site" },
+    ]) {
+      const res = await restart(
+        new Request("https://forms.example.com/f/story-form/restart", {
+          method: "POST",
+          headers,
+        }),
+        params({}),
+      );
+      expect(res.status).toBe(403);
+      expect(res.headers.get("set-cookie")).toBeNull();
+    }
+  });
+
+  it("does not clear the cookie on a GET: a link, redirect or prefetch changes nothing", () => {
+    const res = restartGet();
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toBe("POST");
     expect(res.headers.get("set-cookie")).toBeNull();
   });
 
@@ -246,7 +273,10 @@ describe("the public routes", () => {
     expect(set).toContain("Path=/f/story-form");
 
     const cleared = await restart(
-      new Request("https://forms.example.com/f/story-form/restart"),
+      new Request("https://forms.example.com/f/story-form/restart", {
+        method: "POST",
+        headers: { origin: "https://forms.example.com" },
+      }),
       params({}),
     );
     const clearing = cleared.headers.get("set-cookie") ?? "";

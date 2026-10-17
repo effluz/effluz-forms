@@ -35,14 +35,32 @@ export function viewLocale(view: ViewResult): Locale {
   }
 }
 
-/** A heading, one sentence and an optional link, in every language of the form. */
+/**
+ * "Start again" and "Fill in another form": a POST, since restarting changes state and a link
+ * from any site must not do it. Works without script. See specs/ui-ux/renderer.md, "Routes".
+ */
+function RestartForm(props: {
+  slug: string;
+  className: string | undefined;
+  children: ReactNode;
+}): ReactElement {
+  return (
+    <form method="post" action={`/f/${props.slug}/restart`} className={styles.restartForm}>
+      <button type="submit" className={props.className}>
+        {props.children}
+      </button>
+    </form>
+  );
+}
+
+/** A heading, one sentence and an optional button, in every language of the form. */
 function Message(props: {
   form: Form;
   contact: string;
   title: ChromeKey;
   body: ChromeKey;
   vars?: (locale: Locale) => Record<string, string>;
-  action?: { href: string; label: ChromeKey };
+  action?: { slug: string; label: ChromeKey };
   /** Client pieces with no markup of their own (ClearDrafts). */
   children?: ReactNode;
 }): ReactElement {
@@ -73,11 +91,9 @@ function Message(props: {
         />
       </p>
       {props.action ? (
-        <p>
-          <a href={props.action.href} className={styles.primaryLink}>
-            <Both k={props.action.label} locale={locale} languages={form.languages} />
-          </a>
-        </p>
+        <RestartForm slug={props.action.slug} className={styles.primary}>
+          <Both k={props.action.label} locale={locale} languages={form.languages} />
+        </RestartForm>
       ) : null}
       {props.children}
     </PublicShell>
@@ -128,11 +144,9 @@ function Confirmation(props: {
       <ClearDrafts slug={props.slug} />
       <FocusTitle />
       {form.settings.allowAnotherResponse ? (
-        <p>
-          <a href={`/f/${props.slug}/restart`} className={styles.secondaryLink}>
-            {t(locale, "fill_another")}
-          </a>
-        </p>
+        <RestartForm slug={props.slug} className={styles.secondary}>
+          {t(locale, "fill_another")}
+        </RestartForm>
       ) : null}
     </>,
   );
@@ -187,7 +201,7 @@ export function RendererScreen(props: {
           contact={contact}
           title="expired_title"
           body="expired_body"
-          action={{ href: `/f/${slug}/restart`, label: "start_again" }}
+          action={{ slug, label: "start_again" }}
         >
           <ClearDrafts slug={slug} />
         </Message>

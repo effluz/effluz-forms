@@ -70,7 +70,7 @@ Use case: `use-cases/fill-and-submit-form.md`. Model: `form-definition.md`.
 - Reference line: "Your reference: {ref}" in a copyable monospace block.
 - Fixed line: "You can close this page." When the form's "allow another
   response" setting is on, as the reference form needs for families with
-  more than one baby, a "Fill in another form" link returns to page 1.
+  more than one baby, a "Fill in another form" button (a POST form, see "Routes") returns to page 1.
 - Back button in the browser returns to the confirmation, not to the form.
 
 ### Closed, not yet open, not found
@@ -82,12 +82,13 @@ given under "Error". A path outside the three surfaces gets the same screen
 from `src/app/global-not-found.tsx` with 404. These screens and Session
 expired show both languages, the page language first, since no language has
 been chosen. Not found has no privacy footer: without a form there is no
-retention period to state.
+retention period to state. The footer is deliberately omitted there because a
+missing form defines no retention, consent or contact (owner's decision).
 
 ### Session expired
 
-Heading, explanation, one button "Start again" leading to page 1 of the same
-form. Answers already stored server-side for the expired record are
+Heading, explanation, one button "Start again" (a POST form, see "Routes")
+leading to page 1 of the same form. Answers already stored server-side for the expired record are
 unrecoverable by design.
 
 ### Error
@@ -463,7 +464,7 @@ Plain-text and HTML versions carry the same words. No images, no tracking.
 | `POST /f/<slug>/files` | Early upload of one file with script; JSON. 403 from another origin |
 | `DELETE /f/<slug>/files/<file id>` | Removes a staged file with script; 204. 403 from another origin |
 | `POST /f/<slug>/check` | Checks one field on blur; JSON with the message or null. 403 from another origin |
-| `GET /f/<slug>/restart` | Clears the in-progress cookie and returns to page 1 ("Start again", "Fill in another form"); a cross-site navigation returns without clearing it |
+| `POST /f/<slug>/restart` | Clears the in-progress cookie and returns to page 1 (303) for "Start again" and "Fill in another form", both small forms that work without script. 403 from another origin. A GET answers 405 and changes nothing, so no link, redirect or prefetch can clear a visitor's progress |
 
 "Another origin" is an `Origin` header other than the origin of
 `PUBLIC_BASE_URL`, or `Sec-Fetch-Site` of `cross-site` or `same-site`

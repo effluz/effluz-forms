@@ -34,6 +34,14 @@ function screen(
   );
 }
 
+/** The markup of the one form posting to the restart route, whatever order its attributes take. */
+function restartForm(html: string): string {
+  const match = /<form\b([^>]*)>(.*?)<\/form>/.exec(html);
+  if (!match?.[1]?.includes('action="/f/story-form/restart"')) throw new Error("no restart form");
+  expect(match[1]).toContain('method="post"');
+  return match[2] ?? "";
+}
+
 async function pageHtml(acceptLanguage = "en") {
   const deps = makeSubmissionsDeps();
   await publishStory(deps);
@@ -234,6 +242,34 @@ describe("RendererScreen", () => {
     const notFound = renderToStaticMarkup(createElement(NotFoundScreen));
     expect(notFound).toContain("No encontramos este formulario");
     expect(notFound).not.toContain("Effluz. Answers are stored");
+  });
+
+  it("offers Start again and Fill in another form as POST forms, never as links", async () => {
+    const deps = makeSubmissionsDeps();
+    await publishStory(deps, { allowAnotherResponse: true });
+    const confirmation = await viewForm(deps, {
+      slug: "story-form",
+      state: { kind: "decoy", reference: "ST-1234" },
+      acceptLanguage: "en",
+      expired: false,
+    });
+    if (confirmation.screen === "not_found") throw new Error("not found");
+    const done = screen(confirmation);
+    expect(restartForm(done)).toMatch(/<button type="submit"[^>]*>Fill in another form<\/button>/);
+    expect(done).not.toMatch(/<a [^>]*restart/);
+
+    const expired = await viewForm(deps, {
+      slug: "story-form",
+      state: { kind: "none" },
+      acceptLanguage: null,
+      expired: true,
+    });
+    if (expired.screen === "not_found") throw new Error("not found");
+    const html = screen(expired);
+    expect(restartForm(html)).toMatch(
+      /<button type="submit"[^>]*>Empezar de nuevo <span lang="en"[^>]*>Start again<\/span><\/button>/,
+    );
+    expect(html).not.toMatch(/<a [^>]*restart/);
   });
 
   it("shows the refused files the page read from the cookie, in the summary and under the field", async () => {
