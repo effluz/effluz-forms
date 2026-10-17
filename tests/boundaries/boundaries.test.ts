@@ -41,6 +41,11 @@ afterAll(() => {
   }
 });
 
+const boundaryRules = (messages: { ruleId: string | null }[]) =>
+  messages.map((m) => m.ruleId).filter((id) => id?.startsWith("boundaries/"));
+
+const ruleIds = (messages: { ruleId: string | null }[]) => messages.map((m) => m.ruleId);
+
 describe("layer boundaries", () => {
   it("forbids domain importing from application", async () => {
     await lintVirtual(
@@ -180,6 +185,22 @@ describe("layer boundaries", () => {
     expect(rules.filter((m) => m.ruleId?.startsWith("boundaries/"))).toEqual([]);
   });
 
+  it("forbids media importing definitions, since MODULE_DEPS gives media no edges", async () => {
+    const rules = await lintVirtual(
+      "src/modules/media/application/boundary-probe-defs.ts",
+      `import { publicUrl } from "@/modules/definitions/application";\nexport const p = publicUrl;\n`,
+    );
+    expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
+  });
+
+  it("allows submissions to import media's public entry point", async () => {
+    const rules = await lintVirtual(
+      "src/modules/submissions/application/boundary-probe-media.ts",
+      `import { stageFile } from "@/modules/media/application";\nexport const s = stageFile;\n`,
+    );
+    expect(rules).toEqual([]);
+  });
+
   it("forbids submissions importing review's application layer", async () => {
     const rules = await lintVirtual(
       "src/modules/submissions/application/boundary-probe.ts",
@@ -187,12 +208,25 @@ describe("layer boundaries", () => {
     );
     expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });
+
+  it("forbids definitions importing submissions, which would make a cycle", async () => {
+    const rules = await lintVirtual(
+      "src/modules/definitions/application/boundary-probe-subs.ts",
+      `import { viewForm } from "@/modules/submissions/application";\nexport const v = viewForm;\n`,
+    );
+    expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
+  });
+
+  it("forbids notifications importing any other module", async () => {
+    const rules = await lintVirtual(
+      "src/modules/notifications/application/boundary-probe-subs.ts",
+      `import { sanitizeReturnTo } from "@/modules/identity/application";\nexport const x = sanitizeReturnTo;\n`,
+    );
+    expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
+  });
 });
 
 describe("files outside a layer folder", () => {
-  const boundaryRules = (messages: { ruleId: string | null }[]) =>
-    messages.map((m) => m.ruleId).filter((id) => id?.startsWith("boundaries/"));
-
   it("refuses a stray module file importing another module's infrastructure", async () => {
     const rules = await lintVirtual(
       "src/modules/media/boundary-probe-stray.ts",
@@ -241,5 +275,139 @@ describe("files outside a layer folder", () => {
       path.join(process.cwd(), "src/proxy.test.ts"),
     ]);
     expect(results.flatMap((r) => boundaryRules(r.messages))).toEqual([]);
+  });
+});
+
+describe("test-only boundary exception (ADR 0026)", () => {
+  const probe = (file: string, name: string, target: string) =>
+    lintVirtual(file, `import { ${name} } from "${target}";\nexport const x = ${name};\n`);
+  const expectClean = (rules: { ruleId: string | null }[]) => {
+    expect(boundaryRules(rules)).toEqual([]);
+    expect(ruleIds(rules)).not.toContain("no-restricted-imports");
+  };
+
+  it("lets a module's test import another module's testing fakes", async () => {
+    const rules = await probe(
+      "src/modules/probe-c/application/boundary-probe-fakes.test.ts",
+      "makeDeps",
+      "@/modules/identity/application/testing/fakes",
+    );
+    expectClean(rules);
+  });
+
+  it("lets a module's testing helper import another module's testing fakes", async () => {
+    const rules = await probe(
+      "src/modules/probe-c/application/testing/boundary-probe-helper.ts",
+      "makeDeps",
+      "@/modules/identity/application/testing/fakes",
+    );
+    expectClean(rules);
+  });
+
+  it("lets a module's test import tests/fixtures", async () => {
+    const rules = await probe(
+      "src/modules/probe-c/presentation/boundary-probe-fixture.test.ts",
+      "referenceFormDraft",
+      "../../../../tests/fixtures/reference-form",
+    );
+    expectClean(rules);
+  });
+
+  it("lets a module's test import tests/fakes", async () => {
+    const rules = await probe(
+      "src/modules/probe-c/infrastructure/boundary-probe-fake.test.ts",
+      "syntheticMp4",
+      "../../../../tests/fakes/media-files",
+    );
+    expectClean(rules);
+  });
+
+  // No exception is needed for these two: the layer rules already let the test reach them, and
+  // the restricted-imports rule exempts test files.
+  it("lets a module's domain test import its own domain/testing helpers", async () => {
+    const rules = await probe(
+      "src/modules/submissions/domain/boundary-probe-own-testing.test.ts",
+      "storyVersion",
+      "./testing/versions",
+    );
+    expectClean(rules);
+  });
+
+  it("lets a module's presentation test import shared/presentation/testing", async () => {
+    const rules = await probe(
+      "src/modules/submissions/presentation/boundary-probe-spec-copy.test.ts",
+      "specCopyRows",
+      "@/shared/presentation/testing/spec-copy",
+    );
+    expectClean(rules);
+  });
+
+  it("refuses production code importing tests/fakes", async () => {
+    const rules = await probe(
+      "src/modules/definitions/infrastructure/boundary-probe-fake.ts",
+      "syntheticMp4",
+      "../../../../tests/fakes/media-files",
+    );
+    expect(ruleIds(rules)).toContain("no-restricted-imports");
+  });
+
+  it("refuses production code importing its own domain/testing or shared/presentation/testing", async () => {
+    const own = await probe(
+      "src/modules/submissions/domain/boundary-probe-own-testing.ts",
+      "storyVersion",
+      "./testing/versions",
+    );
+    expect(ruleIds(own)).toContain("no-restricted-imports");
+    const shared = await probe(
+      "src/modules/submissions/presentation/boundary-probe-spec-copy.ts",
+      "specCopyRows",
+      "@/shared/presentation/testing/spec-copy",
+    );
+    expect(ruleIds(shared)).toContain("no-restricted-imports");
+  });
+
+  it("refuses production code importing another module's testing fakes", async () => {
+    const rules = await probe(
+      "src/modules/definitions/application/boundary-probe-fakes.ts",
+      "makeDeps",
+      "@/modules/identity/application/testing/fakes",
+    );
+    expect(ruleIds(rules)).toContain("boundaries/dependencies");
+  });
+
+  it("refuses production code importing its own module's testing fakes", async () => {
+    const rules = await probe(
+      "src/modules/definitions/application/boundary-probe-own-fakes.ts",
+      "makeDefinitionsDeps",
+      "./testing/fakes",
+    );
+    expect(ruleIds(rules)).toContain("no-restricted-imports");
+  });
+
+  it("refuses production code importing tests/fixtures", async () => {
+    const rules = await probe(
+      "src/modules/definitions/presentation/boundary-probe-fixture.ts",
+      "referenceFormDraft",
+      "../../../../tests/fixtures/reference-form",
+    );
+    expect(ruleIds(rules)).toContain("no-restricted-imports");
+  });
+
+  it("refuses production code importing any file under tests/", async () => {
+    const rules = await probe(
+      "src/modules/definitions/presentation/boundary-probe-tests-dir.ts",
+      "helper",
+      "../../../../tests/integration/db",
+    );
+    expect(ruleIds(rules)).toContain("no-restricted-imports");
+  });
+
+  it("refuses production code importing a testing folder through its index", async () => {
+    const rules = await probe(
+      "src/modules/definitions/application/boundary-probe-testing-index.ts",
+      "makeDefinitionsDeps",
+      "./testing",
+    );
+    expect(ruleIds(rules)).toContain("no-restricted-imports");
   });
 });

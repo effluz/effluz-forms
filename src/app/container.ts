@@ -1,19 +1,16 @@
 import type { Pool } from "pg";
 import type { DefinitionsDeps } from "@/modules/definitions/application";
-import { NullSubmissionStats } from "@/modules/definitions/infrastructure/null-submission-stats";
-import { PgDraftRepository } from "@/modules/definitions/infrastructure/pg-draft-repository";
-import { PgFormRepository } from "@/modules/definitions/infrastructure/pg-form-repository";
-import { PgVersionRepository } from "@/modules/definitions/infrastructure/pg-version-repository";
-import type { AuditLog, AuditLogReader, IdentityDeps } from "@/modules/identity/application";
+import type { AuditLogReader, IdentityDeps } from "@/modules/identity/application";
 import { GoogleOidcAdmin } from "@/modules/identity/infrastructure/google-oidc";
 import { PgAuditLog } from "@/modules/identity/infrastructure/pg-audit-log";
 import { PgAuditLogReader } from "@/modules/identity/infrastructure/pg-audit-log-reader";
 import { PgSessionRepository } from "@/modules/identity/infrastructure/pg-session-repository";
 import { PgSignInAttemptStore } from "@/modules/identity/infrastructure/pg-sign-in-attempt-store";
+import type { MediaDeps } from "@/modules/media/application";
+import type { SubmissionsDeps } from "@/modules/submissions/application";
 import type { JobQueue } from "@/shared/application/ports/job-queue";
 import type { Logger } from "@/shared/application/ports/logger";
 import type { UnitOfWorkFactory } from "@/shared/application/ports/unit-of-work";
-import { buildDefaultRegistry } from "@/shared/domain/form-model";
 import { systemClock } from "@/shared/infrastructure/clock";
 import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
 import { PgJobQueue } from "@/shared/infrastructure/jobs/pg-job-queue";
@@ -22,6 +19,7 @@ import { createLogger } from "@/shared/infrastructure/logging/logger";
 import { createPool } from "@/shared/infrastructure/postgres/pool";
 import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
 import { loadConfig, type AppConfig } from "./config";
+import { buildDefinitions, buildMedia, buildSubmissions } from "./modules";
 
 export interface Container {
   config: AppConfig;
@@ -32,6 +30,8 @@ export interface Container {
   jobStore: PgJobStore;
   identity: IdentityDeps;
   definitions: DefinitionsDeps;
+  media: MediaDeps;
+  submissions: SubmissionsDeps;
   auditReader: AuditLogReader;
 }
 
@@ -54,29 +54,6 @@ function buildIdentity(config: AppConfig, pool: Pool, uow: UnitOfWorkFactory): I
   };
 }
 
-function buildDefinitions(
-  config: AppConfig,
-  pool: Pool,
-  uow: UnitOfWorkFactory,
-  audit: AuditLog,
-  auditReader: AuditLogReader,
-): DefinitionsDeps {
-  return {
-    forms: new PgFormRepository(pool),
-    drafts: new PgDraftRepository(pool),
-    versions: new PgVersionRepository(pool),
-    stats: new NullSubmissionStats(),
-    audit,
-    auditReader,
-    uow,
-    clock: systemClock,
-    ids: systemIdGenerator,
-    registry: buildDefaultRegistry(),
-    allowedRecipientDomains: config.notificationAllowedDomains,
-    publicBaseUrl: config.publicBaseUrl,
-  };
-}
-
 /**
  * Web composition root: wires adapters to ports. Overrides replace any part,
  * which is how tests supply fakes. See specs/architecture.md.
@@ -94,18 +71,25 @@ export function buildContainer(
   const uow = overrides.uow ?? new PgUnitOfWorkFactory(pool);
   const identity = overrides.identity ?? buildIdentity(config, pool, uow);
   const auditReader = overrides.auditReader ?? new PgAuditLogReader(pool);
+  const queue = overrides.queue ?? new PgJobQueue(systemIdGenerator, systemClock);
+  const definitions =
+    overrides.definitions ?? buildDefinitions(config, pool, uow, identity.audit, auditReader);
+  const media = overrides.media ?? buildMedia(config, pool, uow, queue);
+  const submissions =
+    overrides.submissions ?? buildSubmissions({ pool, uow, queue, definitions, media, logger });
   return {
     config,
     logger,
     pool,
     uow,
-    queue: overrides.queue ?? new PgJobQueue(systemIdGenerator, systemClock),
+    queue,
     jobStore:
       overrides.jobStore ??
       new PgJobStore(pool, systemClock, { leaseSeconds: config.worker.leaseSeconds }),
     identity,
-    definitions:
-      overrides.definitions ?? buildDefinitions(config, pool, uow, identity.audit, auditReader),
+    definitions,
+    media,
+    submissions,
     auditReader,
   };
 }

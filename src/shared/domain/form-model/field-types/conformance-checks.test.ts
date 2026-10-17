@@ -117,4 +117,19 @@ describe("conformanceChecks", () => {
     expect(check?.ok).toBe(false);
     expect(check?.detail).toContain("boom");
   });
+  it("passes file_upload's upload limits", () => {
+    expect(failing(fileUpload)).toEqual([]);
+  });
+  it("fails the upload limits check for no kinds, an unknown kind or a non-positive limit", () => {
+    for (const limits of [
+      { kinds: [], maxFiles: 1, maxSizeMb: 1 },
+      { kinds: ["audio"], maxFiles: 1, maxSizeMb: 1 },
+      { kinds: ["image"], maxFiles: 0, maxSizeMb: 1 },
+      { kinds: ["image"], maxFiles: 1.5, maxSizeMb: 1 },
+      { kinds: ["image"], maxFiles: 1, maxSizeMb: 0 },
+    ]) {
+      const broken = defineFieldType({ ...checkbox, uploadLimits: () => limits as never });
+      expect(failing(broken)).toEqual(["reports well-formed upload limits"]);
+    }
+  });
 });

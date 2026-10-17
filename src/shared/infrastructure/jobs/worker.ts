@@ -1,9 +1,10 @@
 import type { Clock } from "@/shared/application/ports/clock";
-import type {
-  JobHandler,
-  JobHandlerContext,
-  JobPayload,
-  JobQueue,
+import {
+  PermanentJobError,
+  type JobHandler,
+  type JobHandlerContext,
+  type JobPayload,
+  type JobQueue,
 } from "@/shared/application/ports/job-queue";
 import type { Logger } from "@/shared/application/ports/logger";
 import type { UnitOfWorkFactory } from "@/shared/application/ports/unit-of-work";
@@ -160,6 +161,7 @@ export class Worker {
       const ctx: JobHandlerContext = {
         jobId: job.id,
         attempt: job.attempts,
+        maxAttempts: job.maxAttempts,
         logger: log,
         uow: this.deps.uow,
         queue: this.deps.queue,
@@ -172,6 +174,12 @@ export class Worker {
           `job timed out after ${String(this.opts.jobTimeoutMs)} ms`,
         );
       } catch (e) {
+        if (e instanceof PermanentJobError) {
+          const outcome = await store.markDead(job, workerId, e.message);
+          if (outcome === "lost") log.warn("lease lost");
+          else log.error("job failed permanently", { outcome });
+          return;
+        }
         const outcome = await store.fail(job, workerId, e instanceof Error ? e.message : String(e));
         if (outcome === "lost") log.warn("lease lost");
         else if (outcome === "dead") log.error("job failed", { outcome });

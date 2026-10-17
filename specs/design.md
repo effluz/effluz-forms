@@ -150,7 +150,7 @@ cross-cutting rules:
 - **Inputs**: white, 1 px mauve border, 2 px plum border on focus in
   addition to the ring, error border in error red with the message below.
   Placeholder is mauve and is never the only label.
-- **Links**: underlined in body text, plum, rose on hover. Links in staff
+- **Links**: underlined in body text, plum, berry on hover. Links in staff
   tables may drop the underline until hover because the context is a table.
 - **Icons**: one outline set at 24 px, 1.5 px stroke, currentColor. Always
   paired with text or an accessible name. No icon-only primary actions.

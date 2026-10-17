@@ -84,3 +84,27 @@ export function reachability(form: Form, now: Date): Reachability {
     return { reachable: false, reason: "past_close" };
   return { reachable: true };
 }
+
+export type PublicState = "open" | "closed" | "not_open_yet" | "not_found";
+
+/**
+ * What the public sees at the form's link at `now`: a never-published form,
+ * archived or not, does not exist for the public; one that was published and
+ * is now closed, archived or past its close date is closed.
+ * See specs/use-cases/fill-and-submit-form.md, "Alternate flows and errors".
+ */
+export function publicState(form: Form, now: Date): PublicState {
+  const state = reachability(form, now);
+  if (state.reachable) return "open";
+  switch (state.reason) {
+    case "draft":
+      return "not_found";
+    case "archived":
+      return form.currentVersionId === null ? "not_found" : "closed";
+    case "closed":
+    case "past_close":
+      return "closed";
+    case "not_open_yet":
+      return "not_open_yet";
+  }
+}

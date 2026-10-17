@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getContainer } from "@/app/container";
 import { currentSession } from "@/modules/identity/application";
 import { clientIp, ERROR_PATH, signInPath } from "@/modules/identity/presentation/http";
+import { rendererCsp } from "@/modules/submissions/presentation/csp";
 import type { Logger } from "@/shared/application/ports/logger";
 import { createLogger } from "@/shared/infrastructure/logging/logger";
 
@@ -11,10 +12,13 @@ import { createLogger } from "@/shared/infrastructure/logging/logger";
  * path. It runs on the Node.js runtime, the Proxy default in Next 16 (a `runtime`
  * option is not allowed here), so it can reach Postgres through the container.
  * The `(gated)` layout checks again as defence in depth; see ADR 0018 and
- * specs/use-cases/sign-in.md, "Trigger".
+ * specs/use-cases/sign-in.md, "Trigger". It also sets the renderer's
+ * Content-Security-Policy on /f/<slug>, the page and its form posts, without
+ * touching the container (specs/system/security.md, "Transport and headers").
  */
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname, search } = request.nextUrl;
+  if (pathname.startsWith("/f/")) return withRendererCsp(request);
   const method = request.method;
   if (pathname === "/admin/auth" || pathname.startsWith("/admin/auth/")) return NextResponse.next();
 
@@ -43,6 +47,20 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.redirect(new URL(ERROR_PATH, publicBaseUrl ?? request.url), 302);
   }
+}
+
+/**
+ * A fresh nonce per request, in the policy on the forwarded request (Next reads the nonce from
+ * it and stamps its scripts) and on the response.
+ */
+function withRendererCsp(request: NextRequest): NextResponse {
+  const nonce = btoa(crypto.randomUUID());
+  const policy = rendererCsp(nonce, process.env.NODE_ENV === "development");
+  const headers = new Headers(request.headers);
+  headers.set("content-security-policy", policy);
+  const response = NextResponse.next({ request: { headers } });
+  response.headers.set("content-security-policy", policy);
+  return response;
 }
 
 /**
@@ -78,5 +96,5 @@ function fallbackLogger(): Logger {
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/admin/:path*", "/f/:slug"],
 };

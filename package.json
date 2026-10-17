@@ -13,6 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e:browser": "playwright test",
     "worker": "tsx src/app/worker.ts",
     "db:migrate": "tsx src/app/cli/migrate.ts",
     "sessions:revoke": "tsx src/app/cli/revoke-sessions.ts",
@@ -20,6 +22,8 @@
     "db:down": "docker compose -f compose.dev.yml down"
   },
   "dependencies": {
+    "file-type": "^21.3.4",
+    "libheif-js": "^1.23.5",
     "next": "16.4.0",
     "openid-client": "^6.8.8",
     "pg": "^8.23.1",
@@ -28,10 +32,12 @@
     "re2js": "^2.8.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "sharp": "^0.34.5",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.64.0",
     "@types/node": "^24.19.1",
     "@types/pg": "^8.23.1",
     "@types/qrcode": "^1.5.6",
@@ -50,5 +56,8 @@
     "typescript-eslint": "^8.71.1",
     "vitest": "^3.2.7"
   },
-  "packageManager": "pnpm@12.10.1"
+  "packageManager": "pnpm@12.10.1",
+  "engines": {
+    "node": "24.x"
+  }
 }

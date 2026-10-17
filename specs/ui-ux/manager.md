@@ -264,6 +264,8 @@ First pass, without JavaScript:
   needs JavaScript and is not built yet.
 - The reference prefix and the slug are disabled, not hidden, once locked;
   their hints say why.
+- The bot challenge is not built yet. The toggle still saves, and
+  `set.challenge_unavailable` sits under its help line.
 
 ## Share tab
 
@@ -575,6 +577,7 @@ wrong CSRF token.
 | set.protection | Protection | Protección |
 | set.challenge | Ask people to complete a bot check before submitting | Pedir una verificación anti-bots antes de enviar |
 | set.challenge_hint | Harder for some people with disabilities. Turn on only if spam appears. | Más difícil para algunas personas con discapacidad. Actívalo solo si aparece spam. |
+| set.challenge_unavailable | Not available yet: forms show no bot check even when this is on. | Aún no está disponible: los formularios no muestran la verificación aunque esté activada. |
 | set.responses | Responses | Respuestas |
 | set.allow_another | Offer "Fill in another form" after submitting | Ofrecer "Llenar otro formulario" al terminar |
 | set.link | Link | Enlace |

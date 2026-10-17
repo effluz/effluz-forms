@@ -12,8 +12,10 @@ const settings = z.object({
   maxFiles: z.number().int().min(1).max(LIMITS.filesPerField).default(LIMITS.filesPerField),
   maxSizeMb: z.number().int().min(1).max(LIMITS.fileSizeMb).default(LIMITS.fileSizeMb),
 });
+type Settings = z.infer<typeof settings>;
 
-export const fileUpload = defineFieldType({
+// Explicit type arguments keep `kinds` narrow; inferred from the fixtures it widens to string[].
+export const fileUpload = defineFieldType<Settings, string[]>({
   id: "file_upload",
   isInput: true,
   collectsPersonalData: true,
@@ -42,6 +44,7 @@ export const fileUpload = defineFieldType({
           ]
         : [],
     ),
+  uploadLimits: (s) => ({ kinds: s.kinds, maxFiles: s.maxFiles, maxSizeMb: s.maxSizeMb }),
   fixtures: {
     settings: [
       { kinds: ["image"], maxFiles: 10, maxSizeMb: 10 },

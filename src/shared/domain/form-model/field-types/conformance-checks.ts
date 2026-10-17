@@ -31,6 +31,20 @@ const codeOf = (o: ValidationOutcome) => (typeof o === "string" ? o : o.code);
 const isPath = (p: unknown) => typeof p === "string" && p.length > 0;
 const isPublishCode = (c: unknown) => (publishCodes as readonly unknown[]).includes(c);
 const TEXT_VERSION = /^[0-9a-f]{16}$/;
+const UPLOAD_KINDS: readonly unknown[] = ["image", "video"];
+
+function uploadLimitsProblem(limits: unknown): string | undefined {
+  if (typeof limits !== "object" || limits === null) return "not an object";
+  const { kinds, maxFiles, maxSizeMb } = limits as Record<string, unknown>;
+  if (!Array.isArray(kinds) || kinds.length === 0) return "no kinds";
+  if (kinds.some((k) => !UPLOAD_KINDS.includes(k))) return "an unknown kind";
+  if (new Set(kinds).size !== kinds.length) return "a repeated kind";
+  if (typeof maxFiles !== "number" || !Number.isInteger(maxFiles) || maxFiles < 1)
+    return "maxFiles is not a positive integer";
+  if (typeof maxSizeMb !== "number" || !Number.isFinite(maxSizeMb) || maxSizeMb <= 0)
+    return "maxSizeMb is not a positive finite number";
+  return undefined;
+}
 
 const NUMERIC_RULES = [
   "min_length",
@@ -224,6 +238,20 @@ const checks: readonly { name: string; run: (def: AnyFieldType) => string | unde
         const record = def.consentRecord(def.normalize(a, settings));
         if (!TEXT_VERSION.test(record.textVersion))
           return `consent record ${show(record)} for ${show(a)}`;
+      }
+      return undefined;
+    },
+  },
+  {
+    name: "reports well-formed upload limits",
+    run: (def) => {
+      if (!def.uploadLimits) return undefined;
+      if (!def.isInput) return "a non-input type declares upload limits";
+      for (const s of def.fixtures.settings) {
+        const limits: unknown = def.uploadLimits(s);
+        const problem = uploadLimitsProblem(limits);
+        if (problem !== undefined)
+          return `upload limits ${show(limits)} for settings ${show(s)}: ${problem}`;
       }
       return undefined;
     },

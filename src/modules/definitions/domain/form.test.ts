@@ -6,6 +6,7 @@ import {
   canDelete,
   canEditSlug,
   nextStatus,
+  publicState,
   reachability,
   type Form,
   type FormStatus,
@@ -14,6 +15,24 @@ import {
 import { defaultSettings, type FormSettings } from "./settings";
 
 const NOW = new Date("2026-06-15T12:00:00.000Z");
+
+/** A never-published draft form, then `patch`. */
+function sampleFormForState(patch: Partial<Form> = {}): Form {
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+    slug: "sample-form",
+    title: { en: "Sample" },
+    languages: "en",
+    status: "draft",
+    settings: defaultSettings("sample-form"),
+    currentVersionId: null,
+    currentVersionNumber: null,
+    archivedAt: null,
+    createdAt: new Date("2026-10-01T00:00:00Z"),
+    updatedAt: new Date("2026-10-01T00:00:00Z"),
+    ...patch,
+  };
+}
 
 function makeForm(overrides: Partial<Form> = {}): Form {
   return {
@@ -139,5 +158,33 @@ describe("reachability", () => {
       }),
     });
     expect(reachability(form, NOW)).toEqual({ reachable: true });
+  });
+});
+
+describe("publicState", () => {
+  const now = new Date("2026-10-10T12:00:00Z");
+  const published = sampleFormForState({ status: "published", currentVersionId: "v1" });
+  it("follows status, then the date window", () => {
+    expect(publicState(sampleFormForState({ status: "draft" }), now)).toBe("not_found");
+    expect(publicState(sampleFormForState({ status: "archived" }), now)).toBe("not_found");
+    expect(
+      publicState(sampleFormForState({ status: "archived", currentVersionId: "v1" }), now),
+    ).toBe("closed");
+    expect(publicState(sampleFormForState({ status: "closed", currentVersionId: "v1" }), now)).toBe(
+      "closed",
+    );
+    expect(publicState(published, now)).toBe("open");
+    expect(
+      publicState(
+        { ...published, settings: { ...published.settings, opensAt: "2026-10-11T00:00:00.000Z" } },
+        now,
+      ),
+    ).toBe("not_open_yet");
+    expect(
+      publicState(
+        { ...published, settings: { ...published.settings, closesAt: "2026-10-10T12:00:00.000Z" } },
+        now,
+      ),
+    ).toBe("closed");
   });
 });

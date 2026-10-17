@@ -70,10 +70,6 @@ function request(path: string, cookie?: string, origin = BASE, method = "GET"): 
 const passesThrough = (res: Response) => res.headers.get("x-middleware-next") === "1";
 
 describe("admin proxy gate", () => {
-  it("runs on /admin and everything below it", () => {
-    expect(proxyConfig.matcher).toEqual(["/admin/:path*"]);
-  });
-
   it("redirects a request without a session to sign-in with the encoded request path", async () => {
     const res = await proxy(request("/admin/forms/1?tab=share"));
     expect(res.status).toBe(302);
@@ -196,5 +192,27 @@ describe("admin proxy gate", () => {
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe(`${BASE}/admin/auth/error`);
     expect(warn).toHaveBeenCalledWith("admin gate failed", { error: "TypeError" });
+  });
+});
+
+describe("the renderer's Content-Security-Policy", () => {
+  beforeEach(() => {
+    vi.mocked(getContainer).mockClear();
+  });
+
+  it("adds a per-request nonce policy to the page and to its form posts, and leaves the session gate alone", async () => {
+    const res = await proxy(new NextRequest("https://forms.example.com/f/story-form"));
+    const csp = res.headers.get("content-security-policy") ?? "";
+    expect(csp).toMatch(/script-src 'self' 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic'/);
+    const again = await proxy(
+      new NextRequest("https://forms.example.com/f/story-form", { method: "POST" }),
+    );
+    expect(again.headers.get("content-security-policy")).toMatch(/'nonce-/);
+    expect(again.headers.get("content-security-policy")).not.toBe(csp);
+    expect(vi.mocked(getContainer)).not.toHaveBeenCalled();
+  });
+
+  it("matches /f/<slug> as well as /admin", () => {
+    expect(proxyConfig.matcher).toEqual(["/admin/:path*", "/f/:slug"]);
   });
 });

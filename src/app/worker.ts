@@ -1,8 +1,8 @@
 import os from "node:os";
-import { createIdentityCleanupHandler } from "@/modules/identity/infrastructure/jobs/cleanup";
+import { PgAuditLog } from "@/modules/identity/infrastructure/pg-audit-log";
+import { PgAuditLogReader } from "@/modules/identity/infrastructure/pg-audit-log-reader";
 import { systemClock } from "@/shared/infrastructure/clock";
 import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
-import { createCleanupHandler } from "@/shared/infrastructure/jobs/handlers/cleanup";
 import { PgJobQueue } from "@/shared/infrastructure/jobs/pg-job-queue";
 import { PgJobStore } from "@/shared/infrastructure/jobs/pg-job-store";
 import { Worker } from "@/shared/infrastructure/jobs/worker";
@@ -10,6 +10,8 @@ import { createLogger } from "@/shared/infrastructure/logging/logger";
 import { createPool } from "@/shared/infrastructure/postgres/pool";
 import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
 import { loadConfig } from "./config";
+import { buildDefinitions, buildMedia, buildNotifications, buildSubmissions } from "./modules";
+import { RECURRING, workerHandlers } from "./worker-handlers";
 
 /** Worker composition root. See specs/system/jobs.md and specs/architecture.md. */
 function main(): void {
@@ -25,27 +27,27 @@ function main(): void {
     logger,
   });
   const store = new PgJobStore(pool, systemClock, { leaseSeconds: config.worker.leaseSeconds });
+  const uow = new PgUnitOfWorkFactory(pool);
+  const queue = new PgJobQueue(systemIdGenerator, systemClock);
+  const definitions = buildDefinitions(
+    config,
+    pool,
+    uow,
+    new PgAuditLog(),
+    new PgAuditLogReader(pool),
+  );
+  const media = buildMedia(config, pool, uow, queue);
+  const submissions = buildSubmissions({ pool, uow, queue, definitions, media, logger });
+  const notifications = buildNotifications(config, pool, submissions);
   const worker = new Worker(
-    {
-      store,
-      queue: new PgJobQueue(systemIdGenerator, systemClock),
-      uow: new PgUnitOfWorkFactory(pool),
-      clock: systemClock,
-      logger,
-    },
+    { store, queue, uow, clock: systemClock, logger },
     {
       workerId,
       concurrency: config.worker.concurrency,
       pollIntervalMs: config.worker.pollIntervalMs,
       jobTimeoutMs: (config.worker.leaseSeconds - 15) * 1000,
-      handlers: {
-        "jobs.cleanup": createCleanupHandler(store),
-        "identity.cleanup": createIdentityCleanupHandler(pool),
-      },
-      recurring: [
-        { type: "jobs.cleanup", period: "daily" },
-        { type: "identity.cleanup", period: "daily" },
-      ],
+      handlers: workerHandlers({ store, pool, media, notifications, submissions }),
+      recurring: RECURRING,
     },
   );
 

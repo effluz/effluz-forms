@@ -159,6 +159,10 @@ export const copy = {
     en: "Harder for some people with disabilities. Turn on only if spam appears.",
     es: "Más difícil para algunas personas con discapacidad. Actívalo solo si aparece spam.",
   },
+  "set.challenge_unavailable": {
+    en: "Not available yet: forms show no bot check even when this is on.",
+    es: "Aún no está disponible: los formularios no muestran la verificación aunque esté activada.",
+  },
   "set.responses": { en: "Responses", es: "Respuestas" },
   "set.allow_another": {
     en: 'Offer "Fill in another form" after submitting',

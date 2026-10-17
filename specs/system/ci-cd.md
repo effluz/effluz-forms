@@ -21,8 +21,9 @@ Runs on every pull request and every push to `main`.
 | `lint` | Formatting and lint rules | nothing |
 | `typecheck` | Static types | nothing |
 | `unit` | Domain and application tests, no I/O; includes the field type conformance suite | nothing |
-| `integration` | Infrastructure adapters against a Postgres 17 service container (identity's Google adapter runs against a local fake OIDC issuer); the local disk media adapter and a fake email provider join when those adapters exist | Postgres service |
-| `e2e` | Build, publish, submit and review a form in a browser against the built app; invalid submission and closed form paths | Postgres service |
+| `integration` | Infrastructure adapters against a Postgres 17 service container (identity's Google adapter runs against a local fake OIDC issuer), plus the local disk media adapter, a fake Dropbox (`tests/fakes/dropbox-api.ts`), and HTTP stubs for SMTP2GO and Mailpit | Postgres service |
+| `e2e` | Builds the app, then publishes and submits the reference form over HTTP without script; covers an invalid page, a refused file, a closed form, the honeypot, a repeated Submit and the renderer budgets. Review joins with the review plan | Postgres service |
+| `e2e-browser` | Builds the app and completes the reference form in Chromium on a phone viewport with script enabled (ADR 0024) | Postgres service |
 | `build` | Builds the production image to prove it builds; not pushed on PRs | nothing |
 
 Jobs run in parallel where the table says they need nothing. The whole
@@ -41,7 +42,23 @@ As built (`.github/workflows/ci.yml`):
   `integration-report` artifact when the job fails. `unit` does the same with
   `reports/unit.xml`.
 - `build` runs the Next.js production build, `pnpm build`. Building the image
-  joins it with the deployment plan, and `e2e` with the renderer plan.
+  joins it with the deployment plan.
+- `e2e` builds the app, starts it with `next start` on port 3199 against a
+  throwaway database and temporary media directories, and drives the reference
+  form over HTTP exactly as a browser without script does, plus the budgets of
+  `ui-ux/renderer.md`. It writes `reports/e2e.xml`, uploaded as the
+  `e2e-report` artifact when the job fails. The throwaway database lives in a
+  holder process (`tests/support/database-holder.ts`) that drops it when the
+  run ends, however it ends, so an interrupted local run leaves none behind.
+- `e2e-browser` installs Chromium with `playwright install --with-deps
+  chromium`, builds the app and completes the reference form on a phone
+  viewport with script enabled (ADR 0024), plus a small bilingual form for the
+  language switch. The browser download is cached under
+  `~/.cache/ms-playwright`, keyed on the lockfile. The run starts the app as
+  `e2e` does, on port 3299, writes `reports/e2e-browser.xml`, and uploads it
+  with Playwright's traces in `test-results/` as the `e2e-browser-report`
+  artifact when the job fails. On CI a stray `test.only` fails the run
+  (`forbidOnly`); Vitest refuses `.only` on CI by default.
 - A final job named `ci` waits for all the others and fails unless each one
   succeeded. It is the single status check branch protection requires.
 

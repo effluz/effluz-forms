@@ -56,6 +56,7 @@ describe("identity.cleanup", () => {
     return {
       jobId: randomUUID(),
       attempt: 1,
+      maxAttempts: 8,
       logger,
       uow: new PgUnitOfWorkFactory(pool),
       queue: new PgJobQueue(systemIdGenerator, { now: () => NOW }),

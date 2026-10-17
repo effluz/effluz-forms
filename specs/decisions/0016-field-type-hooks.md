@@ -5,6 +5,8 @@ Date: 2026-10-10
 Amended 2026-10-10: the form model moved to the shared kernel, ADR 0022
 Amended 2026-10-10: a required `defaultSettings(ids)` hook gives the smallest
 settings a newly added field parses with; the conformance suite checks it
+Amended 2026-10-11: an optional `uploadLimits(settings)` hook names the fields
+that take files; the conformance suite checks it
 
 ## Context
 
@@ -28,6 +30,9 @@ knowing any type id (all optional except the last):
   type's code.
 - `neverHidden`: conditions never hide the field.
 - `consentRecord`: extracts the consent record from a valid answer.
+- `uploadLimits`: the field takes files, with the accepted kinds (`image`,
+  `video`), the most files and the largest size in MB. The renderer and the
+  intake read it, so neither tests a type id.
 - `defaultSettings(ids)` (required, unlike the others): the smallest
   settings the type's schema accepts, with keys drawn from `ids`. The
   `add_field` command uses it for a new field, and a compatible
@@ -36,7 +41,8 @@ knowing any type id (all optional except the last):
 Text caps are derived from the declared `maxLength` of any type. The
 conformance suite checks that hook results are well formed, that an
 always-required type declares a `requiredCode` and never reports a valid
-answer empty, and that a consent record carries a 16-hex text version.
+answer empty, that a consent record carries a 16-hex text version, and that
+upload limits are well formed where a type declares them.
 
 ## Consequences
 
