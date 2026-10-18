@@ -184,7 +184,7 @@ describe("FormOverview", () => {
     expect(render()).not.toContain("This form is");
   });
 
-  it("renders the tabs with the current one marked and Submissions disabled elsewhere", () => {
+  it("renders the tabs with the current one marked and Submissions linked elsewhere", () => {
     const home = render();
     expect(tags(home, "a", 'aria-current="page"', `href="/admin/forms/${ID}"`)).toHaveLength(1);
     expect(tags(home, "a", `href="/admin/forms/${ID}/settings"`)).toHaveLength(1);
@@ -195,9 +195,11 @@ describe("FormOverview", () => {
     expect(
       tags(settings, "a", 'aria-current="page"', `href="/admin/forms/${ID}/settings"`),
     ).toHaveLength(1);
-    const disabled = tags(settings, "a", 'aria-disabled="true"');
-    expect(disabled).toHaveLength(1);
-    expect(disabled[0]).not.toContain("href");
+    // The breadcrumb's form title and the Submissions tab both lead to the overview.
+    const overviewLinks = tags(settings, "a", `href="/admin/forms/${ID}"`);
+    expect(overviewLinks).toHaveLength(2);
+    for (const link of overviewLinks) expect(link).not.toContain("aria-current");
+    expect(tags(settings, "a", 'aria-disabled="true"')).toHaveLength(0);
   });
 
   it("renders the tab body as its children", () => {

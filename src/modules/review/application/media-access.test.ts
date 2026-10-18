@@ -3,7 +3,7 @@ import { fakeImage } from "@/modules/media/application/testing/fakes";
 import type { MediaRecord } from "@/modules/media/application";
 import { reviewAuditActions } from "../domain/audit";
 import { STAFF_PHOTOS_FIELD_KEY } from "../domain/staff-photos";
-import { accessMedia, photoArchive, type MediaView } from "./media-access";
+import { accessMedia, openLocalVideo, photoArchive, type MediaView } from "./media-access";
 import { addStaffPhotos } from "./photos";
 import { emptyStory } from "./ports/story-repository";
 import { OWNER, seedAnotherStory, seedStory } from "./testing/fixtures";
@@ -245,5 +245,69 @@ describe("photoArchive", () => {
     expect(reviewAudit(deps)).toMatchObject([
       { action: "media_downloaded", details: { set: "chosen", count: 1 } },
     ]);
+  });
+
+  it("answers none for the chosen set on a form without the post plan", async () => {
+    const deps = makeReviewDeps();
+    const story = await seedStory(deps, { postPlan: false });
+    const [, p2] = story.photoIds;
+    deps.stories.rows.set(story.submissionId, {
+      ...emptyStory(story.submissionId, story.formId),
+      chosen: [p2],
+    });
+
+    const input = { formId: story.formId, reference: story.reference, set: "chosen" as const };
+    expect(await photoArchive(deps, OWNER, input)).toEqual({ ok: false, code: "none" });
+    expect(reviewAudit(deps)).toEqual([]);
+  });
+});
+
+describe("openLocalVideo", () => {
+  const VIDEO_KEY = "forms/story-form/ST-0001/03-photos.mp4";
+
+  it("streams a stored video of a story by its key and records the view", async () => {
+    const deps = makeReviewDeps();
+    const story = await seedStory(deps);
+    const video = addStoredVideo(deps, story);
+    await deps.media.durable.put(fakeImage("video/mp4", 96), VIDEO_KEY, "video/mp4");
+
+    const result = await openLocalVideo(deps, OWNER, VIDEO_KEY);
+
+    if (result === null) throw new Error("expected the video");
+    expect(new Uint8Array(await new Response(result.body).arrayBuffer())).toEqual(
+      fakeImage("video/mp4", 96),
+    );
+    expect(reviewAudit(deps)).toEqual([
+      {
+        action: "photo_viewed",
+        actorEmail: OWNER.email,
+        targetId: story.submissionId,
+        ip: OWNER.ip,
+        details: { mediaId: video, kind: "video" },
+      },
+    ]);
+  });
+
+  it("refuses a photo's key, a key no story owns, a key outside forms/ and a missing file", async () => {
+    const deps = makeReviewDeps();
+    const story = await seedStory(deps);
+    addStoredVideo(deps, story);
+    await deps.media.durable.put(fakeImage(), "assets/header.png", "image/png");
+    await deps.media.durable.put(
+      fakeImage(),
+      "forms/story-form/ST-0009/01-photos.mp4",
+      "video/mp4",
+    );
+
+    for (const key of [
+      "forms/story-form/ST-0001/02-photos.jpg",
+      "forms/story-form/ST-0009/01-photos.mp4",
+      "forms/other-form/ST-0001/03-photos.mp4",
+      "assets/header.png",
+      "forms/story-form/ST-0001/../ST-0001/03-photos.mp4",
+      VIDEO_KEY,
+    ])
+      expect(await openLocalVideo(deps, OWNER, key)).toBeNull();
+    expect(reviewAudit(deps)).toEqual([]);
   });
 });

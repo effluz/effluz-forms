@@ -38,7 +38,7 @@ export { markPublished, unmarkPublished } from "./publishing";
 export { addStaffPhotos, choosePhoto, removeStaffPhoto } from "./photos";
 export { STORY_CHECKS, setCheck } from "./checks";
 export { planStory, postPlanWeek, waitingStories } from "./plan";
-export { accessMedia, photoArchive } from "./media-access";
+export { accessMedia, openLocalVideo, photoArchive } from "./media-access";
 export { exportLocale, exportStories } from "./export";
 export { deleteStory } from "./delete";
 export {

@@ -58,6 +58,11 @@ export async function loadForm(deps: DefinitionsDeps, formId: string): Promise<F
   return deps.forms.findById(formId);
 }
 
+/** A form by its slug, any status; null when no form has it. */
+export async function loadFormBySlug(deps: DefinitionsDeps, slug: string): Promise<Form | null> {
+  return deps.forms.findBySlug(slug);
+}
+
 /** Every version of a form, oldest first; empty for an unknown form. */
 export async function listVersions(deps: DefinitionsDeps, formId: string): Promise<FormVersion[]> {
   return deps.versions.listByForm(formId);

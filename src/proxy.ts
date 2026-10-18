@@ -79,14 +79,26 @@ function withRendererCsp(request: NextRequest): NextResponse {
  * Where sign-in returns to, which it does with a GET. A GET or HEAD request returns to
  * itself, query included. Any other method hit a route that only answers POST, so it
  * returns to the page that posted: the New form page for `create`, the form's overview
- * for `lifecycle` and `delete`, and for a server action its own page; never a query,
- * which may carry what was typed. See specs/ui-ux/manager.md, "Routes".
+ * for `lifecycle`, `delete` and `export`, a story's page for its own changes, Operations
+ * for its changes, and for a server action its own page; never a query, which may carry
+ * what was typed. See specs/ui-ux/manager.md, "Routes".
  */
 function returnPath(method: string, pathname: string, search: string): string {
   if (method === "GET" || method === "HEAD") return `${pathname}${withoutRsc(search)}`;
   if (pathname === "/admin/forms/create") return "/admin/forms/new";
+  const story = STORY_POST.exec(pathname)?.[1];
+  if (story !== undefined) return story;
+  const overview = EXPORT_POST.exec(pathname)?.[1];
+  if (overview !== undefined) return overview;
+  if (OPERATIONS_POST.test(pathname)) return "/admin/operations";
   return pathname.replace(/\/(lifecycle|delete)$/, "");
 }
+
+/** The POST routes beside a story page, the export route and the Operations routes. */
+const STORY_POST =
+  /^(\/admin\/forms\/[^/]+\/submissions\/[^/]+)\/(correction|revert|status|photos|photos\/remove|choice|check|plan|retry|delete)$/;
+const EXPORT_POST = /^(\/admin\/forms\/[^/]+)\/export$/;
+const OPERATIONS_POST = /^\/admin\/operations\/(retry|discard|retry-type)$/;
 
 /**
  * The query string as sent, minus Next's internal `_rsc` cache-busting parameter.

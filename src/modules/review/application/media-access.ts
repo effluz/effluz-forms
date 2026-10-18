@@ -1,10 +1,11 @@
-import type { Actor } from "@/modules/definitions/application";
+import { loadFormBySlug, type Actor } from "@/modules/definitions/application";
 import type { AuditEntry } from "@/modules/identity/application";
 import {
   findMedia,
   listSubmissionMedia,
   mediaThumbnail,
   openMedia,
+  openStoredKey,
   videoViewUrl,
   type MediaRecord,
 } from "@/modules/media/application";
@@ -148,7 +149,8 @@ export async function photoArchive(
     deps.stories.find(id),
   ]);
   const all = storyFiles(found.version, media, staffRows);
-  const chosen = new Set(story?.chosen ?? []);
+  // Choosing photos is a post-plan part: off the plan there is no chosen set to download.
+  const chosen = new Set(found.ctx.postPlan ? (story?.chosen ?? []) : []);
   const files = input.set === "all" ? all : all.filter((f) => chosen.has(f.record.id));
   if (files.length === 0) return { ok: false, code: "none" };
 
@@ -166,4 +168,49 @@ export async function photoArchive(
     filename: `${found.ctx.form.slug}-${reference}${suffix}.zip`,
     body: deps.zip.write(zipEntries(deps, reference, files)),
   };
+}
+
+/** A durable key as `forms/<form slug>/<reference>/<file>`, or null for any other shape. */
+const STORY_KEY = /^forms\/([^/]+)\/([^/]+)\/[^/]+$/;
+
+/**
+ * A stored video by its durable key, for the local view route that a video redirect points
+ * at when `MEDIA_PROVIDER=local` (specs/system/media-storage.md, "Downloads"). Only a key of
+ * a stored video media row of an existing story is served, and the view is recorded as
+ * `photo_viewed`; null for any other key or a missing file.
+ */
+export async function openLocalVideo(
+  deps: ReviewDeps,
+  actor: Actor,
+  key: string,
+): Promise<{ contentType: string; body: ReadableStream<Uint8Array> } | null> {
+  const parts = STORY_KEY.exec(key);
+  const [, slug, reference] = parts ?? [];
+  if (slug === undefined || reference === undefined || key.includes("..")) return null;
+  const form = await loadFormBySlug(deps.definitions, slug);
+  if (!form) return null;
+  const found = await loadStory(deps, form.id, reference);
+  if (!found) return null;
+  const id = found.submission.id;
+  const media = await listSubmissionMedia(deps.media, id);
+  const row = media.find(
+    (m) => m.durableKey === key && m.kind === "video" && m.status === "stored",
+  );
+  const record = row === undefined ? null : await storyMedia(deps, id, row.id);
+  if (!record) return null;
+  const body = await openStoredKey(deps.media, key);
+  if (body === null) return null;
+  try {
+    await recordAccess(deps, {
+      action: "photo_viewed",
+      actorEmail: actor.email,
+      targetId: id,
+      ip: actor.ip,
+      details: { mediaId: record.id, kind: record.kind },
+    });
+  } catch (error) {
+    await body.cancel().catch(() => undefined);
+    throw error;
+  }
+  return { contentType: record.contentType, body };
 }

@@ -163,9 +163,12 @@ failed delete after a silent accept or a Submit). The recurring step
 
 `viewUrl` on local disk returns `/admin/media/local/<ref>`, the admin route
 that streams the file, and ignores the `ttl` (the route checks the session on
-every request). The route exists now. It serves durable keys only, requires a
-session, and is reached only by a video redirect from the audited media route;
-photos and staging copies stream through that audited route instead.
+every request). The route exists now. It requires a session, answers 404
+unless `MEDIA_PROVIDER=local`, serves only the durable key of a stored video
+media row of an existing submission (any other key under `forms/`, and
+`assets/`, is a 404), and records the view as `photo_viewed` like the media
+route does. It is reached only by a video redirect from the audited media
+route; photos and staging copies stream through that audited route instead.
 
 ## Dropbox-specific risks to monitor
 

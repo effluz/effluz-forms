@@ -34,6 +34,7 @@ export {
   resolvePublicForm,
   loadVersion,
   loadForm,
+  loadFormBySlug,
   allocateReference,
   listVersions,
   listPostPlanForms,

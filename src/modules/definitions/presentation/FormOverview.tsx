@@ -75,7 +75,7 @@ export function FormOverview(props: {
   dialog?: OverviewDialog;
   /** A refusal sent back by the lifecycle or delete route with `?error=`. */
   error?: OverviewError;
-  /** The current tab's body; the Submissions list is not built yet, so its page passes none. */
+  /** The current tab's body; for Submissions, the list. */
   children?: ReactNode;
 }) {
   const { overview, tab } = props;
@@ -122,8 +122,6 @@ export function FormOverview(props: {
           label: <Bilingual k={TAB_COPY[item]} />,
           href: tabHref(form.id, item),
           current: item === tab,
-          // The Submissions list is not built yet, so the tab is shown, not linked.
-          disabled: item === "submissions",
         }))}
       />
       {props.children}

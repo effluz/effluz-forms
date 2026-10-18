@@ -115,6 +115,42 @@ describe("admin proxy gate on Postgres", () => {
     expect(await section("/admin/planner", "plan")).toBe("forms");
   });
 
+  /** Where a POST without a session is sent back to after sign-in. */
+  async function returnToOfPost(path: string): Promise<string | null> {
+    const res = await proxy(new NextRequest(`${BASE}${path}?status=new`, { method: "POST" }));
+    expect(res.status).toBe(302);
+    const location = res.headers.get("location");
+    return location === null ? null : new URL(location).searchParams.get("returnTo");
+  }
+
+  it("a story post without a session returns to its story page", async () => {
+    const id = randomUUID();
+    const storyPage = `/admin/forms/${id}/submissions/HP-0001`;
+    for (const route of [
+      "correction",
+      "revert",
+      "status",
+      "photos",
+      "photos/remove",
+      "choice",
+      "check",
+      "plan",
+      "retry",
+      "delete",
+    ])
+      expect(await returnToOfPost(`${storyPage}/${route}`)).toBe(storyPage);
+  });
+
+  it("an export post returns to the overview", async () => {
+    const id = randomUUID();
+    expect(await returnToOfPost(`/admin/forms/${id}/export`)).toBe(`/admin/forms/${id}`);
+  });
+
+  it("an Operations post returns to Operations", async () => {
+    for (const route of ["retry", "discard", "retry-type"])
+      expect(await returnToOfPost(`/admin/operations/${route}`)).toBe("/admin/operations");
+  });
+
   it("redirects a well-formed but unknown session id to sign-in", async () => {
     const res = await proxy(request(`${COOKIE}=${randomUUID()}`));
     expect(res.status).toBe(302);

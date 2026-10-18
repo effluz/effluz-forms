@@ -4,6 +4,7 @@ import {
   allocateReference,
   listPostPlanForms,
   listVersions,
+  loadFormBySlug,
   loadVersion,
   resolvePublicForm,
 } from "./public-form";
@@ -43,6 +44,20 @@ describe("listVersions", () => {
     expect(versions.every((version) => version.formId === formId)).toBe(true);
     expect((await listVersions(deps, other.formId)).map((version) => version.number)).toEqual([1]);
     expect(await listVersions(deps, "not-a-uuid")).toEqual([]);
+  });
+});
+
+describe("loadFormBySlug", () => {
+  it("finds a form by its slug in any status, and null for an unknown slug", async () => {
+    const deps = makeDefinitionsDeps();
+    const { formId } = await seedPublished(deps, {
+      slug: "kept",
+      document: document(),
+      status: "archived",
+    });
+
+    expect((await loadFormBySlug(deps, "kept"))?.id).toBe(formId);
+    expect(await loadFormBySlug(deps, "missing")).toBeNull();
   });
 });
 
