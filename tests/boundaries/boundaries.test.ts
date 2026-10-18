@@ -204,7 +204,7 @@ describe("layer boundaries", () => {
   it("forbids submissions importing review's application layer", async () => {
     const rules = await lintVirtual(
       "src/modules/submissions/application/boundary-probe.ts",
-      `import { y } from "@/modules/review/application/boundary-probe-target";\nexport const z = y;\n`,
+      `import { listStories } from "@/modules/review/application";\nexport const l = listStories;\n`,
     );
     expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });
@@ -226,14 +226,9 @@ describe("layer boundaries", () => {
   });
 
   it("forbids notifications importing review", async () => {
-    // review has no application entry point yet (Task 14), so the probe imports its own target.
-    await lintVirtual(
-      "src/modules/review/application/boundary-probe-notifications-target.ts",
-      `export const y = 1;\n`,
-    );
     const rules = await lintVirtual(
       "src/modules/notifications/application/boundary-probe-review.ts",
-      `import { y } from "@/modules/review/application/boundary-probe-notifications-target";\nexport const z = y;\n`,
+      `import { listStories } from "@/modules/review/application";\nexport const l = listStories;\n`,
     );
     expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });
