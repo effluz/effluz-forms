@@ -79,7 +79,9 @@ A planned date is a field of the story, not a status.
   a date) or to move the other story to "Waiting for a date".
 - A published story cannot be re-planned.
 - Audit entry `story_planned` (from, to, `resolution` when given), one entry
-  per story whose date changed.
+  per story whose date changed. `resolution` is what was done to the other
+  story (`swap` or `move`), on both entries; it is left out when the day was
+  free.
 
 ## Main flow: change status
 

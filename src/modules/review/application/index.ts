@@ -12,6 +12,7 @@ export type {
   RemovePhotoResult,
 } from "./photos";
 export type { SetCheckResult, StoryCheck } from "./checks";
+export type { DayView, PlanItem, PlanResult, WeekView } from "./plan";
 export type { EditRepository, EditRow } from "./ports/edit-repository";
 export type {
   ExportSource,
@@ -32,6 +33,7 @@ export { revertCorrection, saveCorrection } from "./curation";
 export { markPublished, unmarkPublished } from "./publishing";
 export { addStaffPhotos, choosePhoto, removeStaffPhoto } from "./photos";
 export { STORY_CHECKS, setCheck } from "./checks";
+export { planStory, postPlanWeek, waitingStories } from "./plan";
 
 export type { ReviewAuditAction } from "../domain/audit";
 export { reviewAuditActions } from "../domain/audit";

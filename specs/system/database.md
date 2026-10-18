@@ -46,7 +46,13 @@ Rules:
   `use-cases/create-and-edit-form.md`).
 - Review use cases lock the `submission` row (through `lockSubmission`), then
   the `story` row, then the day locks (`pg_advisory_xact_lock` on
-  `story-plan:<date>`) in date order.
+  `story-plan:<date>`) in date order. Planning a story is the exception: it
+  takes the day lock of every day the change touches first (the target day
+  and the story's own day), ascending, each with its unpublished holder's
+  `story` row; then the `submission` row; then the `story` row. Every review
+  use case that writes runs again once when Postgres picks it as a deadlock
+  victim (`40P01`). A planning write that still meets the one-story-per-day
+  index (`23505` on `story_plan_slot_key`) is answered as a conflict.
 
 ## Connections
 

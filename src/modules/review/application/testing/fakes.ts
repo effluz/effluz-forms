@@ -4,8 +4,8 @@
  * - `InMemoryStoryRepository`: `rows` by submission id, copies in and out;
  *   `lockOrCreate` inserts the empty row when missing; `lockDay` answers the
  *   unpublished story planned on the day; `save` rejects a second unpublished
- *   story on one day, as the unique index `story_plan_slot_key` does, and
- *   keeps `updatedAt` by submission id.
+ *   story on one day as the unique index `story_plan_slot_key` does (code
+ *   23505, that constraint), and keeps `updatedAt` by submission id.
  * - `InMemoryStaffPhotoRepository`: `rows` by media id, oldest first per story.
  * - `InMemoryEditRepository`: `rows` in append order; the newest per field wins.
  * - `FakeReviewQueries`: canned answers in `listResult`, `countsResult`,
@@ -57,6 +57,14 @@ export { InMemoryJobAdmin };
 /** The fixed "now" of review tests: a Sunday afternoon in Panama. */
 export const REVIEW_NOW = new Date("2026-10-18T15:00:00Z");
 
+/** The refusal Postgres gives for a second unpublished story on one day. */
+function slotTaken(): Error {
+  return Object.assign(
+    new Error('duplicate key value violates unique constraint "story_plan_slot_key"'),
+    { code: "23505", constraint: "story_plan_slot_key" },
+  );
+}
+
 export class InMemoryStoryRepository implements StoryRepository {
   readonly rows = new Map<string, StoryRow>();
   readonly updatedAt = new Map<string, Date>();
@@ -88,9 +96,7 @@ export class InMemoryStoryRepository implements StoryRepository {
           other.plannedOn === row.plannedOn &&
           other.publishedOn === null
         )
-          return Promise.reject(
-            new Error('duplicate key value violates unique constraint "story_plan_slot_key"'),
-          );
+          return Promise.reject(slotTaken());
     }
     this.rows.set(row.submissionId, structuredClone(row));
     this.updatedAt.set(row.submissionId, new Date(at.getTime()));

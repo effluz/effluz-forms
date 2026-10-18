@@ -35,7 +35,8 @@ export const emptyStory = (submissionId: string, formId: string): StoryRow => ({
 
 /**
  * Where story rows live. Lock order: the submission row, then the story row,
- * then day locks in ascending date order (specs/system/database.md, "The `UnitOfWork` port").
+ * then day locks in ascending date order; planning takes its day locks first
+ * (specs/system/database.md, "The `UnitOfWork` port").
  */
 export interface StoryRepository {
   /** Null for an unknown id and for a non-UUID id. */
