@@ -95,8 +95,9 @@ function listColumns(p: Params): string {
 function exportColumns(p: Params): string {
   const staff = p.add(STAFF_PHOTOS_FIELD_KEY);
   return `${STORY_COLUMNS}, s.curated_answers, s.published_post_url,
-    coalesce((select array_agg(m.durable_key order by m.field_key, m.position) from media m
-      where m.submission_id = s.id and m.field_key <> ${staff}), '{}') as sender_keys,
+    coalesce((select json_agg(json_build_object('fieldKey', m.field_key, 'key', m.durable_key)
+        order by m.field_key, m.position) from media m
+      where m.submission_id = s.id and m.field_key <> ${staff}), '[]') as sender_files,
     coalesce((select array_agg(m.durable_key order by m.created_at, m.position, m.id) from media m
       where m.submission_id = s.id and m.field_key = ${staff}), '{}') as staff_keys`;
 }
@@ -130,12 +131,13 @@ interface PlanRowSql extends StoryRowSql {
 
 interface ExportRowSql extends PlanRowSql {
   curated_answers: unknown;
-  sender_keys: string[];
+  sender_files: unknown;
   staff_keys: string[];
 }
 
 const answersSchema = z.record(z.string(), z.unknown());
 const curatedSchema = z.record(z.string(), z.string());
+const senderFilesSchema = z.array(z.object({ fieldKey: z.string(), key: z.string() }));
 
 // A stored row that fails is corruption. Messages name the submission only.
 function statusOf(row: StoryRowSql): ReviewStatus {
@@ -194,6 +196,8 @@ function toPlanEntry(row: PlanRowSql): PlanEntry {
 function toExportSource(row: ExportRowSql): ExportSource {
   const curated = curatedSchema.safeParse(row.curated_answers);
   if (!curated.success) throw new Error(`stored curation of submission ${row.id} is corrupt`);
+  const senderFiles = senderFilesSchema.safeParse(row.sender_files);
+  if (!senderFiles.success) throw new Error(`stored media of submission ${row.id} is corrupt`);
   return {
     submissionId: row.id,
     reference: row.reference,
@@ -205,7 +209,7 @@ function toExportSource(row: ExportRowSql): ExportSource {
     curatedAnswers: curated.data,
     postUrl: row.published_post_url,
     plannedOn: row.planned_on,
-    senderKeys: row.sender_keys,
+    senderFiles: senderFiles.data,
     staffKeys: row.staff_keys,
   };
 }

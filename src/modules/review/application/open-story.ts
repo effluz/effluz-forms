@@ -131,15 +131,49 @@ function answerPages(
     .filter((page) => page.answers.length > 0);
 }
 
+/** A media row of the story and, for a staff photo, its staff_photo row. */
+export interface StoryFile {
+  record: MediaRecord;
+  staff: StaffPhotoRow | null;
+}
+
+/**
+ * The story's files in display order: the sender's in the version's field order,
+ * then position; then staff photos by when they were added. A staff media row
+ * without its staff_photo row is being deleted and is left out.
+ */
+export function storyFiles(
+  version: FormVersion,
+  media: readonly MediaRecord[],
+  staffRows: readonly StaffPhotoRow[],
+): StoryFile[] {
+  const order = fieldIndex(version.document);
+  const fieldOrder = (key: string) => order.get(key)?.order ?? Number.MAX_SAFE_INTEGER;
+  const sender = media
+    .filter((m) => m.fieldKey !== STAFF_PHOTOS_FIELD_KEY)
+    .sort((a, b) => fieldOrder(a.fieldKey) - fieldOrder(b.fieldKey) || a.position - b.position)
+    .map((record): StoryFile => ({ record, staff: null }));
+  const staffById = new Map(staffRows.map((row) => [row.id, row]));
+  const staff = media
+    .flatMap((record) => {
+      const row = record.fieldKey === STAFF_PHOTOS_FIELD_KEY ? staffById.get(record.id) : undefined;
+      return row === undefined ? [] : [{ record, staff: row }];
+    })
+    .sort(
+      (a, b) =>
+        a.staff.createdAt.getTime() - b.staff.createdAt.getTime() ||
+        a.record.position - b.record.position,
+    );
+  return [...sender, ...staff];
+}
+
 function photoViews(
   version: FormVersion,
   media: readonly MediaRecord[],
   staffRows: readonly StaffPhotoRow[],
   chosen: readonly string[],
 ): PhotoView[] {
-  const order = fieldIndex(version.document);
-  const fieldOrder = (key: string) => order.get(key)?.order ?? Number.MAX_SAFE_INTEGER;
-  const view = (m: MediaRecord, staff: StaffPhotoRow | null): PhotoView => ({
+  return storyFiles(version, media, staffRows).map(({ record: m, staff }): PhotoView => ({
     mediaId: m.id,
     kind: m.kind,
     status: m.status,
@@ -150,24 +184,7 @@ function photoViews(
       staff === null
         ? null
         : { addedBy: staff.addedBy, addedAt: staff.createdAt, source: staff.source },
-  });
-  const sender = media
-    .filter((m) => m.fieldKey !== STAFF_PHOTOS_FIELD_KEY)
-    .sort((a, b) => fieldOrder(a.fieldKey) - fieldOrder(b.fieldKey) || a.position - b.position)
-    .map((m) => view(m, null));
-  // A staff media row without its staff_photo row is being deleted: hide it.
-  const staffById = new Map(staffRows.map((row) => [row.id, row]));
-  const staff = media
-    .flatMap((m) => {
-      const row = m.fieldKey === STAFF_PHOTOS_FIELD_KEY ? staffById.get(m.id) : undefined;
-      return row === undefined ? [] : [{ m, row }];
-    })
-    .sort(
-      (a, b) =>
-        a.row.createdAt.getTime() - b.row.createdAt.getTime() || a.m.position - b.m.position,
-    )
-    .map(({ m, row }) => view(m, row));
-  return [...sender, ...staff];
+  }));
 }
 
 function consentView(version: FormVersion, submission: StoredSubmission): StoryView["consent"] {

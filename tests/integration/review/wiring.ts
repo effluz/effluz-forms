@@ -1,10 +1,10 @@
 import type { Pool } from "pg";
 import type { ReviewDeps, ZipWriter } from "@/modules/review/application";
-import { ListingZipWriter } from "@/modules/review/application/testing/fakes";
 import { PgEditRepository } from "@/modules/review/infrastructure/pg-edit-repository";
 import { PgReviewQueries } from "@/modules/review/infrastructure/pg-review-queries";
 import { PgStaffPhotoRepository } from "@/modules/review/infrastructure/pg-staff-photo-repository";
 import { PgStoryRepository } from "@/modules/review/infrastructure/pg-story-repository";
+import { StoredZipWriter } from "@/modules/review/infrastructure/stored-zip-writer";
 import { PLAN_TIME_ZONE } from "@/modules/review/domain/days";
 import type { Clock } from "@/shared/application/ports/clock";
 import type { JobQueue } from "@/shared/application/ports/job-queue";
@@ -16,7 +16,7 @@ import { pgSubmissionsDeps } from "../submissions/wiring";
  * pool, the way the composition root wires them: one unit of work factory,
  * id generator and audit log across the four modules. `over.queue` replaces
  * the Postgres job queue, `over.clock` review's clock, `over.zip` the ZIP
- * writer (a listing fake until the module's own writer exists).
+ * writer (the module's own `StoredZipWriter` by default).
  */
 export function pgReviewDeps(
   pool: Pool,
@@ -36,7 +36,7 @@ export function pgReviewDeps(
     jobs: new PgJobAdmin(pool),
     audit: definitions.audit,
     auditReader: definitions.auditReader,
-    zip: over.zip ?? new ListingZipWriter(),
+    zip: over.zip ?? new StoredZipWriter(),
     uow: submissions.uow,
     clock: over.clock ?? submissions.clock,
     ids: submissions.ids,

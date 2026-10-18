@@ -16,7 +16,13 @@
  *   line, skipping entries whose `open` answers null.
  * - `makeReviewDeps()`: the submissions fakes (with their definitions and
  *   media fakes), the fakes above, a job admin and the definitions audit log
- *   and reader, one clock at `2026-10-18T15:00:00Z` shared by all.
+ *   and reader, one clock at `2026-10-18T15:00:00Z` shared by all. Deleting a
+ *   submission through it drops that submission's story, staff photo and edit
+ *   rows (`dropSubmission`), as the database cascade does; the media rows stay
+ *   for their `media.delete` jobs.
+ *
+ * The shared unit of work does not roll back: a write made before a failure
+ * stays. Prove "fails and nothing changes" against Postgres instead.
  *
  * Locks are no-ops: one process needs none. Synthetic data only. Not for production code.
  */
@@ -69,6 +75,12 @@ export class InMemoryStoryRepository implements StoryRepository {
   readonly rows = new Map<string, StoryRow>();
   readonly updatedAt = new Map<string, Date>();
 
+  /** The `on delete cascade` from `submission`. */
+  dropSubmission(submissionId: string): void {
+    this.rows.delete(submissionId);
+    this.updatedAt.delete(submissionId);
+  }
+
   find(submissionId: string): Promise<StoryRow | null> {
     const row = this.rows.get(submissionId);
     return Promise.resolve(row ? structuredClone(row) : null);
@@ -107,6 +119,11 @@ export class InMemoryStoryRepository implements StoryRepository {
 export class InMemoryStaffPhotoRepository implements StaffPhotoRepository {
   readonly rows = new Map<string, StaffPhotoRow>();
 
+  /** The `on delete cascade` from `submission`. */
+  dropSubmission(submissionId: string): void {
+    for (const [id, row] of this.rows) if (row.submissionId === submissionId) this.rows.delete(id);
+  }
+
   insert(_uow: UnitOfWork, row: StaffPhotoRow): Promise<void> {
     if (this.rows.has(row.id)) return Promise.reject(new Error(`staff photo ${row.id} exists`));
     this.rows.set(row.id, structuredClone(row));
@@ -130,6 +147,12 @@ export class InMemoryStaffPhotoRepository implements StaffPhotoRepository {
 
 export class InMemoryEditRepository implements EditRepository {
   readonly rows: EditRow[] = [];
+
+  /** The `on delete cascade` from `submission`. */
+  dropSubmission(submissionId: string): void {
+    const kept = this.rows.filter((row) => row.submissionId !== submissionId);
+    this.rows.splice(0, this.rows.length, ...kept);
+  }
 
   append(_uow: UnitOfWork, row: EditRow): Promise<void> {
     this.rows.push(structuredClone(row));
@@ -259,14 +282,29 @@ export function makeReviewDeps(): FakeReviewDeps {
   const definitions = submissions.definitions;
   const clock = submissions.clock;
   clock.set(REVIEW_NOW);
+  const stories = new InMemoryStoryRepository();
+  const staffPhotos = new InMemoryStaffPhotoRepository();
+  const edits = new InMemoryEditRepository();
+  // Deleting a submission takes its review rows with it, as the database cascade does.
+  const repository = submissions.submissions;
+  const deleteRow = repository.delete.bind(repository);
+  repository.delete = async (uow, id) => {
+    const deleted = await deleteRow(uow, id);
+    if (deleted) {
+      stories.dropSubmission(id);
+      staffPhotos.dropSubmission(id);
+      edits.dropSubmission(id);
+    }
+    return deleted;
+  };
   // makeSubmissionsDeps hands the same id generator and unit of work to definitions.
   return {
     definitions,
     submissions,
     media: submissions.media,
-    stories: new InMemoryStoryRepository(),
-    staffPhotos: new InMemoryStaffPhotoRepository(),
-    edits: new InMemoryEditRepository(),
+    stories,
+    staffPhotos,
+    edits,
     queries: new FakeReviewQueries(),
     jobs: new InMemoryJobAdmin(),
     audit: definitions.audit,

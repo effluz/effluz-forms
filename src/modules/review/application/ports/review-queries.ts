@@ -62,8 +62,8 @@ export interface ExportSource {
   curatedAnswers: Record<string, string>;
   postUrl: string | null;
   plannedOn: IsoDate | null;
-  /** Durable keys of the sender's files, in field and position order. */
-  senderKeys: string[];
+  /** The sender's files by field key, then position; the application orders them by the version's fields. */
+  senderFiles: { fieldKey: string; key: string }[];
   /** Durable keys of the staff photos, by creation. */
   staffKeys: string[];
 }

@@ -394,10 +394,14 @@ describe("PgReviewQueries", () => {
     expect(batches.map((b) => b.length)).toEqual([3, 3, 1, 0]);
     expect(refs(exported)).toEqual(refs((await queries.list(filter, 1)).rows));
     const source = exported.find((e) => e.reference === withFiles.reference);
-    expect(source?.senderKeys).toEqual(["k/docs-1", "k/photos-1", "k/photos-2"]);
+    expect(source?.senderFiles).toEqual([
+      { fieldKey: "f_docs", key: "k/docs-1" },
+      { fieldKey: "f_photos", key: "k/photos-1" },
+      { fieldKey: "f_photos", key: "k/photos-2" },
+    ]);
     expect(source?.staffKeys).toEqual(["k/staff-earlier", "k/staff-later"]);
     expect(exported.find((e) => e.reference !== withFiles.reference)).toMatchObject({
-      senderKeys: [],
+      senderFiles: [],
       staffKeys: [],
       curatedAnswers: {},
       postUrl: null,
