@@ -5,6 +5,13 @@ export type { CorrectionResult, RevertResult } from "./curation";
 export type { StoryList, StoryListRow } from "./list";
 export type { AnswerPageView, AnswerView, PhotoView, StoryView } from "./open-story";
 export type { MarkResult, UnmarkResult } from "./publishing";
+export type {
+  AddPhotosRefusal,
+  AddPhotosResult,
+  ChoosePhotoResult,
+  RemovePhotoResult,
+} from "./photos";
+export type { SetCheckResult, StoryCheck } from "./checks";
 export type { EditRepository, EditRow } from "./ports/edit-repository";
 export type {
   ExportSource,
@@ -23,6 +30,8 @@ export { listStories } from "./list";
 export { openStory } from "./open-story";
 export { revertCorrection, saveCorrection } from "./curation";
 export { markPublished, unmarkPublished } from "./publishing";
+export { addStaffPhotos, choosePhoto, removeStaffPhoto } from "./photos";
+export { STORY_CHECKS, setCheck } from "./checks";
 
 export type { ReviewAuditAction } from "../domain/audit";
 export { reviewAuditActions } from "../domain/audit";
