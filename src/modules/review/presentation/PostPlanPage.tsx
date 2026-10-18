@@ -121,7 +121,7 @@ function StoryHead({ item, refId }: { item: PlanItem; refId: string }): ReactEle
       <p className={styles.storyHead}>
         <a
           id={refId}
-          className={cx(ui.link, styles.storyRef)}
+          className={cx(ui.link, styles.dayLink, styles.storyRef)}
           href={storyHref(item.formId, item.reference, EMPTY_QUERY)}
         >
           {item.reference}
@@ -151,12 +151,20 @@ function PublishedStory({ item }: { item: PlanItem }): ReactElement {
       <Badge tone="success">
         <T k="plan.published" />
       </Badge>
-      <a className={ui.link} href={storyHref(item.formId, item.reference, EMPTY_QUERY)}>
+      <a
+        className={cx(ui.link, styles.dayLink)}
+        href={storyHref(item.formId, item.reference, EMPTY_QUERY)}
+      >
         {item.reference}
       </a>
       {item.label === null ? null : <span>{item.label}</span>}
       {item.postUrl === null ? null : (
-        <a className={ui.link} href={item.postUrl} target="_blank" rel="noopener">
+        <a
+          className={cx(ui.link, styles.dayLink)}
+          href={item.postUrl}
+          target="_blank"
+          rel="noopener"
+        >
           <T k="st.open_post" />
           <OutwardIcon />
         </a>
@@ -168,6 +176,7 @@ function PublishedStory({ item }: { item: PlanItem }): ReactElement {
 /** One day: its weekday and date on the left, its stories or its empty slot on the right. */
 function DayRow({ day, monday }: { day: DayView; monday: IsoDate }): ReactElement {
   const empty = day.planned === null && day.published.length === 0;
+  const dateId = useId();
   return (
     <li
       data-day={day.date}
@@ -175,9 +184,11 @@ function DayRow({ day, monday }: { day: DayView; monday: IsoDate }): ReactElemen
       {...(day.isToday ? { "aria-current": "date" as const } : {})}
     >
       <div className={styles.weekDay}>
-        <time dateTime={day.date}>
-          <BilingualText text={dayText(day.date)} />
-        </time>
+        <h3 className={styles.weekDate}>
+          <time id={dateId} dateTime={day.date}>
+            <BilingualText text={dayText(day.date)} />
+          </time>
+        </h3>
         {day.isToday ? (
           <span className={styles.todayMark}>
             <T k="plan.today" />
@@ -199,7 +210,7 @@ function DayRow({ day, monday }: { day: DayView; monday: IsoDate }): ReactElemen
           </p>
         ) : (
           <p className={styles.emptyDay}>
-            <a className={ui.button} href={planHref(monday, day.date)}>
+            <a className={ui.button} href={planHref(monday, day.date)} aria-describedby={dateId}>
               <T k="plan.pick" />
             </a>
           </p>

@@ -235,6 +235,26 @@ describe("PostPlanPage", () => {
     expect(words).not.toContain("Pick a story");
   });
 
+  it("gives each day a heading holding its date, so day-to-day navigation works", () => {
+    const days = rows(render(week()));
+    days.forEach((row, i) => {
+      const heading = /<h3\b[^>]*>(.*?)<\/h3>/s.exec(row)?.[1] ?? "";
+      expect(heading).toMatch(new RegExp(`<time\\b[^>]*dateTime="${DATES[i] ?? ""}"`));
+    });
+  });
+
+  it("ties each Pick a story link to its day's date", () => {
+    const days = rows(render(week()));
+    for (const i of [2, 3, 6]) {
+      const row = days[i] ?? "";
+      const link = tags(row, "a", "pick=")[0] ?? "";
+      const target = /aria-describedby="([^"]*)"/.exec(link)?.[1] ?? "";
+      expect(target).not.toBe("");
+      const time = tags(row, "time", `id="${target}"`)[0] ?? "";
+      expect(time).toContain(`dateTime="${DATES[i] ?? ""}"`);
+    }
+  });
+
   it("offers Pick a story on empty days from today, and Nothing planned before", () => {
     const html = render(week());
     const days = rows(html);

@@ -72,16 +72,18 @@ function RowActions(props: {
   csrfToken: string;
   refused: boolean;
   typeId: string;
+  storyId: string;
 }): ReactElement {
   const { job } = props;
   const reasonId = useId();
+  const describedBy = `${props.typeId} ${props.storyId}`;
   const errorId = useId();
   return (
     <div className={styles.rowActions}>
       <form className={styles.rowForm} method="post" action={RETRY_PATH}>
         <input type="hidden" name="csrf" value={props.csrfToken} />
         <input type="hidden" name="job" value={job.id} />
-        <button className={ui.button} type="submit" aria-describedby={props.typeId}>
+        <button className={ui.button} type="submit" aria-describedby={describedBy}>
           <T k="ops.retry" />
         </button>
       </form>
@@ -97,6 +99,7 @@ function RowActions(props: {
           type="text"
           name="reason"
           required
+          pattern="\S.*"
           maxLength={DISCARD_REASON_MAX}
           autoComplete="off"
           {...(props.refused
@@ -108,7 +111,7 @@ function RowActions(props: {
             <T k="ops.err_reason" />
           </p>
         ) : null}
-        <button className={ui.button} type="submit" aria-describedby={props.typeId}>
+        <button className={ui.button} type="submit" aria-describedby={describedBy}>
           <T k="ops.discard" />
         </button>
       </form>
@@ -122,6 +125,7 @@ function deadJobCells(props: {
   csrfToken: string;
   refused: boolean;
   typeId: string;
+  storyId: string;
 }): ReactNode[] {
   const { job } = props;
   return [
@@ -129,12 +133,13 @@ function deadJobCells(props: {
       {job.type}
     </span>,
     job.story === null ? (
-      <span key="story" className={styles.muted}>
+      <span key="story" id={props.storyId} className={styles.muted}>
         <T k="ops.no_story" />
       </span>
     ) : (
       <a
         key="story"
+        id={props.storyId}
         className={ui.link}
         href={storyHref(job.story.formId, job.story.reference, EMPTY_QUERY)}
       >
@@ -159,6 +164,7 @@ function deadJobCells(props: {
       csrfToken={props.csrfToken}
       refused={props.refused}
       typeId={props.typeId}
+      storyId={props.storyId}
     />,
   ];
 }
@@ -218,6 +224,7 @@ function DeadJobs(props: {
             csrfToken: props.csrfToken,
             refused: props.error === "reason_invalid" && props.errorJob === job.id,
             typeId: `${base}-type-${String(i)}`,
+            storyId: `${base}-story-${String(i)}`,
           }),
         }))}
       />

@@ -157,6 +157,29 @@
   color: #1a1423;
 }
 
+/*
+ * Focus and hover on today's row: the shared focus ring (color.border.focus, #b75d69) and link
+ * hover (#b75d69) are 2.93:1 on surface.selected, below the 3:1 (ring) and 4.5:1 (text) AA
+ * floors. Both use color.text.default here (12.1:1).
+ */
+.weekToday a:focus-visible,
+.weekToday button:focus-visible {
+  /* color.text.default */
+  outline-color: #1a1423;
+}
+
+/* dayLink marks the row's text links (the shared link class is not visible to this module). */
+.weekToday .dayLink:hover {
+  /* color.text.default */
+  color: #1a1423;
+}
+
+/* The day's date is a heading for screen-reader navigation and looks like the row's other text. */
+.weekDate {
+  margin: 0;
+  font: inherit;
+}
+
 /* The day list and the waiting list: one bordered card of rows; color.surface.card, radius.md. */
 .weekList {
   margin: 0;

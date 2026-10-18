@@ -168,6 +168,7 @@ describe("OperationsPage", () => {
       expect(form).toContain('name="csrf" value="csrf-token"');
       const input = tags(form, "input", 'name="reason"')[0] ?? "";
       expect(input).toContain("required");
+      expect(input).toContain('pattern="\\S.*"');
       expect(input).toMatch(/maxlength="200"/i);
       const id = /id="([^"]*)"/.exec(input)?.[1] ?? "";
       expect(id).not.toBe("");
@@ -188,10 +189,25 @@ describe("OperationsPage", () => {
     const buttons = tags(html, "button");
     expect(buttons).toHaveLength(4);
     for (const button of buttons) {
-      const target = /aria-describedby="([^"]*)"/.exec(button)?.[1] ?? "";
-      expect(target).not.toBe("");
-      expect(html).toContain(`id="${target}"`);
+      const targets = /aria-describedby="([^"]*)"/.exec(button)?.[1] ?? "";
+      expect(targets).not.toBe("");
+      for (const target of targets.split(" ")) expect(html).toContain(`id="${target}"`);
     }
+  });
+
+  it("names the type and the story in each row's button descriptions", () => {
+    const html = render(view({ dead: [job(), job({ id: "job-2", story: null })] }));
+    const buttons = tags(html, "button");
+    expect(buttons).toHaveLength(4);
+    for (const button of buttons) {
+      const ids = (/aria-describedby="([^"]*)"/.exec(button)?.[1] ?? "").split(" ");
+      expect(ids).toHaveLength(2);
+      for (const id of ids) expect(html).toContain(`id="${id}"`);
+    }
+    const ids = (/aria-describedby="([^"]*)"/.exec(buttons[0] ?? "")?.[1] ?? "").split(" ");
+    const story = tags(html, "a", `id="${ids[1] ?? ""}"`)[0] ?? "";
+    expect(story).toContain("/submissions/HP-0042");
+    expect(ids[0]).not.toBe(ids[1]);
   });
 
   it("reports results and a refused discard at its row", () => {
