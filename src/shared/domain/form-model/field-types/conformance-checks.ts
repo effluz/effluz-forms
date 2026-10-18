@@ -199,12 +199,17 @@ const checks: readonly { name: string; run: (def: AnyFieldType) => string | unde
             return `settings text ${t.path} is not a localized text: ${show(text)}`;
         }
         // A clean field has nothing to report.
-        const clean = def.publishChecks?.({ required: false, validation: [] }, s) ?? [];
-        if (clean.length > 0) return `publish check on a clean field: ${show(clean)}`;
+        for (const postPlan of [false, true]) {
+          const clean =
+            def.publishChecks?.({ required: false, validation: [] }, s, { postPlan }) ?? [];
+          if (clean.length > 0) return `publish check on a clean field: ${show(clean)}`;
+        }
         // An extreme limit is the likeliest trigger; whatever comes back must be well formed.
         for (const rule of def.allowedRules.filter(isNumericRule)) {
           const validation: Rule[] = [{ rule, value: Number.MAX_SAFE_INTEGER }];
-          for (const d of def.publishChecks?.({ required: false, validation }, s) ?? [])
+          for (const d of def.publishChecks?.({ required: false, validation }, s, {
+            postPlan: false,
+          }) ?? [])
             if (!isPath(d.path) || !isPublishCode(d.code))
               return `publish check ${show(d)} for ${rule} ${String(Number.MAX_SAFE_INTEGER)}`;
         }
@@ -239,6 +244,15 @@ const checks: readonly { name: string; run: (def: AnyFieldType) => string | unde
         if (!TEXT_VERSION.test(record.textVersion))
           return `consent record ${show(record)} for ${show(a)}`;
       }
+      return undefined;
+    },
+  },
+  {
+    name: "review traits need string answers",
+    run: (def) => {
+      if (!def.reviewTraits) return undefined;
+      for (const a of def.fixtures.validAnswers)
+        if (typeof a !== "string") return `review traits with a non-string answer ${show(a)}`;
       return undefined;
     },
   },

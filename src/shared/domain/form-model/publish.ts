@@ -4,7 +4,8 @@ import {
   requiredLocales,
 } from "@/shared/domain/localized-text";
 import { referencedKeys } from "./condition";
-import type { ExclusiveRole } from "./field-type";
+import type { ConsentItem } from "./field-types/consent";
+import type { ExclusiveRole, PublishChecksContext } from "./field-type";
 import type { PublishIssue } from "./issues";
 import { LIMITS } from "./limits";
 import type { FieldTypeRegistry } from "./registry";
@@ -20,6 +21,8 @@ import {
 
 export interface PublishContext {
   retentionMonths?: number;
+  /** The form uses the post plan; consent must then cover `later_photos`. */
+  postPlan?: boolean;
 }
 
 const blank = (s: string | undefined) => s === undefined || s.trim().length === 0;
@@ -43,7 +46,22 @@ export function collectsPersonalData(version: Version, registry: FieldTypeRegist
   );
 }
 
-export function checkDefinition(version: Version, registry: FieldTypeRegistry): PublishIssue[] {
+/** True when an input field of the version declares coverage of `item`. */
+export function versionCoversConsentItem(
+  version: Version,
+  registry: FieldTypeRegistry,
+  item: ConsentItem,
+): boolean {
+  return inputFields(version, registry).some((f) =>
+    registry.get(f.type).consentCoverage?.(f.settings).includes(item),
+  );
+}
+
+export function checkDefinition(
+  version: Version,
+  registry: FieldTypeRegistry,
+  ctx: PublishChecksContext = { postPlan: false },
+): PublishIssue[] {
   const issues: PublishIssue[] = [];
   const L = version.languages;
   const push = (code: PublishIssue["code"], path: string, params?: PublishIssue["params"]) =>
@@ -112,7 +130,7 @@ export function checkDefinition(version: Version, registry: FieldTypeRegistry): 
         if (entry.blankCode) requireText(entry.text, path, entry.blankCode);
         else optionalText(entry.text, path);
       }
-      for (const draft of def.publishChecks?.(field, field.settings) ?? [])
+      for (const draft of def.publishChecks?.(field, field.settings, ctx) ?? [])
         push(draft.code, `${fPath}/${draft.path}`, draft.params);
       for (const role of def.exclusiveRoles?.(field.settings) ?? []) {
         const seen = roles.get(role.role);
@@ -142,7 +160,7 @@ export function validateForPublish(
   registry: FieldTypeRegistry,
   ctx: PublishContext,
 ): PublishIssue[] {
-  const issues = checkDefinition(version, registry);
+  const issues = checkDefinition(version, registry, { postPlan: ctx.postPlan ?? false });
   const r = ctx.retentionMonths;
   if (
     r === undefined ||

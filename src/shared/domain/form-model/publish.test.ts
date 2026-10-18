@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { type AnyFieldType, defineFieldType } from "./field-type";
-import { consentItems } from "./field-types/consent";
+import { conditionalConsentItems, consentItems } from "./field-types/consent";
 import { buildDefaultRegistry } from "./field-types";
 import { numberType } from "./field-types/number";
 import { createRegistry } from "./registry";
-import { checkDefinition, collectsPersonalData, parseVersion, validateForPublish } from "./publish";
+import {
+  checkDefinition,
+  collectsPersonalData,
+  parseVersion,
+  validateForPublish,
+  versionCoversConsentItem,
+} from "./publish";
 import { parseDraft } from "./version";
 
 const registry = buildDefaultRegistry();
@@ -199,6 +205,40 @@ describe("checkDefinition", () => {
       ],
     });
     expect(codes(checkDefinition(v, registry))).toContain("consent_checklist");
+  });
+  it("reports consent_checklist for item 10 only when the form uses the post plan", () => {
+    const v = parse(base);
+    expect(codes(validateForPublish(v, registry, { retentionMonths: 12 }))).not.toContain(
+      "consent_checklist",
+    );
+    expect(
+      codes(validateForPublish(v, registry, { retentionMonths: 12, postPlan: false })),
+    ).not.toContain("consent_checklist");
+    const planned = validateForPublish(v, registry, { retentionMonths: 12, postPlan: true });
+    expect(planned.filter((i) => i.code === "consent_checklist")).toEqual([
+      { code: "consent_checklist", path: "pages/0/fields/2/settings/coveredItems" },
+    ]);
+  });
+  it("versionCoversConsentItem reads the consent field's coverage", () => {
+    const covered = parse(
+      withFields([
+        nameField,
+        mailField,
+        {
+          ...consentField,
+          settings: {
+            ...consentField.settings,
+            coveredItems: [...consentItems, ...conditionalConsentItems],
+          },
+        },
+      ]),
+    );
+    expect(versionCoversConsentItem(covered, registry, "later_photos")).toBe(true);
+    expect(versionCoversConsentItem(parse(base), registry, "later_photos")).toBe(false);
+    expect(versionCoversConsentItem(parse(base), registry, "collector")).toBe(true);
+    expect(
+      versionCoversConsentItem(parse(withFields([nameField, mailField])), registry, "collector"),
+    ).toBe(false);
   });
   it("reports over_maximum for more than one consent field", () => {
     const v = parse(

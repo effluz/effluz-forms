@@ -43,6 +43,7 @@ describe("form-model public API", () => {
       fieldTypes.consent.publishChecks?.(
         { required: false, validation: [] },
         { text: { en: "x" }, coveredItems: [] },
+        { postPlan: false },
       ),
     ).toEqual([draft]);
     expect(fieldTypes.email.exclusiveRoles?.({ isSubmitterAddress: true })).toEqual([role]);

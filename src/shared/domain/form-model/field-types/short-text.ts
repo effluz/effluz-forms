@@ -15,6 +15,7 @@ export const shortText = defineFieldType({
   id: "short_text",
   isInput: true,
   collectsPersonalData: false,
+  reviewTraits: { curatable: true, searchable: true, label: true },
   settingsSchema: settings,
   defaultSettings: () => ({}),
   answerSchema: z.string(),

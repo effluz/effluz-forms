@@ -13,6 +13,7 @@ export const email = defineFieldType({
   id: "email",
   isInput: true,
   collectsPersonalData: true,
+  reviewTraits: { searchable: true },
   settingsSchema: z.object({ isSubmitterAddress: z.boolean().default(false) }),
   defaultSettings: () => ({ isSubmitterAddress: false }),
   answerSchema: z.string(),

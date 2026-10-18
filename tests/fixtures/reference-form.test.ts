@@ -9,6 +9,7 @@ import {
   parseVersion,
   validateForPublish,
   validateSubmission,
+  versionCoversConsentItem,
 } from "@/shared/domain/form-model";
 import { referenceFormDraft, referenceSubmission } from "./reference-form";
 
@@ -74,6 +75,19 @@ describe("reference form through the public API", () => {
     });
     if (!ok.ok) throw new Error("submission");
     expect(exportRow(cols, r.version, registry, ok.answers, "es")).toHaveLength(20);
+  });
+  it("covers consent item 10", () => {
+    const r = parseDraft(referenceFormDraft, registry);
+    if (!r.ok) throw new Error("parse");
+    expect(versionCoversConsentItem(r.version, registry, "later_photos")).toBe(true);
+    const consentField = r.version.pages.flatMap((p) => p.fields).find((f) => f.type === "consent");
+    const text = (consentField?.settings as { text: { es?: string } }).text.es;
+    expect(text).toContain(
+      "Las fotos que nos envíes después para esta historia se guardan y usan de la misma forma.",
+    );
+    expect(
+      validateForPublish(r.version, registry, { retentionMonths: 12, postPlan: true }),
+    ).toEqual([]);
   });
   it("keeps the restricted rich text as markdown in description and help", () => {
     const r = parseDraft(referenceFormDraft, registry);
