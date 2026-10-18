@@ -21,7 +21,7 @@ const MODULE_DEPS = {
   notifications: [],
   definitions: ["identity"],
   submissions: ["definitions", "media", "notifications"],
-  review: ["definitions", "submissions", "media", "identity"],
+  review: ["definitions", "submissions", "media", "identity", "notifications"],
 };
 const moduleOf = (type, module) => ({ element: { type, captured: { module } } });
 // A module's single public entry point: its application/index.ts file.
