@@ -29,6 +29,7 @@ const env: NodeJS.ProcessEnv = {
 const pool = {} as unknown as Pool;
 const uow = new FakeUnitOfWorkFactory();
 const queue = new InMemoryJobQueue();
+const noAlerts = { jobAlert: () => Promise.resolve(null) };
 
 describe("module wiring", () => {
   it("uses local disk and Mailpit by default, Dropbox and SMTP2GO when configured", () => {
@@ -60,10 +61,12 @@ describe("module wiring", () => {
       media: buildMedia(local, pool, uow, queue),
       logger: new RecordingLogger(),
     });
-    const notifications = buildNotifications(local, pool, submissions);
+    const notifications = buildNotifications(local, pool, submissions, noAlerts);
     expect(notifications.sender).toBeInstanceOf(MailpitEmailSender);
     expect(notifications.renderer).toBe(emailTemplates);
-    expect(buildNotifications(remote, pool, submissions).sender).toBeInstanceOf(Smtp2goEmailSender);
+    expect(buildNotifications(remote, pool, submissions, noAlerts).sender).toBeInstanceOf(
+      Smtp2goEmailSender,
+    );
   });
 
   it("keeps staging local and shares one unit of work, queue and registry across the modules", () => {

@@ -21,6 +21,7 @@ const productionAdapters = {
   DROPBOX_REFRESH_TOKEN: "r",
   EMAIL_PROVIDER: "smtp2go",
   SMTP2GO_API_KEY: "api",
+  ALERT_EMAIL: "alerts@example.com",
 };
 
 describe("loadConfig", () => {
@@ -238,6 +239,28 @@ describe("media and email configuration", () => {
         DROPBOX_REFRESH_TOKEN: "r",
       }),
     ).toThrow(/EMAIL_PROVIDER/);
+  });
+
+  it("reads ALERT_EMAIL and requires it in production", () => {
+    expect(loadConfig(base).alertEmail).toBeNull();
+    expect(loadConfig({ ...base, ALERT_EMAIL: "" }).alertEmail).toBeNull();
+    expect(loadConfig({ ...base, ALERT_EMAIL: "alerts@example.com" }).alertEmail).toBe(
+      "alerts@example.com",
+    );
+    expect(() => loadConfig({ ...base, ALERT_EMAIL: "not-an-address" })).toThrow(/ALERT_EMAIL/);
+    const prod: NodeJS.ProcessEnv = {
+      ...base,
+      ...productionAdapters,
+      ALERT_EMAIL: undefined,
+      NODE_ENV: "production",
+      PUBLIC_BASE_URL: "https://forms.example.com",
+    };
+    expect(() => loadConfig(prod)).toThrow(
+      "Invalid configuration: ALERT_EMAIL is required in production",
+    );
+    expect(loadConfig({ ...prod, ALERT_EMAIL: "alerts@example.com" }).alertEmail).toBe(
+      "alerts@example.com",
+    );
   });
 
   it("treats the blank values of .env.example as unset", () => {

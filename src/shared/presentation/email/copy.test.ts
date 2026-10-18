@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { specTableRows } from "../testing/spec-copy";
-import { confirmationParts, fillTemplate, staffParts } from "./copy";
+import { alertParts, confirmationParts, fillTemplate, staffParts } from "./copy";
 
 describe("email copy", () => {
   it("matches the confirmation email's fixed parts in renderer.md, both languages", () => {
@@ -13,6 +13,11 @@ describe("email copy", () => {
   it("matches the staff notification's fixed parts in email.md", () => {
     const rows = specTableRows("specs/system/email.md", "Staff notification, fixed parts");
     expect(Object.fromEntries([...rows].map(([k, [en]]) => [k, en]))).toEqual(staffParts);
+  });
+
+  it("matches the Job alert fixed parts", () => {
+    const rows = specTableRows("specs/system/email.md", "Job alert, fixed parts");
+    expect(Object.fromEntries([...rows].map(([k, [en]]) => [k, en]))).toEqual(alertParts);
   });
 
   it("fills placeholders with spaces in their names and leaves unknown ones", () => {

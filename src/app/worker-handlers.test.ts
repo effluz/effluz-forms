@@ -45,6 +45,7 @@ describe("workerHandlers", () => {
       submissions: makeSubmissionsDeps(),
     });
     expect(Object.keys(handlers).sort()).toEqual([
+      "email.job_alert",
       "email.staff_notification",
       "email.submitter_confirmation",
       "identity.cleanup",

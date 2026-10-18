@@ -8,6 +8,7 @@ import {
 } from "@/modules/media/application";
 import {
   EMAIL_JOB_TYPES,
+  createJobAlertHandler,
   createStaffNotificationHandler,
   createSubmitterConfirmationHandler,
   type NotificationsDeps,
@@ -65,5 +66,6 @@ export function workerHandlers(input: {
       input.notifications,
     ),
     [EMAIL_JOB_TYPES.staffNotification]: createStaffNotificationHandler(input.notifications),
+    [EMAIL_JOB_TYPES.jobAlert]: createJobAlertHandler(input.notifications),
   };
 }

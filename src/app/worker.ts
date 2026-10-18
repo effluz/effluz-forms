@@ -38,7 +38,10 @@ function main(): void {
   );
   const media = buildMedia(config, pool, uow, queue);
   const submissions = buildSubmissions({ pool, uow, queue, definitions, media, logger });
-  const notifications = buildNotifications(config, pool, submissions);
+  const notifications = buildNotifications(config, pool, submissions, {
+    // Review implements the real source (Task 19); until then there is nothing to alert about.
+    jobAlert: () => Promise.resolve(null),
+  });
   const worker = new Worker(
     { store, queue, uow, clock: systemClock, logger },
     {

@@ -77,6 +77,7 @@ const production = loadConfig({
   DROPBOX_REFRESH_TOKEN: "r",
   EMAIL_PROVIDER: "smtp2go",
   SMTP2GO_API_KEY: "api",
+  ALERT_EMAIL: "alerts@example.com",
 });
 
 const OPTIONS = {

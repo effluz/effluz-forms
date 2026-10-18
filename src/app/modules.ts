@@ -10,7 +10,7 @@ import { FileTypeSniffer } from "@/modules/media/infrastructure/file-type-sniffe
 import { LocalDiskStorage } from "@/modules/media/infrastructure/local-disk-storage";
 import { PgMediaRepository } from "@/modules/media/infrastructure/pg-media-repository";
 import { SharpImageEncoder } from "@/modules/media/infrastructure/sharp-image-encoder";
-import type { NotificationsDeps } from "@/modules/notifications/application";
+import type { AlertSource, NotificationsDeps } from "@/modules/notifications/application";
 import { MailpitEmailSender } from "@/modules/notifications/infrastructure/mailpit-email-sender";
 import { PgDeliveryLog } from "@/modules/notifications/infrastructure/pg-delivery-log";
 import { Smtp2goEmailSender } from "@/modules/notifications/infrastructure/smtp2go-email-sender";
@@ -114,11 +114,12 @@ export function buildSubmissions(input: {
   };
 }
 
-/** Notifications: the email provider from the config, the shared templates, submissions as the message source. */
+/** Notifications: the email provider from the config, the shared templates, submissions as the message source, `alerts` for dead-job alerts. */
 export function buildNotifications(
   config: AppConfig,
   pool: Pool,
   submissions: SubmissionsDeps,
+  alerts: AlertSource,
 ): NotificationsDeps {
   const { email } = config;
   return {
@@ -140,6 +141,7 @@ export function buildNotifications(
       publicBaseUrl: config.publicBaseUrl,
       privacyContact: config.privacyContactEmail,
     }),
+    alerts,
     deliveries: new PgDeliveryLog(pool),
   };
 }
