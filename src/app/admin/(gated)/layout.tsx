@@ -1,10 +1,11 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { getContainer } from "@/app/container";
 import { currentSession } from "@/modules/identity/application";
 import { signInPath } from "@/modules/identity/presentation/http";
 import { ManagerShell } from "@/shared/presentation/ManagerShell";
+import { SECTION_HEADER, sectionFromHeader } from "@/shared/presentation/sections";
 
 /**
  * Lets this segment block on the session read: with Cache Components a top-level
@@ -25,11 +26,15 @@ export default async function GatedLayout({ children }: { children: ReactNode })
   const current = await currentSession(container.identity, { sessionId, meta: { ip: null } });
   // src/proxy.ts already redirected with the real request path; this is the second line.
   if (current.state !== "active") redirect(signInPath("/admin"));
-  // A layout does not know the request path, so it cannot tell which section is
-  // current. Forms is the only section with pages today; when Operations and Audit
-  // ship, give each its own layout (or pass the section down) instead of this constant.
+  // A layout does not know the request path, so the proxy names the section in a header
+  // (src/proxy.ts); a missing or unknown value reads as Forms.
+  const section = sectionFromHeader((await headers()).get(SECTION_HEADER));
   return (
-    <ManagerShell name={current.session.name} csrfToken={current.session.csrfToken} current="forms">
+    <ManagerShell
+      name={current.session.name}
+      csrfToken={current.session.csrfToken}
+      current={section}
+    >
       {children}
     </ManagerShell>
   );

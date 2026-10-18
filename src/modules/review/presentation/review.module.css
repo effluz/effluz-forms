@@ -157,6 +157,242 @@
   color: #1a1423;
 }
 
+/* The day list and the waiting list: one bordered card of rows; color.surface.card, radius.md. */
+.weekList {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  /* color.border.default, radius.md */
+  border: 1px solid #eff0f5;
+  border-radius: 12px;
+  /* color.surface.card */
+  background: #ffffff;
+  list-style: none;
+}
+
+.weekList > li:last-child {
+  border-bottom: 0;
+}
+
+/* The day on the left: weekday and date at font.weight.medium; a fixed share once side by side. */
+.weekDay {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 500;
+}
+
+@media (min-width: 768px) {
+  /* breakpoint.md */
+  .weekDay {
+    flex: 0 0 240px;
+  }
+}
+
+/* The word "Today": color.text.default (inherited from the row), font.weight.semibold. */
+.todayMark {
+  font-weight: 600;
+}
+
+/* The day's content on the right: space.3 between its blocks. */
+.weekContent {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* One story in a row: reference and label, the form, the summary, the checks; space.2 gaps. */
+.planStory {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.storyHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.storyRef {
+  font-weight: 500;
+}
+
+/* The form's name: color.text.muted (4.69:1 on surface.selected), font.size.staff.small. */
+.storyForm {
+  margin: 0;
+  color: #774c60;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* "Ready" or "Not ready: n of 3 done" above the checks. */
+.checkSummary {
+  margin: 0;
+  font-weight: 500;
+}
+
+/* Published stories of a day: space.2 between them. */
+.publishedList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.publishedItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  overflow-wrap: anywhere;
+}
+
+/* The outward icon of an external link, 16 px (components.md, "Link"). */
+.externalIcon {
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  vertical-align: -2px;
+}
+
+/* A day with nothing: color.text.muted (4.69:1 on surface.selected). */
+.emptyDay {
+  margin: 0;
+  color: #774c60;
+}
+
+/* The week's navigation: the week's name, then three secondary buttons; space.3 gap. */
+.weekNav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 0 0 16px;
+}
+
+.weekTitle {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* A section of the page under the week: space.5 above, space.3 below its heading. */
+.planSection {
+  margin: 32px 0 0;
+}
+
+.planHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin: 0 0 12px;
+}
+
+.planHeading h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* "Choose a story for <date>": a card on surface.selected with a border, so it stands out. */
+.pickNotice {
+  margin: 0 0 12px;
+  padding: 12px 16px;
+  /* color.action.primary.bg, radius.md, color.surface.selected, color.text.default */
+  border: 1px solid #372549;
+  border-radius: 12px;
+  background: #eacdc2;
+  color: #1a1423;
+  font-weight: 500;
+}
+
+.pickNotice [lang="es"] {
+  color: inherit;
+}
+
+/* Operations: a card per block; color.surface.card, color.border.default, radius.md, space.4. */
+.opsCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 24px;
+  padding: 16px;
+  border: 1px solid #eff0f5;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.opsCard h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* The heartbeat's age and its status word: the words carry the state beside the badge colour. */
+.heartbeatLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* One dead job's controls: Retry, then Discard with its reason; space.2 gaps. */
+.rowActions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 220px;
+}
+
+.rowForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+/* A refused discard's message under its input: color.text.error (6.6:1 on cards); the words carry it. */
+.fieldError {
+  margin: 0;
+  color: #9b1c1c;
+  font-weight: 500;
+}
+
+.fieldError [lang="es"] {
+  color: inherit;
+}
+
+/* "Retry all of type" buttons above the table: space.3 gap. */
+.bulkActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.bulkActions form {
+  margin: 0;
+}
+
+/* The last error: the scrubbed text, long words wrapped. */
+.errorText {
+  overflow-wrap: anywhere;
+}
+
 /* Submissions list: the tab body, space.5 between its blocks. */
 .list {
   display: flex;

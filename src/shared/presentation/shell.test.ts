@@ -48,7 +48,7 @@ describe("metadata", () => {
 });
 
 describe("ManagerShell", () => {
-  const render = (current: "forms" | "operations" | "audit") =>
+  const render = (current: "forms" | "plan" | "operations" | "audit") =>
     renderToStaticMarkup(
       createElement(ManagerShell, {
         name: "Staff <Member>",
@@ -75,23 +75,45 @@ describe("ManagerShell", () => {
     expect(html).toMatch(/<a [^>]*href="\/admin\/forms"[^>]*>Effluz<\/a>/);
   });
 
-  it("links Forms and marks the current section; Operations and Audit are disabled until they exist", () => {
+  it("links Forms and marks the current section", () => {
     const forms = tags(html, /<a [^>]*>Forms<span/g);
     expect(forms.length).toBeGreaterThan(0);
     for (const tag of forms) {
       expect(tag).toContain('href="/admin/forms"');
       expect(tag).toContain('aria-current="page"');
     }
-    for (const label of ["Operations", "Audit"]) {
-      const links = tags(html, new RegExp(`<a [^>]*>${label}<span`, "g"));
-      expect(links.length).toBeGreaterThan(0);
-      for (const tag of links) {
-        expect(tag).toContain('aria-disabled="true"');
-        expect(tag).not.toContain("href=");
+    expect(count(html, /aria-current="page"/g)).toBe(forms.length);
+  });
+
+  it("links Post plan and Operations, and keeps Audit disabled", () => {
+    const links = (label: string, source = html) =>
+      tags(source, new RegExp(`<a [^>]*>${label}<span`, "g"));
+    for (const [label, href] of [
+      ["Post plan", "/admin/plan"],
+      ["Operations", "/admin/operations"],
+    ] as const) {
+      expect(links(label).length).toBeGreaterThan(0);
+      for (const tag of links(label)) {
+        expect(tag).toContain(`href="${href}"`);
         expect(tag).not.toContain("aria-current");
+        expect(tag).not.toContain("aria-disabled");
       }
     }
-    expect(count(html, /aria-current="page"/g)).toBe(forms.length);
+    expect(links("Audit").length).toBeGreaterThan(0);
+    for (const tag of links("Audit")) {
+      expect(tag).toContain('aria-disabled="true"');
+      expect(tag).not.toContain("href=");
+      expect(tag).not.toContain("aria-current");
+    }
+    // Only the current section carries aria-current.
+    for (const [section, label] of [
+      ["plan", "Post plan"],
+      ["operations", "Operations"],
+    ] as const) {
+      const current = render(section);
+      for (const tag of links(label, current)) expect(tag).toContain('aria-current="page"');
+      for (const tag of links("Forms", current)) expect(tag).not.toContain("aria-current");
+    }
   });
 
   it("collapses the navigation into a disclosure for narrow screens, without JavaScript", () => {

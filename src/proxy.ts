@@ -3,6 +3,7 @@ import { getContainer } from "@/app/container";
 import { currentSession } from "@/modules/identity/application";
 import { clientIp, ERROR_PATH, signInPath } from "@/modules/identity/presentation/http";
 import { rendererCsp } from "@/modules/submissions/presentation/csp";
+import { SECTION_HEADER, sectionOf } from "@/shared/presentation/sections";
 import type { Logger } from "@/shared/application/ports/logger";
 import { createLogger } from "@/shared/infrastructure/logging/logger";
 
@@ -33,7 +34,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       sessionId,
       meta: { ip: clientIp(request.headers) },
     });
-    if (current.state === "active") return NextResponse.next();
+    if (current.state === "active") return withSection(request, pathname);
     return NextResponse.redirect(
       new URL(signInPath(returnPath(method, pathname, search)), container.config.publicBaseUrl),
       302,
@@ -47,6 +48,17 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.redirect(new URL(ERROR_PATH, publicBaseUrl ?? request.url), 302);
   }
+}
+
+/**
+ * Lets an admin request through with the manager section of its path on the forwarded
+ * request, which the gated layout reads to mark the current navigation item (a layout cannot
+ * see its path). Set, not appended, so a value the client sent never survives.
+ */
+function withSection(request: NextRequest, pathname: string): NextResponse {
+  const headers = new Headers(request.headers);
+  headers.set(SECTION_HEADER, sectionOf(pathname));
+  return NextResponse.next({ request: { headers } });
 }
 
 /**

@@ -430,7 +430,11 @@ export const reviewCopy = {
     en: "The job will run again shortly.",
     es: "El trabajo se ejecutará de nuevo en breve.",
   },
-  "ops.retried_all": {
+  "ops.retried_all_one": {
+    en: "{count} job will run again shortly.",
+    es: "{count} trabajo se ejecutará de nuevo en breve.",
+  },
+  "ops.retried_all_other": {
     en: "{count} jobs will run again shortly.",
     es: "{count} trabajos se ejecutarán de nuevo en breve.",
   },

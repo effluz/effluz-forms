@@ -41,7 +41,10 @@ two from 768, single column with full-screen panels below.
 First pass: Audit appears in the navigation as a disabled link
 (`aria-disabled`, no `href`) until its page exists. The current section is
 marked `aria-current="page"` from the request path, which the proxy passes to
-the gated layout. There is no language
+the gated layout in the `x-effluz-section` request header (`forms`, `plan`,
+`operations` or `audit`, set for every `/admin` request it lets through and
+overwriting any value the client sent); a missing or unknown value reads as
+Forms. There is no language
 preference yet, so every string shows English with the Spanish line beneath
 it, marked `lang="es"`; identical text shows once. The language menu and the
 keyboard shortcuts entry wait for the manager's first client component.
@@ -392,8 +395,14 @@ forms with the post-plan setting on, which share the one plan; with none,
   Published stories of that day show "Published" and, when a link exists,
   "Open the post". An empty day shows "Pick a story" (today and later) or
   "Nothing planned" (past days).
+- Days are `<li>` items of one list; today's carries `aria-current="date"`
+  besides the word. Stories link to their page; a published story's post link
+  opens in a new tab with the outward icon. A day with only published stories
+  is not empty: it shows them and no "Pick a story".
 - "Pick a story" opens `?pick=<date>`, which shows "Choose a story for <date>"
-  above Waiting for a date, each row with "Plan for <date>". Any valid date can
+  above Waiting for a date, each row with "Plan for <date>", a plain form posting `date`, `week` (the
+  Monday shown) and `return=plan` to the story's `plan` route, which then
+  answers 303 back to this page. Any valid date can
   be planned, past ones included, so staff can backfill.
 - **Waiting for a date**: unpublished, unplanned stories of post-plan forms,
   newest first, at most 50, with the total count.
@@ -413,6 +422,12 @@ First pass. The page shows:
   and Discard with reason for each row; "Retry all of type" when more than one
   dead job shares a type. The reason is 1 to 200 characters. An empty table
   says `ops.none_dead`.
+
+A done change shows a status banner (`ops.retried`, `ops.retried_all_one` or
+`_other` by the count, `ops.discarded`). A refused discard shows `ops.err_reason`
+under that row's reason input (`aria-invalid`, linked with `aria-describedby`),
+or as a banner when the job is no longer listed. Times show in the Panama zone
+with UTC beneath.
 
 The other cards (pending jobs, oldest pending, last backup, staging size) and
 the link to the runbooks are later. Retry sets a dead job back to pending; it
@@ -938,7 +953,8 @@ used, so such rows are split (`pub.unmark_viewed` and `pub.unmark_edited`).
 | ops.no_story | No story | Sin historia |
 | ops.err_reason | Write why you are discarding it, in at most 200 characters. | Escribe por qué lo descartas, en 200 caracteres como máximo. |
 | ops.retried | The job will run again shortly. | El trabajo se ejecutará de nuevo en breve. |
-| ops.retried_all | {count} jobs will run again shortly. | {count} trabajos se ejecutarán de nuevo en breve. |
+| ops.retried_all_one | {count} job will run again shortly. | {count} trabajo se ejecutará de nuevo en breve. |
+| ops.retried_all_other | {count} jobs will run again shortly. | {count} trabajos se ejecutarán de nuevo en breve. |
 | ops.discarded | The job was discarded. | El trabajo se descartó. |
 | au.title | Audit log | Registro de auditoría |
 | au.actor | Who | Quién |

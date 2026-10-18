@@ -89,6 +89,32 @@ describe("admin proxy gate on Postgres", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it("forwards the section of the path and overwrites a client value", async () => {
+    const sessionId = randomUUID();
+    const now = systemClock.now();
+    await new PgUnitOfWorkFactory(pool).run((uow) =>
+      new PgSessionRepository(pool).create(uow, {
+        id: sessionId,
+        email: "staff.member@effluz.com",
+        name: "Staff Member",
+        csrfToken: "csrf-1",
+        createdAt: now,
+        lastSeenAt: now,
+      }),
+    );
+    const section = async (path: string, clientValue?: string): Promise<string | null> => {
+      const headers = new Headers({ cookie: `${COOKIE}=${sessionId}` });
+      if (clientValue !== undefined) headers.set("x-effluz-section", clientValue);
+      const res = await proxy(new NextRequest(`${BASE}${path}`, { headers }));
+      expect(res.headers.get("x-middleware-next")).toBe("1");
+      return res.headers.get("x-middleware-request-x-effluz-section");
+    };
+    expect(await section("/admin/plan", "operations")).toBe("plan");
+    expect(await section("/admin/operations?x=1", "plan")).toBe("operations");
+    expect(await section("/admin/forms/1/submissions/HP-0001")).toBe("forms");
+    expect(await section("/admin/planner", "plan")).toBe("forms");
+  });
+
   it("redirects a well-formed but unknown session id to sign-in", async () => {
     const res = await proxy(request(`${COOKIE}=${randomUUID()}`));
     expect(res.status).toBe(302);
