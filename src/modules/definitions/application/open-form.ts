@@ -7,6 +7,7 @@ import {
   type LifecycleAction,
 } from "../domain/form";
 import { publicUrl, type Actor, type DefinitionsDeps } from "./deps";
+import { laterPhotosCovered } from "./public-form";
 import type { SubmissionSummary } from "./ports/submission-stats";
 
 export interface FormOverview {
@@ -18,6 +19,8 @@ export interface FormOverview {
   closingInDays: number | null;
   canDelete: boolean;
   allowedActions: LifecycleAction[];
+  /** The current version's consent text covers photos sent later (consent item 10). */
+  laterPhotosCovered: boolean;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -52,9 +55,10 @@ export async function openForm(
   const now = deps.clock.now();
   await deps.uow.run((uow) => deps.forms.markOpened(uow, form.id, actor.email, now));
 
-  const [summaries, hasSubmissions] = await Promise.all([
+  const [summaries, hasSubmissions, photosCovered] = await Promise.all([
     deps.stats.summary([form.id]),
     deps.stats.hasAny(form.id),
+    laterPhotosCovered(deps, form),
   ]);
   const everPublished = form.currentVersionId !== null;
   return {
@@ -67,5 +71,6 @@ export async function openForm(
     allowedActions: LIFECYCLE_ACTIONS.filter(
       (action) => nextStatus(form.status, action, { everPublished }) !== null,
     ),
+    laterPhotosCovered: photosCovered,
   };
 }

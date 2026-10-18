@@ -1,7 +1,52 @@
 import { describe, expect, it } from "vitest";
+import {
+  buildDefaultRegistry,
+  conditionalConsentItems,
+  consentItems,
+  parseDraft,
+  type Version,
+} from "@/shared/domain/form-model";
 import type { FormStatus } from "../domain/form";
 import { openForm } from "./open-form";
-import { EDITOR, fakeUuid, makeDefinitionsDeps, seedForm } from "./testing/fakes";
+import {
+  EDITOR,
+  fakeUuid,
+  makeDefinitionsDeps,
+  publishAgain,
+  seedForm,
+  seedPublished,
+} from "./testing/fakes";
+
+const registry = buildDefaultRegistry();
+
+/** A publishable English document with a consent field covering `coveredItems`. */
+function consentDocument(coveredItems: readonly string[]): Version {
+  const parsed = parseDraft(
+    {
+      languages: "en",
+      title: { en: "Stories" },
+      confirmation: { screen: { en: "Thanks" } },
+      pages: [
+        {
+          key: "page_one",
+          fields: [
+            { key: "f_name", type: "short_text", label: { en: "Name" } },
+            {
+              key: "f_consent",
+              type: "consent",
+              label: { en: "Consent" },
+              required: true,
+              settings: { text: { en: "I agree." }, coveredItems },
+            },
+          ],
+        },
+      ],
+    },
+    registry,
+  );
+  if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues));
+  return parsed.version;
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -35,6 +80,21 @@ describe("openForm", () => {
       lastReceivedAt: new Date("2026-10-09T10:00:00Z"),
     });
     expect(overview?.reachability).toEqual({ reachable: false, reason: "draft" });
+  });
+
+  it("reports whether the current version covers photos sent later", async () => {
+    const deps = makeDefinitionsDeps();
+    const unpublished = await seedForm(deps, { slug: "never-published" });
+    expect((await openForm(deps, EDITOR, unpublished))?.laterPhotosCovered).toBe(false);
+
+    const { formId } = await seedPublished(deps, {
+      slug: "photo-stories",
+      document: consentDocument(consentItems),
+    });
+    expect((await openForm(deps, EDITOR, formId))?.laterPhotosCovered).toBe(false);
+
+    publishAgain(deps, formId, consentDocument([...consentItems, ...conditionalConsentItems]));
+    expect((await openForm(deps, EDITOR, formId))?.laterPhotosCovered).toBe(true);
   });
 
   it("reports closingInDays when the close date is within seven days", async () => {

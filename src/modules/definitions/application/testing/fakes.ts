@@ -177,6 +177,14 @@ export class InMemoryFormRepository implements FormRepository {
     return Promise.resolve(found.map((form) => structuredClone(form)));
   }
 
+  listUsingPostPlan(): Promise<Form[]> {
+    const sortKey = (form: Form): string => (form.title.en ?? form.title.es ?? "").toLowerCase();
+    const found = [...this.store.forms.values()]
+      .filter((form) => form.settings.usePostPlan)
+      .sort((a, b) => compare(sortKey(a), sortKey(b)) || compare(a.slug, b.slug));
+    return Promise.resolve(found.map((form) => structuredClone(form)));
+  }
+
   counts(): Promise<Record<FormTab, number>> {
     const counts: Record<FormTab, number> = { active: 0, closed: 0, archived: 0 };
     for (const form of this.store.forms.values()) counts[tabOf(form.status)] += 1;
@@ -289,6 +297,13 @@ export class InMemoryVersionRepository implements VersionRepository {
     const currentId = this.store.forms.get(formId)?.currentVersionId;
     const version = currentId ? this.store.versions.get(currentId) : undefined;
     return Promise.resolve(version ? structuredClone(version) : null);
+  }
+
+  listByForm(formId: string): Promise<FormVersion[]> {
+    const found = [...this.store.versions.values()]
+      .filter((version) => version.formId === formId)
+      .sort((a, b) => a.number - b.number);
+    return Promise.resolve(found.map((version) => structuredClone(version)));
   }
 
   latestNumber(formId: string): Promise<number> {

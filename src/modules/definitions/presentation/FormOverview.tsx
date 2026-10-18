@@ -75,7 +75,8 @@ export function FormOverview(props: {
   dialog?: OverviewDialog;
   /** A refusal sent back by the lifecycle or delete route with `?error=`. */
   error?: OverviewError;
-  children: ReactNode;
+  /** The current tab's body; the Submissions list is not built yet, so its page passes none. */
+  children?: ReactNode;
 }) {
   const { overview, tab } = props;
   const { form } = overview;
@@ -121,7 +122,7 @@ export function FormOverview(props: {
           label: <Bilingual k={TAB_COPY[item]} />,
           href: tabHref(form.id, item),
           current: item === tab,
-          // Submission review has no page yet; the overview shows a placeholder.
+          // The Submissions list is not built yet, so the tab is shown, not linked.
           disabled: item === "submissions",
         }))}
       />
@@ -316,19 +317,5 @@ function Moment({ iso, timezone }: { iso: string; timezone: string }) {
         </>
       )}
     </span>
-  );
-}
-
-/**
- * The Submissions tab until review exists: the count received so far. See
- * specs/ui-ux/manager.md, "Form overview".
- */
-export function SubmissionsPlaceholder({ total }: { total: number }) {
-  return (
-    <div className={menu.empty}>
-      <p>
-        <Bilingual k="form.submissions_soon" vars={{ count: String(total) }} />
-      </p>
-    </div>
   );
 }

@@ -33,6 +33,8 @@ export interface SettingsFormProps {
   error?: SettingsError;
   retentionConfirm?: { count: number; months: number };
   saved?: boolean;
+  /** The form's current version covers consent item 10; the post-plan notice shows only without it. */
+  laterPhotosCovered: boolean;
 }
 
 type Field =
@@ -46,6 +48,7 @@ type Field =
   | "closes"
   | "challenge"
   | "another"
+  | "post_plan"
   | "slug";
 
 /** The field each setting key's issues are shown on. */
@@ -60,6 +63,7 @@ const FIELD_OF_KEY: Record<string, Field> = {
   closesAt: "closes",
   botChallenge: "challenge",
   allowAnotherResponse: "another",
+  usePostPlan: "post_plan",
 };
 
 /** The field a refused save is shown on; `stale` has none. */
@@ -92,7 +96,7 @@ const id = (field: Field | "form", suffix?: string) =>
   suffix === undefined ? `settings-${field}` : `settings-${field}-${suffix}`;
 
 /**
- * The Settings tab body: one form in six sections, saved with one button.
+ * The Settings tab body: one form in seven sections, saved with one button.
  * Each issue sits under its field, which is marked invalid and described by
  * it. A server component: it works without JavaScript.
  * See specs/ui-ux/manager.md, "Settings tab".
@@ -130,6 +134,7 @@ export function SettingsForm(props: SettingsFormProps) {
   );
 
   const cadenceInvalid = errorsOn("cadence").length > 0;
+  const postPlanNotice = values.usePostPlan && !props.laterPhotosCovered;
   const zones = props.timezones.includes(values.timezone)
     ? props.timezones
     : [values.timezone, ...props.timezones];
@@ -380,6 +385,34 @@ export function SettingsForm(props: SettingsFormProps) {
             </label>
             {errorRows("another")}
           </div>
+        </Section>
+
+        <Section k="set.post_plan_section">
+          <div className={styles.field}>
+            <label className={own.check}>
+              <input
+                type="checkbox"
+                name={FIELD.usePostPlan}
+                defaultChecked={values.usePostPlan}
+                {...aria("post_plan", [
+                  id("post_plan", "hint"),
+                  ...(postPlanNotice ? [id("post_plan", "notice")] : []),
+                ])}
+              />
+              <span>
+                <Bilingual k="set.post_plan" />
+              </span>
+            </label>
+            {errorRows("post_plan")}
+            {hint("post_plan", "set.post_plan_hint")}
+          </div>
+          {postPlanNotice ? (
+            <Banner tone="warning">
+              <p id={id("post_plan", "notice")} className={own.warnText}>
+                <Bilingual k="set.post_plan_notice" />
+              </p>
+            </Banner>
+          ) : null}
         </Section>
 
         <Section k="set.link">

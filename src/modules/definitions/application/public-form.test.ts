@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { buildDefaultRegistry, parseDraft, type Version } from "@/shared/domain/form-model";
-import { allocateReference, loadVersion, resolvePublicForm } from "./public-form";
+import {
+  allocateReference,
+  listPostPlanForms,
+  listVersions,
+  loadVersion,
+  resolvePublicForm,
+} from "./public-form";
 import { makeDefinitionsDeps, publishAgain, seedPublished } from "./testing/fakes";
 
 const registry = buildDefaultRegistry();
@@ -24,6 +30,42 @@ function document(title = "Stories"): Version {
   if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues));
   return parsed.version;
 }
+
+describe("listVersions", () => {
+  it("lists a form's versions oldest first", async () => {
+    const deps = makeDefinitionsDeps();
+    const { formId } = await seedPublished(deps, { slug: "twice", document: document() });
+    publishAgain(deps, formId, document("Stories, second edition"));
+    const other = await seedPublished(deps, { slug: "other", document: document("Other") });
+
+    const versions = await listVersions(deps, formId);
+    expect(versions.map((version) => version.number)).toEqual([1, 2]);
+    expect(versions.every((version) => version.formId === formId)).toBe(true);
+    expect((await listVersions(deps, other.formId)).map((version) => version.number)).toEqual([1]);
+    expect(await listVersions(deps, "not-a-uuid")).toEqual([]);
+  });
+});
+
+describe("listPostPlanForms", () => {
+  it("lists the forms that use the post plan, any status, ordered by title", async () => {
+    const deps = makeDefinitionsDeps();
+    await seedPublished(deps, {
+      slug: "zeta",
+      document: document("Zeta stories"),
+      settings: { usePostPlan: true },
+    });
+    await seedPublished(deps, {
+      slug: "alpha",
+      document: document("Alpha stories"),
+      settings: { usePostPlan: true },
+      status: "archived",
+    });
+    await seedPublished(deps, { slug: "plain", document: document("Plain stories") });
+
+    const forms = await listPostPlanForms(deps);
+    expect(forms.map((form) => form.slug)).toEqual(["alpha", "zeta"]);
+  });
+});
 
 describe("resolvePublicForm", () => {
   it("returns the current version of an open form, and the state otherwise", async () => {

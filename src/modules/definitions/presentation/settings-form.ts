@@ -13,7 +13,7 @@ import { isTimeZone, type SettingsCode, type SettingsIssue } from "../domain/set
 /** Every zone the runtime knows, offered by the time zone select; computed once. */
 export const TIMEZONES: readonly string[] = ["UTC", ...Intl.supportedValuesOf("timeZone")];
 
-/** The Settings fields as the form shows and posts them: text, except the two toggles. */
+/** The Settings fields as the form shows and posts them: text, except the toggles. */
 export interface SettingsValues {
   /** One address per line. */
   recipients: string;
@@ -27,6 +27,7 @@ export interface SettingsValues {
   closesAt: string;
   botChallenge: boolean;
   allowAnotherResponse: boolean;
+  usePostPlan: boolean;
   slug: string;
 }
 
@@ -73,6 +74,7 @@ export const FIELD = {
   closesAt: "closesAt",
   botChallenge: "botChallenge",
   allowAnotherResponse: "allowAnotherResponse",
+  usePostPlan: "usePostPlan",
   slug: "slug",
   confirm: "confirmRetentionPurge",
 } as const;
@@ -93,6 +95,7 @@ export function settingsValues(form: Form): SettingsValues {
     closesAt: local(s.closesAt),
     botChallenge: s.botChallenge,
     allowAnotherResponse: s.allowAnotherResponse,
+    usePostPlan: s.usePostPlan,
     slug: form.slug,
   };
 }
@@ -110,6 +113,7 @@ export function readSettingsValues(form: FormData): SettingsValues {
     closesAt: text(form, FIELD.closesAt),
     botChallenge: form.has(FIELD.botChallenge),
     allowAnotherResponse: form.has(FIELD.allowAnotherResponse),
+    usePostPlan: form.has(FIELD.usePostPlan),
     slug: text(form, FIELD.slug),
   };
 }
@@ -144,6 +148,7 @@ export function parseSettingsForm(
   }
   settings.botChallenge = v.botChallenge;
   settings.allowAnotherResponse = v.allowAnotherResponse;
+  settings.usePostPlan = v.usePostPlan;
   return {
     settings,
     slug: form.has(FIELD.slug) ? v.slug.trim() : undefined,
@@ -288,6 +293,7 @@ const stateSchema = z.object({
       closesAt: z.string(),
       botChallenge: z.boolean(),
       allowAnotherResponse: z.boolean(),
+      usePostPlan: z.boolean(),
       slug: z.string(),
     })
     .optional(),

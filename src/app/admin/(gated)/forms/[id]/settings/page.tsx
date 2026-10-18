@@ -44,6 +44,7 @@ export default async function SettingsPage(props: { params: Params; searchParams
         form={overview.form}
         csrfToken={session.csrfToken}
         hasSubmissions={overview.summary.total > 0}
+        laterPhotosCovered={overview.laterPhotosCovered}
         timezones={TIMEZONES}
         action={saveSettings.bind(null, id)}
         saved={state === null && one(query.saved) !== undefined}

@@ -120,10 +120,6 @@ export const copy = {
     en: "This form can no longer be deleted because it was published or has submissions. Archive it instead.",
     es: "Este formulario ya no se puede eliminar porque se publicó o tiene respuestas. Archívalo en su lugar.",
   },
-  "form.submissions_soon": {
-    en: "Submission review is coming soon. Received so far: {count}.",
-    es: "La revisión de respuestas llegará pronto. Recibidas hasta ahora: {count}.",
-  },
   "set.notifications": { en: "Notifications", es: "Notificaciones" },
   "set.recipients": { en: "Recipients", es: "Destinatarios" },
   "set.recipients_hint": { en: "Only Effluz addresses", es: "Solo correos de Effluz" },

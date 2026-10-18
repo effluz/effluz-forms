@@ -3,12 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { FormOverview as Overview } from "../application";
 import { BuilderPlaceholder } from "./BuilderPlaceholder";
-import {
-  FormOverview,
-  overviewDialog,
-  overviewError,
-  SubmissionsPlaceholder,
-} from "./FormOverview";
+import { FormOverview, overviewDialog, overviewError } from "./FormOverview";
 import { LifecycleDialog } from "./LifecycleDialog";
 
 const ID = "00000001-0000-4000-8000-000000000001";
@@ -33,6 +28,7 @@ function overview(patch: Partial<Overview> = {}, form: Partial<Overview["form"]>
         closesAt: "2026-10-13T04:59:00.000Z",
         botChallenge: false,
         allowAnotherResponse: false,
+        usePostPlan: false,
       },
       currentVersionId: "00000009-0000-4000-8000-000000000009",
       currentVersionNumber: 2,
@@ -47,6 +43,7 @@ function overview(patch: Partial<Overview> = {}, form: Partial<Overview["form"]>
     closingInDays: 3,
     canDelete: false,
     allowedActions: ["close", "archive"],
+    laterPhotosCovered: false,
     ...patch,
   };
 }
@@ -239,13 +236,6 @@ describe("FormOverview", () => {
     });
     expect(mismatch).toContain("The link name did not match. Nothing was deleted.");
     expect(mismatch).toContain('role="dialog"');
-  });
-});
-
-describe("SubmissionsPlaceholder", () => {
-  it("says review is coming and gives the count received", () => {
-    const html = renderToStaticMarkup(createElement(SubmissionsPlaceholder, { total: 4 }));
-    expect(html).toContain("Submission review is coming soon. Received so far: 4.");
   });
 });
 

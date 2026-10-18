@@ -119,6 +119,24 @@ describe("PgVersionRepository", () => {
     expect(await repo.findById(v1.id)).toEqual(v1);
   });
 
+  it("lists a form's versions oldest first, none for a malformed id", async () => {
+    const form = await aForm();
+    const other = await aForm();
+    const [v1, v2, v3] = [1, 2, 3].map((n) => sampleVersion(form.id, n));
+    if (!v1 || !v2 || !v3) throw new Error("sample versions missing");
+    const elsewhere = sampleVersion(other.id, 1);
+    await uowf.run(async (uow) => {
+      // Inserted out of order: the listing orders by number, not by insertion.
+      await repo.insert(uow, v2);
+      await repo.insert(uow, v3);
+      await repo.insert(uow, v1);
+      await repo.insert(uow, elsewhere);
+    });
+    expect(await repo.listByForm(form.id)).toEqual([v1, v2, v3]);
+    expect(await repo.listByForm(randomUUID())).toEqual([]);
+    expect(await repo.listByForm("not-a-uuid")).toEqual([]);
+  });
+
   it("reports the latest number, 0 when none", async () => {
     const form = await aForm();
     expect(await repo.latestNumber(form.id)).toBe(0);

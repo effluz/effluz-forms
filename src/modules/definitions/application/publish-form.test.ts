@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildDefaultRegistry, parseDraft, type Version } from "@/shared/domain/form-model";
+import {
+  buildDefaultRegistry,
+  consentItems,
+  parseDraft,
+  type Version,
+} from "@/shared/domain/form-model";
 import type { Form } from "../domain/form";
 import { publishForm, publishPreview } from "./publish-form";
+import { updateSettings } from "./update-settings";
 import {
   DefinitionsStore,
   EDITOR,
@@ -20,6 +26,8 @@ interface RawField {
   key: string;
   type: string;
   label: { en?: string; es?: string };
+  required?: boolean;
+  settings?: unknown;
 }
 
 const field = (key: string, en: string, es: string): RawField => ({
@@ -71,6 +79,18 @@ function published(deps: FakeDefinitionsDeps) {
   return deps.audit.entries.filter((e) => e.entry.action === "form_published");
 }
 
+/** A consent field covering the nine unconditional items, not the post-plan one. */
+const CONSENT: RawField = {
+  key: "f_consent",
+  type: "consent",
+  label: { en: "Consent", es: "Consentimiento" },
+  required: true,
+  settings: {
+    text: { en: "I agree.", es: "Acepto." },
+    coveredItems: [...consentItems],
+  },
+};
+
 describe("publishPreview", () => {
   it("summarizes a complete first draft: version 1, counts, no issues, no diff", async () => {
     const deps = makeDefinitionsDeps();
@@ -99,6 +119,28 @@ describe("publishPreview", () => {
 
     const preview = await publishPreview(deps, formId);
     expect(preview?.issues).toEqual([{ code: "unlabeled", path: "pages/0/fields/1/label" }]);
+  });
+
+  it("requires consent item 10 only when the form uses the post plan", async () => {
+    const deps = makeDefinitionsDeps();
+    const formId = await publishableForm(deps, [NAME, CONSENT]);
+    expect((await publishPreview(deps, formId))?.issues).toEqual([]);
+
+    const form = await deps.forms.findById(formId);
+    if (!form) throw new Error("no form");
+    const saved = await updateSettings(deps, EDITOR, {
+      formId,
+      settings: { ...form.settings, usePostPlan: true },
+    });
+    expect(saved).toEqual({ ok: true, changed: ["usePostPlan"] });
+
+    const preview = await publishPreview(deps, formId);
+    expect(preview?.issues.map((issue) => issue.code)).toEqual(["consent_checklist"]);
+    expect(await publishForm(deps, EDITOR, previewed(deps, formId, 1))).toMatchObject({
+      ok: false,
+      code: "issues",
+    });
+    expect(deps.store.versions.size).toBe(0);
   });
 
   it("reports a missing retention period from the form settings", async () => {

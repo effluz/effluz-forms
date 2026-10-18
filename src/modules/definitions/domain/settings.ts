@@ -25,6 +25,8 @@ export const settingsSchema = z.object({
   closesAt: z.iso.datetime().optional(),
   botChallenge: z.boolean().default(false),
   allowAnotherResponse: z.boolean().default(false),
+  /** Adds photo choice, readiness checks and a planned date to the form's submissions (ADR 0029). */
+  usePostPlan: z.boolean().default(false),
 });
 export type FormSettings = z.infer<typeof settingsSchema>;
 

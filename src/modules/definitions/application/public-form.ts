@@ -1,4 +1,5 @@
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
+import { versionCoversConsentItem } from "@/shared/domain/form-model";
 import { publicState, type Form } from "../domain/form";
 import { formatReference } from "../domain/reference";
 import type { DefinitionsDeps } from "./deps";
@@ -55,6 +56,27 @@ export async function loadVersion(
 /** A form by id, null when unknown; a read for the renderer and submissions. */
 export async function loadForm(deps: DefinitionsDeps, formId: string): Promise<Form | null> {
   return deps.forms.findById(formId);
+}
+
+/** Every version of a form, oldest first; empty for an unknown form. */
+export async function listVersions(deps: DefinitionsDeps, formId: string): Promise<FormVersion[]> {
+  return deps.versions.listByForm(formId);
+}
+
+/** The forms that use the post plan, any status, ordered by title then slug. */
+export async function listPostPlanForms(deps: DefinitionsDeps): Promise<Form[]> {
+  return deps.forms.listUsingPostPlan();
+}
+
+/**
+ * The form's current version covers consent item 10, so photos a sender
+ * sends later fall under the consent text; false without a version.
+ * See specs/use-cases/manage-form-settings.md.
+ */
+export async function laterPhotosCovered(deps: DefinitionsDeps, form: Form): Promise<boolean> {
+  const current = await deps.versions.findCurrent(form.id);
+  if (!current) return false;
+  return versionCoversConsentItem(current.document, deps.registry, "later_photos");
 }
 
 export type AllocateReferenceResult =

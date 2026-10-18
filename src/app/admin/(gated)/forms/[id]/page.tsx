@@ -5,7 +5,6 @@ import {
   FormOverview,
   overviewDialog,
   overviewError,
-  SubmissionsPlaceholder,
 } from "@/modules/definitions/presentation/FormOverview";
 import { formHref } from "@/modules/definitions/presentation/view-models";
 import { pageMetadata } from "@/shared/presentation/metadata";
@@ -44,8 +43,6 @@ export default async function FormOverviewPage(props: {
       tab="submissions"
       {...(dialog === undefined ? {} : { dialog })}
       {...(error === undefined ? {} : { error })}
-    >
-      <SubmissionsPlaceholder total={overview.summary.total} />
-    </FormOverview>
+    />
   );
 }

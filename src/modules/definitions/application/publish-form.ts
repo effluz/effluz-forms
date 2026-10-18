@@ -65,6 +65,7 @@ async function loadState(deps: DefinitionsDeps, formId: string): Promise<Publish
   ]);
   const issues = validateForPublish(draft.document, deps.registry, {
     retentionMonths: form.settings.retentionMonths,
+    postPlan: form.settings.usePostPlan,
   });
   return { form, draft, current, latestNumber, issues };
 }

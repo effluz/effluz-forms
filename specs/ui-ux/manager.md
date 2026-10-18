@@ -150,9 +150,8 @@ First pass, without JavaScript:
   action.
 - A refused deletion returns with `form.error_slug_mismatch`, with the
   confirmation open again, or `form.error_not_allowed`.
-- Submissions is the only tab without a page of its own: the overview shows
-  `form.submissions_soon` until review exists, and the tab is shown, not
-  linked, from the other tabs.
+- Submissions is the overview itself: its body is the Submissions list
+  described below.
 - Edit in builder leads to a placeholder page with the form's title,
   `builder.placeholder`, and links to Settings and Share.
 
@@ -587,7 +586,6 @@ wrong CSRF token.
 | form.url_hint | Select the link and copy it. | Selecciona el enlace y cópialo. |
 | form.error_slug_mismatch | The link name did not match. Nothing was deleted. | El nombre del enlace no coincide. No se eliminó nada. |
 | form.error_not_allowed | This form can no longer be deleted because it was published or has submissions. Archive it instead. | Este formulario ya no se puede eliminar porque se publicó o tiene respuestas. Archívalo en su lugar. |
-| form.submissions_soon | Submission review is coming soon. Received so far: {count}. | La revisión de respuestas llegará pronto. Recibidas hasta ahora: {count}. |
 
 ### Submissions list
 

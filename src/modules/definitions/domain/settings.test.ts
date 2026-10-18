@@ -205,4 +205,10 @@ describe("changedKeys", () => {
   it("is empty for equal settings", () => {
     expect(changedKeys(settings(), settings())).toEqual([]);
   });
+
+  it("defaults usePostPlan to off and lists it as a changed key", () => {
+    const before = defaultSettings("historia");
+    expect(before.usePostPlan).toBe(false);
+    expect(changedKeys(before, { ...before, usePostPlan: true })).toEqual(["usePostPlan"]);
+  });
 });

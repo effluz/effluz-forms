@@ -201,6 +201,16 @@ export class PgFormRepository implements FormRepository {
     return rows.map(toForm);
   }
 
+  async listUsingPostPlan(): Promise<Form[]> {
+    // A row without the key (stored before the setting existed) reads as off.
+    const { rows } = await this.pool.query<FormRow>(
+      `select ${COLUMNS} from form
+        where (settings->>'usePostPlan')::boolean is true
+        order by lower(coalesce(title->>'en', title->>'es', '')), slug`,
+    );
+    return rows.map(toForm);
+  }
+
   async counts(): Promise<Record<FormTab, number>> {
     const { rows } = await this.pool.query<{ tab: FormTab; total: number }>(
       `select case when status in ('draft', 'published') then 'active' else status end as tab,

@@ -92,6 +92,15 @@ export class PgVersionRepository implements VersionRepository {
     return row ? toVersion(row) : null;
   }
 
+  async listByForm(formId: string): Promise<FormVersion[]> {
+    if (!isUuid(formId)) return [];
+    const { rows } = await this.pool.query<VersionRow>(
+      `select ${COLUMNS} from form_version v where v.form_id = $1 order by v.number`,
+      [formId],
+    );
+    return rows.map(toVersion);
+  }
+
   async latestNumber(formId: string): Promise<number> {
     if (!isUuid(formId)) return 0;
     const { rows } = await this.pool.query<{ latest: number }>(

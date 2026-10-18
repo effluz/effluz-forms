@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PgDraftRepository } from "@/modules/definitions/infrastructure/pg-draft-repository";
 import { PgFormRepository } from "@/modules/definitions/infrastructure/pg-form-repository";
+import type { Form } from "@/modules/definitions/domain/form";
+import { defaultSettings } from "@/modules/definitions/domain/settings";
 import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
 import { testPool, truncateAll, waitForLockWaiters } from "../db";
 import { sampleDraft, sampleForm, sampleVersion } from "./factories";
@@ -235,6 +237,31 @@ describe("PgFormRepository", () => {
       await truncateAll(pool);
       expect(await repo.counts()).toEqual({ active: 0, closed: 0, archived: 0 });
     });
+  });
+
+  it("lists the forms whose settings use the post plan, any status, by title then slug", async () => {
+    const withPlan = (slug: string, title: { en?: string; es?: string }, status = "published") =>
+      sampleForm({
+        slug,
+        title,
+        status: status as Form["status"],
+        settings: { ...defaultSettings(slug), usePostPlan: true },
+      });
+    await insert(withPlan("zeta", { en: "Zeta stories" }));
+    await insert(withPlan("alpha", { en: "Alpha stories" }, "archived"));
+    await insert(withPlan("alpha-two", { en: "Alpha stories" }, "closed"));
+    await insert(sampleForm({ slug: "plain", title: { en: "Plain stories" } }));
+    // A row written before the setting existed has no key: it reads as off.
+    const old = await insert(sampleForm({ slug: "old", title: { en: "Old stories" } }));
+    await pool.query("update form set settings = settings - 'usePostPlan' where id = $1", [old.id]);
+
+    expect((await repo.listUsingPostPlan()).map((f) => f.slug)).toEqual([
+      "alpha",
+      "alpha-two",
+      "zeta",
+    ]);
+    await truncateAll(pool);
+    expect(await repo.listUsingPostPlan()).toEqual([]);
   });
 
   describe("visits", () => {

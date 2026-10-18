@@ -30,7 +30,15 @@ export { applyLifecycle, deleteForm } from "./lifecycle";
 export { updateSettings } from "./update-settings";
 export { shareInfo } from "./share-info";
 export { formActivity } from "./form-activity";
-export { resolvePublicForm, loadVersion, loadForm, allocateReference } from "./public-form";
+export {
+  resolvePublicForm,
+  loadVersion,
+  loadForm,
+  allocateReference,
+  listVersions,
+  listPostPlanForms,
+  laterPhotosCovered,
+} from "./public-form";
 
 export { commandSchema } from "../domain/commands";
 export { settingsSchema, CADENCES, DEFAULT_TIMEZONE, isTimeZone } from "../domain/settings";

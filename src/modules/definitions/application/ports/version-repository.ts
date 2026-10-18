@@ -17,6 +17,8 @@ export interface VersionRepository {
   findById(id: string): Promise<FormVersion | null>;
   /** The version the form's current_version_id points at. */
   findCurrent(formId: string): Promise<FormVersion | null>;
+  /** Every version of the form, oldest first; empty for an unknown or malformed id. */
+  listByForm(formId: string): Promise<FormVersion[]>;
   /** The highest number published for the form, 0 when none. */
   latestNumber(formId: string): Promise<number>;
 }

@@ -35,6 +35,7 @@ function form(overrides: Partial<Form> = {}, settings: Partial<Form["settings"]>
       retentionMonths: 12,
       botChallenge: false,
       allowAnotherResponse: false,
+      usePostPlan: false,
       ...settings,
     },
     currentVersionId: null,
@@ -122,6 +123,7 @@ describe("parseSettingsForm", () => {
         opensAt: "2026-11-01T14:00:00.000Z",
         botChallenge: true,
         allowAnotherResponse: false,
+        usePostPlan: false,
       },
       slug: "spring-2026",
       confirm: false,
@@ -200,6 +202,7 @@ describe("settingsValues", () => {
       closesAt: "",
       botChallenge: true,
       allowAnotherResponse: false,
+      usePostPlan: false,
       slug: "spring-stories",
     });
   });
@@ -213,6 +216,18 @@ describe("settingsValues", () => {
       allowAnotherResponse: false,
       slug: FILLED.slug,
     });
+  });
+
+  it("reads and writes the post-plan toggle", () => {
+    expect(readSettingsValues(posted({ ...FILLED, usePostPlan: "on" })).usePostPlan).toBe(true);
+    expect(readSettingsValues(posted(FILLED)).usePostPlan).toBe(false);
+    expect(
+      parseSettingsForm(posted({ ...FILLED, usePostPlan: "on" }), "America/Panama").settings,
+    ).toMatchObject({ usePostPlan: true });
+    expect(parseSettingsForm(posted(FILLED), "America/Panama").settings).toMatchObject({
+      usePostPlan: false,
+    });
+    expect(settingsValues(form({}, { usePostPlan: true })).usePostPlan).toBe(true);
   });
 });
 
@@ -299,6 +314,7 @@ function render(props: Partial<SettingsFormProps> = {}): string {
       hasSubmissions: false,
       timezones: ["America/Panama", "Europe/Madrid"],
       action: ACTION,
+      laterPhotosCovered: false,
       ...props,
     }),
   );
@@ -332,17 +348,18 @@ function describedBy(tag: string): string[] {
 }
 
 describe("SettingsForm", () => {
-  it("is the settings tab body: a section with its heading and the six sections in order", () => {
+  it("is the settings tab body: a section with its heading and the seven sections in order", () => {
     const html = render();
     expect(html).toMatch(/^<section [^>]*aria-labelledby="settings-title"/);
     expect(html).toMatch(/<h2 id="settings-title"[^>]*>Settings/);
-    const headings = [...html.matchAll(/<h3[^>]*>([A-Za-z]+)/g)].map((m) => m[1]);
+    const headings = [...html.matchAll(/<h3[^>]*>([A-Za-z ]+)/g)].map((m) => m[1]);
     expect(headings).toEqual([
       "Notifications",
       "Data",
       "Availability",
       "Protection",
       "Responses",
+      "Post plan",
       "Link",
     ]);
   });
