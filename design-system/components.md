@@ -178,6 +178,41 @@ with a 2 px offset.
   `text.inverse`; previous, next, download and close buttons 44 px; caption
   with "Photo n of total" and the Dropbox path.
 
+## Photo tile (staff)
+
+- `size.photoTile` square, radius `radius.md`, 1 px `border.default`; the
+  image `object-fit: cover`, generated at 2x. A video has no image: the tile
+  shows a film icon on `surface.subtle`.
+- Beneath the image the caption ("Photo n of total" or "Video n of total")
+  and the tile's actions as tertiary buttons stacked, each at least
+  `size.touchTarget` tall.
+- A chosen tile adds a 2 px `color.action.primary.bg` border and the text
+  "Chosen for the post" with a check icon. Never the border alone.
+
+## Readiness checks
+
+- A list of three rows, each an icon (check or cross, 20 px), the check's
+  name, then "Done" or "Missing" in text. Done is `color.text.success`,
+  missing is `color.text.warning`; the words and the icon carry the state,
+  the color only supports it.
+- The summary line above the list reads "Ready" or "Not ready: n of 3
+  done".
+
+## Week day row
+
+- A list item per day: the weekday and date in weight medium on the left,
+  with a `space.4` gap, the day's content on the right. Today's row has
+  `surface.selected` and the word "Today". Rows are separated by
+  `border.default`. The row stacks (date above content) below
+  `breakpoint.md`.
+
+## Viewer (staff, no JavaScript)
+
+- Replaces the Lightbox until a client component exists. An in-page section
+  with the image at most 100% wide, or the native video player, the caption
+  ("Photo n of total"), and Previous, Next, Download and Back as secondary
+  buttons in one row (wrapping), each 44 px tall (`size.touchTarget`).
+
 ## Skeleton
 
 - `surface.subtle` blocks with a 1.2 s opacity pulse, disabled under

@@ -1,20 +1,20 @@
 # UI/UX: Manager
 
 The staff surface for running forms and working with submissions. Status:
-first pass, 2026-10-09. Use cases: `sign-in.md`, `publish-form.md`,
-`manage-form-settings.md`, `review-submissions.md`, `curate-submission.md`,
-`operate-jobs.md`. The builder is its own surface, `ui-ux/builder.md`,
+first pass, 2026-10-09; review added 2026-10-18. Use cases: `sign-in.md`,
+`publish-form.md`, `manage-form-settings.md`, `review-submissions.md`,
+`curate-submission.md`, `operate-jobs.md`. The builder is its own surface, `ui-ux/builder.md`,
 reached from here.
 
 ## Build status
 
 Built: the shell, the Forms list, the New form page, the form overview with
-its lifecycle actions, and the Settings, Share and Activity tabs. Pending, each
-with its own plan: the Submissions tab and everything under review (list,
-drawer, export), the Operations page, the Audit page, the banner above the
-Forms list, the language menu and keyboard shortcuts of the shell, and the
-builder (its route is a placeholder). The sections below specify the target;
-the "First pass" notes say what the built pages do today.
+its lifecycle actions, the Settings, Share and Activity tabs, the Submissions
+tab (list and export), the story page, the Post plan page and a first-pass
+Operations page. Pending, each with its own plan: the Audit page, the banner
+above the Forms list, the language menu and keyboard shortcuts of the shell,
+and the builder (its route is a placeholder). The sections below specify the
+target; the "First pass" notes say what the built pages do today.
 
 ## Principles
 
@@ -30,16 +30,18 @@ the "First pass" notes say what the built pages do today.
 
 ## Shell
 
-A top bar with the Effluz wordmark, primary navigation (Forms, Operations,
-Audit), the signed-in user's name with a menu (language EN/ES, keyboard
+A top bar with the Effluz wordmark, primary navigation (Forms, Post plan,
+Operations, Audit), the signed-in user's name with a menu (language EN/ES, keyboard
 shortcuts, sign out). Below 768 px the navigation collapses into a menu
 button. Every page has an `<h1>` and a breadcrumb from Forms downward.
 
 Responsive tiers match the builder: three-column layouts from 1280 px,
 two from 768, single column with full-screen panels below.
 
-First pass: Operations and Audit appear in the navigation as disabled links
-(`aria-disabled`, no `href`) until their pages exist. There is no language
+First pass: Audit appears in the navigation as a disabled link
+(`aria-disabled`, no `href`) until its page exists. The current section is
+marked `aria-current="page"` from the request path, which the proxy passes to
+the gated layout. There is no language
 preference yet, so every string shows English with the Spanish line beneath
 it, marked `lang="es"`; identical text shows once. The language menu and the
 keyboard shortcuts entry wait for the manager's first client component.
@@ -54,11 +56,19 @@ All routes sit under `/admin`, which the proxy gates (`src/proxy.ts`).
 | `GET /admin/forms` | Forms list (`?tab=`, `?q=`) |
 | `GET /admin/forms/new` | New form page (`?error=` and the carried-back values) |
 | `POST /admin/forms/create` | Creates a form, 303 to its overview or back to the New form page. A route cannot sit beside the page at `/admin/forms`, hence the name |
-| `GET /admin/forms/[id]` | Form overview, which is the Submissions tab (`?action=` opens a lifecycle confirmation, `?error=` shows a refusal) |
+| `GET /admin/forms/[id]` | The Submissions tab: the list (`?status`, `plan`, `from`, `to`, `version`, `media`, `q`, `page`; `?export=1` opens the export dialog; `?deleted=<ref>` reports a deletion), under the form header (`?action=` opens a lifecycle confirmation, `?error=` shows a refusal) |
 | `GET /admin/forms/[id]/settings`, `share`, `activity` | The other tabs |
 | `GET /admin/forms/[id]/edit` | Builder placeholder |
 | `POST /admin/forms/[id]/lifecycle` | Close, reopen, archive or unarchive, 303 to the overview |
 | `POST /admin/forms/[id]/delete` | Delete a never-published form, 303 to the list |
+| `POST /admin/forms/[id]/export` | Answers the CSV (200, attachment) or 303 back to the dialog with `?export=1&error=too_large` |
+| `GET /admin/forms/[id]/submissions/[reference]` | The story page; the list's query keys travel with it, plus `edit`, `compare`, `photo`, `action`, `field`, `media`, `conflict_date`, `conflict_ref`, `conflict_swap`, `done`, `error`, `n`, `other` |
+| `POST .../[reference]/correction`, `revert`, `status`, `photos`, `photos/remove`, `choice`, `check`, `plan`, `retry`, `delete` | The story page's changes, 303 back to it (`delete` to the list) |
+| `GET .../[reference]/media/[mediaId]?view=thumb\|full\|download` | A thumbnail, the full file (or a redirect for a stored video), or the file as an attachment |
+| `GET .../[reference]/photos.zip?set=all\|chosen` | The story's photos as a ZIP |
+| `GET /admin/plan` | The Post plan (`?week=<date>`, `?pick=<date>`) |
+| `GET /admin/operations` | Operations; `POST /admin/operations/retry`, `discard`, `retry-type` change it, 303 back |
+| `GET /admin/media/local/[key]` | A local durable file, the target of a video redirect when `MEDIA_PROVIDER=local` |
 | `GET /admin/forms/[id]/qr.png?size=1024\|2048`, `qr.svg` | QR downloads (`?download=1` makes the SVG an attachment; without it the SVG is the preview) |
 | Settings server action | `saveSettings` in `(gated)/forms/[id]/settings/actions.ts`, posted by the Settings tab |
 
@@ -71,13 +81,16 @@ the form's `csrf` field against the session token. Both take the page to return
 to after sign-in, since sign-in returns with a GET. The proxy does the same for
 a POST that arrives without a session: it returns to the page that posted
 (`create` to the New form page, `lifecycle` and `delete` to the overview), never
-to the route and never with a query. Bare 400 and 404 answers carry
+to the route and never with a query. The sign-in return paths of the review
+routes: a story POST returns to its story page, `export` to the overview, an
+Operations POST to Operations. Bare 400 and 404 answers carry
 `Cache-Control: no-store` (`plain` in `request.ts`). Pages read the session
 through `pageSession` (`_lib/page.ts`), and every page or layout that does so
 exports `instant = false`, which lets it block on the session and the database
 under Cache Components. The QR routes need a session but no CSRF token, as they
 change nothing; their answers are `private, no-cache`, so a draft's new slug
-shows at once.
+shows at once. The media routes also need a session and no CSRF token; their
+answers are `private`.
 
 ## Forms list (home)
 
@@ -147,72 +160,133 @@ First pass, without JavaScript:
 
 ### List
 
-- Filter bar: status chips (New, Viewed, Edited, Published, with counts),
-  date range, version, has media, search box. Filters persist in the URL so
-  a filtered view is shareable among staff.
-- Table columns: reference, status, received, label (first short text
-  answer), media count with a camera or film icon, version, locale, dead
-  job flag. Row click opens the drawer.
-- Keyboard: Up and Down move the focused row, Enter opens, `J` and `K` move
-  between submissions while the drawer is open.
-- Pagination of 50 with a total count. Export button opens the export
-  dialog scoped to the current filters.
+- Filter bar: status chips (New, Viewed, Edited, Published, with counts), a
+  second chip group "Post plan" with Planned, Waiting for a date and Not ready
+  (shown only on post-plan forms), date range (`from`, `to`), version, has
+  media, search box (reference, short text answers and email answers).
+  Filters persist in the URL (`?status`, `plan`, `from`, `to`, `version`,
+  `media`, `q`, `page`) so a filtered view is shareable among staff. Chips are
+  links; the active one carries `aria-current="true"` and a check mark, since
+  `aria-pressed` needs a button.
+- Table columns: reference, status (the badge, or "Planned · <date>" for a
+  planned, unpublished story), received, label (first short text answer),
+  media count with a camera or film icon, version, locale, dead job flag. A
+  row is a link to the story page, which keeps the list's query.
+- Pagination of 50 with a total count and Newer and Older links ("Page n of
+  total"). Export button opens the export dialog scoped to the current
+  filters.
 - Empty states: no submissions yet (with the public URL and Share link), or
   no submissions match the filters (with a clear-filters action).
+- First pass: rows are links (Tab and Enter). Up, Down, J and K arrive with
+  the first client component.
 
-### Submission drawer
+### Story page
 
-Opens from the right at 720 px wide on desktop, full screen below 1024 px.
-Focus moves to its heading; Esc closes and returns focus to the row.
+A full page that replaces the drawer for every form (Fitts's Law: Newer, Older
+and Back sit at a fixed place at the top). Reason: the page holds the photos,
+the correction editor and the readiness panel, which do not fit a drawer. Route
+`GET /admin/forms/[id]/submissions/[reference]`. In order:
 
-Header: reference, status badge, received time, version, locale, a
-Previous and Next pair that follows the filtered list, and an actions menu:
-Mark as published or Unmark, Download all, Export this one, Delete.
+1. Breadcrumb: Forms, the form's title, the reference.
+2. `<h1>`: the reference. Beside it the status badge, or "Planned · <date>" for
+   a planned, unpublished story; the received time (form zone and UTC), the
+   version, and "Sent in English" or "Sent in Spanish".
+3. Newer, Older and Back to the list. Newer and Older follow the list's
+   filters and stay correct when the story no longer matches them (opening a
+   new story under the "New" chip makes it viewed).
+4. Banners: the flash of the last change, a refusal, and the dead-jobs warning
+   with Try again.
+5. **Answers** card: per page title, each answer through its field type's
+   review display; a file upload answer shows `st.files_below` and its files
+   sit in the Photos and videos card. Text answers show the corrected text when
+   a correction exists, with an "Edited" tag, "Compare with original" and
+   "Edit"; unedited text answers show "Edit". Other types have no actions.
+6. **Photos and videos** card: the sender's files ("Sent with the form"), then
+   "Added by the team". Per file: the thumbnail (a tile with the words "Video n
+   of total" for a video), "View full size", "Download"; on post-plan forms
+   "Choose for the post" or "Remove from the post". Above the grid "Download
+   chosen ({count})" and "Download all ({count})". An "Add photos" form (post-
+   plan forms only).
+7. **Ready to post?** panel (post-plan forms only): the three checks, each with
+   "Done" or "Missing" and a tick or a cross, the two tick buttons ("Mark photos
+   as edited", "Mark text as checked") and the planned date form.
+8. **Publishing**: "Mark as published" with the optional post link, or, once
+   published, the published day, the link and "Unmark as published".
+9. **Consent** (collapsed): the accepted text version and time.
+10. **Activity**: the audit entries for this submission, newest first.
+11. **Delete submission**.
 
-Body, in the version's page and field order, grouped under page titles:
+Without script every confirmation (revert, unpublish, remove photo, delete,
+plan conflict) is an in-page `<section role="dialog">` opened by `?action=`,
+labelled by its heading and described by its body, as the lifecycle
+confirmations are.
 
-- Each answer with its label, through the field type's review display.
-- Text answers that have a curated version show the curated text, an
-  "Edited" tag, and Compare and Revert actions. Unedited text answers show
-  an Edit action. Other types have no actions.
-- Media as a grid of thumbnails; click opens a lightbox with full-size
-  photo or inline video player, previous and next inside the submission,
-  a Download action and the file's path in Dropbox. Each open and download
-  is audited and the lightbox footer says "Views are recorded".
-- Consent: the accepted text, its version and time, collapsed by default.
-- Jobs: a compact list of this submission's jobs with status and a retry
-  action for dead ones.
-- Activity: the audit entries for this submission, newest first.
+Post-plan parts (staff photos, choosing photos, the readiness panel, the
+planned date) appear only on forms with the post-plan setting on. Turning the
+setting off later keeps planned dates and ticks but hides them until it is
+turned back on. "Add photos" also needs the form's current version to cover
+consent item 10 (`later_photos`); otherwise the form shows `st.laterphotos_off`
+in its place.
+
+The contact answers are ordinary answers: a form is data, so the page cannot
+know which answers are contact details.
 
 ### Edit a text answer
 
-Replaces the answer block in the drawer with a two-column editor,
-Original left and Curated right, as `curate-submission.md` specifies.
-Buttons: Suggest correction, Save, Cancel. After a suggestion, differences
-from the original are highlighted inline in the Curated column, insertions
-and deletions distinguishable by shape and color, and a count "{n} changes"
-is announced. Save returns to the answer block with the Edited tag.
+`?edit=<field>` replaces the answer block with a two-column editor from 768 px
+(Original, read only, and Corrected, a textarea with `required` and
+`maxlength` set to the field's limit), one column below. Both columns are
+labelled (`st.original`, `st.corrected`) with `st.correction_hint` under the
+heading. Buttons: Save correction, Cancel. There is no "Suggest correction"
+until a correction service is built; `st.suggest*` rows are reserved. Save
+returns to the answer with the Edited tag, ticks "Text checked" and shows
+`st.saved`.
 
-Compare opens the same two columns read-only with highlights, and offers
-Edit and Revert. Revert confirms in one sentence.
+"Compare with original" (`?compare=<field>`) opens the same two columns
+read-only. Each change is marked with `<ins>` or `<del>`, a visually hidden
+"Added" or "Removed", underline or strike-through, and `tabindex="0"`; the
+change count is a polite status (`st.changes`, or `st.no_changes`). Compare
+offers Edit and "Revert to original", which opens its in-page confirmation
+(`st.revert_confirm`).
+
+### Photo viewer
+
+`?photo=<mediaId>` shows an in-page section above the cards: the image or the
+native video player, "Photo n of total" (or "Video n of total"), Previous,
+Next, Download, "In Dropbox: <path>" (or `st.not_stored`), "Views and downloads
+are recorded", and "Back to the story". Opening the full-size view and
+downloading are audited.
 
 ### Mark as published
 
-A small dialog with an optional "Link to the post" field accepting only
-`https` URLs, and Confirm. The badge updates in the drawer and list. Unmark
-asks for confirmation and explains which status it returns to.
+An in-page confirmation with an optional "Link to the post" field accepting
+only `https` URLs, and Confirm. The badge updates on the story page and in the
+list. Unmark asks for confirmation and says which status it returns to
+(`pub.unmark_viewed` or `pub.unmark_edited`); it clears the post link. A story
+published keeps its planned date as the day it went out; a story published
+with no planned date takes the publish date as its day without taking that
+day's slot.
+
+### Plan a story
+
+The planned date is one date per story, in the form `YYYY-MM-DD`, with Plan and
+"Remove the date". One unpublished story per day: planning a day that already
+holds one opens an in-page confirmation naming it, with "Swap the two dates"
+and "Move <ref> to Waiting for a date". A published story stays on the day it
+went out. Planning is a date on the story, never a new status.
 
 ### Export dialog
 
-Scope line: "{count} submissions matching the current filters". Options:
-version (current filter or all), text answers (Original, Curated, Both
-columns), include media paths. A notice: "This file contains personal data.
-It is recorded that you exported it." Button: Download CSV. Exports above
-10,000 rows are refused with a request to narrow the filters.
+An in-page section opened by `?export=1`. Scope line: "{count} submissions
+matching the current filters". Options: versions (as filtered or all), text
+answers (Original, Corrected, Both columns), include file paths. A notice:
+"This file contains personal data. It is recorded that you exported it."
+Button: Download CSV. Exports above 10,000 rows are refused with a request to
+narrow the filters (`ex.too_large`).
 
 ### Delete
 
-Confirmation dialog states the reference, that files in Dropbox will also
+An in-page confirmation states the reference, that files in Dropbox will also
 be deleted, and that this cannot be undone. Requires typing the reference.
 
 ## Settings tab
@@ -227,6 +301,7 @@ discard warning on navigation:
 | Availability | open date and time, close date and time, timezone |
 | Protection | bot challenge toggle with the accessibility note |
 | Responses | allow another response toggle |
+| Post plan | use submissions in the post plan toggle, the notice when the current version's consent text lacks item 10 |
 | Link | slug, editable only before first publish |
 
 Each field has a help line. Save confirms in a toast and writes the audit
@@ -298,16 +373,49 @@ module) is added as an option, so the menus always show the filter in force.
 Export as CSV comes with the audit page and has no control here
 until then.
 
+## Post plan page
+
+`GET /admin/plan`. A top-level page that answers three questions: what goes out
+this week, which days are empty, and what is not ready yet. It covers the
+forms with the post-plan setting on, which share the one plan; with none,
+`plan.no_forms` is shown.
+
+- `<h1>` Post plan. Previous week, This week and Next week are links
+  (`?week=<date>` takes any date and shows its week). A line "Week of
+  <Monday>". Weeks run Monday to Sunday in the Panama time zone for every form.
+- Seven day rows, Monday to Sunday, each with the weekday and date in both
+  languages; today's row is marked with the word "Today".
+- A day with an unpublished planned story shows its reference (a link to the
+  story page), its label, its form and its three checks with words ("Photos
+  chosen", "Photos edited in Canva", "Text checked", each "Done" or "Missing").
+  Published stories of that day show "Published" and, when a link exists,
+  "Open the post". An empty day shows "Pick a story" (today and later) or
+  "Nothing planned" (past days).
+- "Pick a story" opens `?pick=<date>`, which shows "Choose a story for <date>"
+  above Waiting for a date, each row with "Plan for <date>". Any valid date can
+  be planned, past ones included, so staff can backfill.
+- **Waiting for a date**: unpublished, unplanned stories of post-plan forms,
+  newest first, at most 50, with the total count.
+- Opening the page is audited, as it shows each story's label.
+
 ## Operations page
 
-Cards at the top: worker heartbeat age, pending jobs, dead jobs, oldest
-pending job age, last successful backup, staging directory size. Each card
-is green, amber or red with a text status, never color alone.
+First pass. The page shows:
 
-Below, the jobs table from `operate-jobs.md`: dead first, then failed
-awaiting retry, with type, form, reference, attempts, last error, times.
-Row actions: Retry, Discard with reason. Bulk "Retry all of type" when more
-than one dead job shares a type. A link to the runbooks in the repository.
+- the **heartbeat card**: the age of the worker's last heartbeat in words and
+  a status, "OK" up to 60 seconds, "Warning" up to the stale limit (300
+  seconds), "Critical" above that or when no worker ever wrote one; never
+  colour alone;
+- the **worker-down banner** (`ops.worker_down`) when the heartbeat is critical;
+- the **dead jobs table** (`ops.dead_title`): type, story (a link, or
+  `ops.no_story`), attempts, last error, first and last attempt, with Retry
+  and Discard with reason for each row; "Retry all of type" when more than one
+  dead job shares a type. The reason is 1 to 200 characters. An empty table
+  says `ops.none_dead`.
+
+The other cards (pending jobs, oldest pending, last backup, staging size) and
+the link to the runbooks are later. Retry sets a dead job back to pending; it
+runs again shortly.
 
 ## Audit page
 
@@ -326,8 +434,10 @@ explains that entries are kept for one year.
   unknown form to its overview, which shows this page.
 - **Closed or archived form**: a banner in the overview explaining what
   the public sees and how to reopen.
-- **Submission deleted while open**: the drawer shows "This submission was
-  deleted by {name}" and a close action.
+- **Submission deleted while open**: the story page shows its not-found body
+  (`st.not_found_title`, `st.not_found_body`, and `st.not_found_back` to the
+  list) inside the shell, with status 404. Pages render it themselves rather
+  than throwing, as ADR 0027 requires.
 - **Offline**: a banner; read-only actions still show cached data where the
   browser has it; mutations are disabled.
 
@@ -336,11 +446,11 @@ explains that entries are kept for one year.
 | Law | Where |
 |---|---|
 | Hick's Law | Three tabs on home; one actions menu per row; status chips instead of a dropdown |
-| Jakob's Law | Table, filter bar, drawer and lightbox patterns from common admin tools |
-| Fitts's Law | Row-wide click targets; Previous and Next at a fixed position in the drawer; primary action top right |
+| Jakob's Law | Table, filter bar, breadcrumb and photo grid patterns from common admin tools |
+| Fitts's Law | Row-wide click targets; Newer, Older and Back at a fixed place at the top of the story page; primary action top right |
 | Law of Proximity, Common Region | Answers grouped under page headings; settings in bordered sections; cards on Operations |
-| Doherty Threshold | Drawer opens from cached list data instantly, then fills; thumbnails lazy-load; filters apply without a page reload |
-| Peak-End Rule | Publishing a submission ends with the post link saved and visible in the list |
+| Doherty Threshold | The story page renders its text first and thumbnails stream after; filters are plain links and answer in one request |
+| Peak-End Rule | Publishing a submission ends with the post link saved and visible in the list and on the Post plan |
 | Zeigarnik Effect | New counts on home and status chips keep unfinished review visible |
 | Von Restorff Effect | Edited tags and dead-job flags are the only highlighted elements in a row |
 | Tesler's Law | Export, ZIP naming and Dropbox paths follow fixed schemes; staff never name files |
@@ -348,9 +458,13 @@ explains that entries are kept for one year.
 ## Accessibility notes beyond the baseline
 
 - Tables use proper headers; sortable columns announce sort state.
-- The drawer is a dialog with a labelled heading, focus trap and Esc.
-- The lightbox announces "Photo {n} of {total}" and video controls are the
+- Confirmations are in-page dialogs labelled by their heading.
+- The photo viewer announces "Photo {n} of {total}" and video controls are the
   native ones.
+- Choosing a photo, the readiness checks and the plan are plain buttons and
+  forms, fully keyboard-operable; a chosen photo says "Chosen for the post" in
+  words with a check icon, and each check says "Done" or "Missing" with a tick
+  or a cross.
 - Compare highlights use underline and strike styles in addition to color,
   and each change is reachable with Tab.
 - Status badges carry text, never icon-only.
@@ -362,7 +476,7 @@ explains that entries are kept for one year.
 |---|---|
 | Forms list | under 500 ms server render with 100 forms |
 | Submissions list page | under 500 ms with 10,000 submissions in the form |
-| Drawer open | under 300 ms to text content; thumbnails stream after |
+| Story page | under 300 ms to text content; thumbnails stream after |
 | Export of 10,000 rows | starts streaming within 2 seconds |
 
 ## Fixed chrome copy
@@ -375,6 +489,7 @@ builder (status names, New form dialog).
 | Key | English | Spanish |
 |---|---|---|
 | nav.forms | Forms | Formularios |
+| nav.plan | Post plan | Plan de publicaciones |
 | nav.operations | Operations | Operaciones |
 | nav.audit | Audit | Auditoría |
 | nav.language | Language | Idioma |
@@ -496,45 +611,174 @@ wrong CSRF token.
 | sub.empty | No submissions yet. Share the form to start receiving them. | Aún no hay respuestas. Comparte el formulario para empezar a recibirlas. |
 | sub.empty_filtered | No submissions match these filters. | Ninguna respuesta coincide con estos filtros. |
 | sub.count | {count} submissions | {count} respuestas |
+| sub.filter_status | Status | Estado |
+| sub.filter_plan | Post plan | Plan de publicaciones |
+| sub.plan_planned | Planned | Planificadas |
+| sub.plan_waiting | Waiting for a date | Esperando fecha |
+| sub.plan_not_ready | Not ready | No listas |
+| sub.filter_from | From | Desde |
+| sub.filter_to | To | Hasta |
+| sub.filter_any_version | All versions | Todas las versiones |
+| sub.apply | Filter | Filtrar |
+| sub.col_status | Status | Estado |
+| sub.caption | Submissions, newest first | Respuestas, de la más reciente a la más antigua |
+| sub.planned_on | Planned · {date} | Planificada · {date} |
+| sub.page | Page {n} of {total} | Página {n} de {total} |
+| sub.newer_page | Newer | Más recientes |
+| sub.older_page | Older | Más antiguas |
+| sub.deleted | Submission {ref} was deleted. | Se eliminó la respuesta {ref}. |
+| list.version | v{n} | v{n} |
+| list.files_one | {n} file | {n} archivo |
+| list.files_other | {n} files | {n} archivos |
 
-### Drawer
+### Story page
+
+Fixed chrome of the story page, its dialogs, the publishing panel and the
+delete confirmation. A placeholder whose value differs by language is never
+used, so such rows are split (`pub.unmark_viewed` and `pub.unmark_edited`).
 
 | Key | English | Spanish |
 |---|---|---|
-| dr.previous | Previous | Anterior |
-| dr.next | Next | Siguiente |
-| dr.mark_published | Mark as published | Marcar como publicada |
-| dr.unmark_published | Unmark as published | Quitar marca de publicada |
-| dr.download_all | Download all files | Descargar todos los archivos |
-| dr.export_one | Export this submission | Exportar esta respuesta |
-| dr.delete | Delete submission | Eliminar respuesta |
-| dr.edited_tag | Edited | Editada |
-| dr.edit | Edit | Editar |
-| dr.compare | Compare | Comparar |
-| dr.revert | Revert to original | Volver al original |
-| dr.revert_confirm | Remove the edited version of "{label}" and show the original again? | ¿Quitar la versión editada de "{label}" y volver a mostrar el original? |
-| dr.original | Original | Original |
-| dr.curated | Curated | Editada |
-| dr.suggest | Suggest correction | Sugerir corrección |
-| dr.suggest_none | No changes suggested | Sin cambios sugeridos |
-| dr.suggest_failed | Suggestion unavailable, try later | Sugerencia no disponible, intenta más tarde |
-| dr.changes | {n} changes | {n} cambios |
-| dr.save | Save | Guardar |
-| dr.cancel | Cancel | Cancelar |
-| dr.saved_by_other | {name} saved a newer version of this answer. | {name} guardó una versión más reciente de esta respuesta. |
-| dr.consent | Consent | Consentimiento |
-| dr.consent_accepted | Accepted {date}, text version {n} | Aceptado el {date}, versión del texto {n} |
-| dr.jobs | Background jobs | Trabajos en segundo plano |
-| dr.activity | Activity | Actividad |
-| dr.views_recorded | Views are recorded | Las vistas quedan registradas |
-| dr.photo_n | Photo {n} of {total} | Foto {n} de {total} |
-| dr.video_n | Video {n} of {total} | Video {n} de {total} |
-| dr.download | Download | Descargar |
-| dr.in_dropbox | In Dropbox: {path} | En Dropbox: {path} |
-| dr.deleted_by | This submission was deleted by {name}. | {name} eliminó esta respuesta. |
+| st.back | Back to the list | Volver a la lista |
+| st.newer | Newer | Más reciente |
+| st.older | Older | Más antigua |
+| st.received | Received {date} | Recibida el {date} |
+| st.version | Version {n} | Versión {n} |
+| st.sent_en | Sent in English | Enviada en inglés |
+| st.sent_es | Sent in Spanish | Enviada en español |
+| st.answers | Answers | Respuestas |
+| st.no_answer | No answer | Sin respuesta |
+| st.yes | Yes | Sí |
+| st.no | No | No |
+| st.files_below | {n} files, shown under Photos and videos | {n} archivos, en Fotos y videos |
+| st.edited_tag | Edited | Editada |
+| st.edited_by | Corrected by {name} on {date} | Corregida por {name} el {date} |
+| st.edit | Edit | Editar |
+| st.compare | Compare with original | Comparar con el original |
+| st.revert | Revert to original | Volver al original |
+| st.revert_confirm | Remove the corrected version of "{label}" and show the original again? | ¿Quitar la versión corregida de "{label}" y volver a mostrar el original? |
+| st.original | Original | Original |
+| st.corrected | Corrected | Corregida |
+| st.correction_hint | Fix spelling, grammar and punctuation. The sender's original is kept. | Corrige ortografía, gramática y puntuación. El original se conserva. |
+| st.save | Save correction | Guardar corrección |
+| st.changes | {n} changes | {n} cambios |
+| st.no_changes | No differences from the original | Sin diferencias con el original |
+| st.added | Added | Agregado |
+| st.removed | Removed | Quitado |
+| st.err_correction_blank | Write the corrected text, or cancel to keep the original. | Escribe el texto corregido, o cancela para conservar el original. |
+| st.err_correction_too_long | Use at most {max} characters. | Usa como máximo {max} caracteres. |
+| st.saved | Correction saved | Corrección guardada |
+| st.reverted | The original is shown again | Se volvió a mostrar el original |
+| st.suggest | Suggest correction | Sugerir corrección |
+| st.suggest_none | No changes suggested | Sin cambios sugeridos |
+| st.suggest_failed | Suggestion unavailable, try later | Sugerencia no disponible, intenta más tarde |
+| st.photos | Photos and videos | Fotos y videos |
+| st.sender_photos | Sent with the form | Enviadas con el formulario |
+| st.staff_photos | Added by the team | Agregadas por el equipo |
+| st.added_by | Added by {name} on {date} | Agregada por {name} el {date} |
+| st.from_whatsapp | From WhatsApp | Desde WhatsApp |
+| st.from_instagram | From Instagram | Desde Instagram |
+| st.from_email | From email | Desde correo |
+| st.from_other | From somewhere else | Desde otro medio |
+| st.photo_n | Photo {n} of {total} | Foto {n} de {total} |
+| st.video_n | Video {n} of {total} | Video {n} de {total} |
+| st.open_full | View full size | Ver en tamaño completo |
+| st.download | Download | Descargar |
+| st.in_dropbox | In Dropbox: {path} | En Dropbox: {path} |
+| st.views_recorded | Views and downloads are recorded | Las vistas y descargas quedan registradas |
+| st.previous_photo | Previous | Anterior |
+| st.next_photo | Next | Siguiente |
+| st.close_viewer | Back to the story | Volver a la historia |
+| st.not_stored | Not in Dropbox yet: kept on the server only. | Aún no está en Dropbox: se guarda solo en el servidor. |
+| st.choose | Choose for the post | Elegir para la publicación |
+| st.chosen | Chosen for the post | Elegida para la publicación |
+| st.unchoose | Remove from the post | Quitar de la publicación |
+| st.download_chosen | Download chosen ({count}) | Descargar elegidas ({count}) |
+| st.download_all | Download all ({count}) | Descargar todas ({count}) |
+| st.add_photos | Add photos | Agregar fotos |
+| st.add_photos_hint | Photos or videos the sender sent later on WhatsApp, Instagram or email. Up to 10 files of 10 MB each. | Fotos o videos que la persona envió después por WhatsApp, Instagram o correo. Hasta 10 archivos de 10 MB cada uno. |
+| st.files | Files | Archivos |
+| st.from_where | Where they came from | De dónde llegaron |
+| st.source_whatsapp | WhatsApp | WhatsApp |
+| st.source_instagram | Instagram | Instagram |
+| st.source_email | Email | Correo |
+| st.source_other | Other | Otro |
+| st.sender_confirmed | The sender sent these for this story | La persona las envió para esta historia |
+| st.upload | Upload | Subir |
+| st.remove_photo | Remove this photo | Quitar esta foto |
+| st.remove_photo_confirm | Remove this photo from the story? Its file in Dropbox is deleted too. | ¿Quitar esta foto de la historia? Su archivo en Dropbox también se elimina. |
+| st.photos_added | {count} files added | Se agregaron {count} archivos |
+| st.photo_removed | Photo removed | Foto quitada |
+| st.err_not_confirmed | Tick the box to confirm the sender sent these for this story. | Marca la casilla para confirmar que la persona las envió para esta historia. |
+| st.err_source | Choose where the photos came from. | Elige de dónde llegaron las fotos. |
+| st.err_no_files | Choose at least one file. | Elige al menos un archivo. |
+| st.err_too_many_files | Upload at most {max} files at a time. | Sube como máximo {max} archivos a la vez. |
+| st.err_staff_photos_max | This story already has the most added photos allowed ({max}). | Esta historia ya tiene el máximo de fotos agregadas ({max}). |
+| st.err_file_too_large | File {n} is larger than 10 MB. Nothing was added. | El archivo {n} pesa más de 10 MB. No se agregó nada. |
+| st.err_file_wrong_type | File {n} is not a JPEG, PNG, WebP or HEIC photo, or an MP4 or MOV video. Nothing was added. | El archivo {n} no es una foto JPEG, PNG, WebP o HEIC, ni un video MP4 o MOV. No se agregó nada. |
+| st.err_file_unreadable | File {n} could not be read. Nothing was added. | No se pudo leer el archivo {n}. No se agregó nada. |
+| st.laterphotos_off | Adding photos is off until the form publishes a consent text that covers photos sent later. | Agregar fotos está desactivado hasta que el formulario publique un texto de consentimiento que cubra las fotos enviadas después. |
+| st.readiness | Ready to post? | ¿Lista para publicar? |
+| st.check_chosen | Photos chosen | Fotos elegidas |
+| st.check_edited | Photos edited in Canva | Fotos editadas en Canva |
+| st.check_text | Text checked | Texto revisado |
+| st.check_done | Done | Hecho |
+| st.check_missing | Missing | Falta |
+| st.ready | Ready | Lista |
+| st.not_ready | Not ready: {n} of 3 done | No lista: {n} de 3 hechos |
+| st.mark_edited | Mark photos as edited | Marcar fotos como editadas |
+| st.unmark_edited | Photos not edited yet | Las fotos aún no están editadas |
+| st.mark_text | Mark text as checked | Marcar texto como revisado |
+| st.unmark_text | Text not checked yet | El texto aún no está revisado |
+| st.checked_by | {name}, {date} | {name}, {date} |
+| st.edited_stale | The chosen photos changed after they were edited. Tick again once the new set is edited. | Las fotos elegidas cambiaron después de editarlas. Vuelve a marcar cuando el nuevo grupo esté editado. |
+| st.err_no_photos_chosen | Choose at least one photo first. | Primero elige al menos una foto. |
+| st.check_saved | Check saved | Verificación guardada |
+| st.choice_saved | Photo choice saved | Elección de fotos guardada |
+| st.plan | Planned date | Fecha planificada |
+| st.plan_hint | One story per day. Format YYYY-MM-DD. | Una historia por día. Formato AAAA-MM-DD. |
+| st.plan_save | Plan | Planificar |
+| st.plan_clear | Remove the date | Quitar la fecha |
+| st.plan_conflict | {ref} is already planned for {date}. | {ref} ya está planificada para el {date}. |
+| st.plan_swap | Swap the two dates | Intercambiar las fechas |
+| st.plan_move | Move {ref} to Waiting for a date | Pasar {ref} a Esperando fecha |
+| st.err_date | Enter a date as YYYY-MM-DD. | Escribe una fecha como AAAA-MM-DD. |
+| st.err_plan_published | A published story stays on the day it went out. | Una historia publicada se queda en el día en que salió. |
+| st.planned_saved | Planned for {date} | Planificada para el {date} |
+| st.plan_cleared | Moved to Waiting for a date | Pasó a Esperando fecha |
+| st.publishing | Publishing | Publicación |
+| st.published_on | Published on {date} | Publicada el {date} |
+| st.open_post | Open the post | Abrir la publicación |
+| st.mark_published | Mark as published | Marcar como publicada |
+| st.unmark_published | Unmark as published | Quitar marca de publicada |
+| st.consent | Consent | Consentimiento |
+| st.consent_accepted | Accepted {date}, text version {n} | Aceptado el {date}, versión del texto {n} |
+| st.jobs_warning | Something did not finish for this story | Algo no terminó para esta historia |
+| st.job_media_upload | A photo or video has not reached Dropbox. | Una foto o video no llegó a Dropbox. |
+| st.job_media_delete | A file could not be deleted from Dropbox. | No se pudo eliminar un archivo de Dropbox. |
+| st.job_email | An email was not sent. | No se envió un correo. |
+| st.job_other | A background job stopped retrying. | Un trabajo en segundo plano dejó de reintentarse. |
+| st.retry | Try again | Intentar de nuevo |
+| st.retried | Trying again. Reload in a minute to see the result. | Se está intentando de nuevo. Recarga en un minuto para ver el resultado. |
+| st.activity | Activity | Actividad |
+| st.activity_empty | No activity yet. | Aún no hay actividad. |
+| st.delete | Delete submission | Eliminar respuesta |
+| st.not_found_title | Submission not found | Respuesta no encontrada |
+| st.not_found_body | It may have been deleted, or the link is out of date. | Puede haber sido eliminada o el enlace está desactualizado. |
+| st.not_found_back | Back to the submissions | Volver a las respuestas |
 | pub.post_url | Link to the post (optional) | Enlace a la publicación (opcional) |
-| pub.unmark_body | The status will return to {status}. | El estado volverá a {status}. |
+| pub.post_url_hint | Starts with https:// | Empieza con https:// |
+| pub.mark_confirm | Confirm | Confirmar |
+| pub.unmark_viewed | The status will return to Viewed. | El estado volverá a Vista. |
+| pub.unmark_edited | The status will return to Edited. | El estado volverá a Editada. |
+| pub.err_url | Use a link that starts with https://. | Usa un enlace que empiece con https://. |
+| pub.saved | Marked as published | Marcada como publicada |
+| pub.unmarked | No longer marked as published | Ya no está marcada como publicada |
+| pub.unmark_waiting | Its day now belongs to {ref}, so it moved to Waiting for a date. | Su día ahora es de {ref}, así que pasó a Esperando fecha. |
 | del.body | Submission {ref} and its files in Dropbox will be deleted. This cannot be undone. Type the reference to confirm. | La respuesta {ref} y sus archivos en Dropbox se eliminarán. No se puede deshacer. Escribe la referencia para confirmar. |
+| del.reference | Reference | Referencia |
+| del.confirm | Delete permanently | Eliminar definitivamente |
+| del.mismatch | The reference did not match. Nothing was deleted. | La referencia no coincide. No se eliminó nada. |
 
 ### Export
 
@@ -545,12 +789,24 @@ wrong CSRF token.
 | ex.versions | Versions | Versiones |
 | ex.text | Text answers | Respuestas de texto |
 | ex.text_original | Original | Original |
-| ex.text_curated | Curated | Editada |
+| ex.text_curated | Corrected | Corregida |
 | ex.text_both | Both columns | Ambas columnas |
 | ex.media_paths | Include file paths | Incluir rutas de archivos |
 | ex.notice | This file contains personal data. It is recorded that you exported it. | Este archivo contiene datos personales. Queda registrado que lo exportaste. |
 | ex.download | Download CSV | Descargar CSV |
 | ex.too_large | More than 10,000 rows. Narrow the filters. | Más de 10,000 filas. Reduce los filtros. |
+| ex.versions_filter | As filtered | Según el filtro |
+| ex.versions_all | All versions | Todas las versiones |
+| ex.col_reference | Reference | Referencia |
+| ex.col_status | Status | Estado |
+| ex.col_received | Received (UTC) | Recibida (UTC) |
+| ex.col_version | Version | Versión |
+| ex.col_language | Language | Idioma |
+| ex.col_planned | Planned date | Fecha planificada |
+| ex.col_post_link | Post link | Enlace de la publicación |
+| ex.col_files | File paths | Rutas de archivos |
+| ex.col_staff_photos | Added photos | Fotos agregadas |
+| ex.corrected_suffix | {label} (corrected) | {label} (corregida) |
 
 ### Settings and share
 
@@ -602,6 +858,10 @@ wrong CSRF token.
 | set.err_slug_format | Use 3 to 64 lowercase letters, numbers and hyphens. | Usa de 3 a 64 minúsculas, números y guiones. |
 | set.err_slug_reserved | That link name is reserved. Choose another. | Ese nombre de enlace está reservado. Elige otro. |
 | set.err_stale | This page was out of date, so nothing was saved. Reload it and try again. | Esta página estaba desactualizada, así que no se guardó nada. Recárgala e inténtalo otra vez. |
+| set.post_plan_section | Post plan | Plan de publicaciones |
+| set.post_plan | Use submissions in the post plan | Usar las respuestas en el plan de publicaciones |
+| set.post_plan_hint | Adds photo choice, readiness checks and a planned date to each submission, and shows them on the Post plan page. | Agrega elección de fotos, verificaciones y una fecha planificada a cada respuesta, y las muestra en la página Plan de publicaciones. |
+| set.post_plan_notice | Adding photos to a story stays off until you publish a version whose consent text covers photos sent later. | Agregar fotos a una historia sigue desactivado hasta que publiques una versión cuyo texto de consentimiento cubra las fotos enviadas después. |
 | sh.url | Public link | Enlace público |
 | sh.copy | Copy | Copiar |
 | sh.copied | Copied | Copiado |
@@ -617,6 +877,26 @@ wrong CSRF token.
 | sh.reason_archived | it is archived | está archivado |
 | sh.reason_not_open | it is not open yet | todavía no abre |
 | sh.reason_past_close | its close date has passed | su fecha de cierre ya pasó |
+
+### Post plan
+
+| Key | English | Spanish |
+|---|---|---|
+| plan.title | Post plan | Plan de publicaciones |
+| plan.week_of | Week of {date} | Semana del {date} |
+| plan.previous | Previous week | Semana anterior |
+| plan.next | Next week | Semana siguiente |
+| plan.this_week | This week | Esta semana |
+| plan.today | Today | Hoy |
+| plan.pick | Pick a story | Elegir una historia |
+| plan.nothing | Nothing planned | Nada planificado |
+| plan.published | Published | Publicada |
+| plan.waiting | Waiting for a date | Esperando fecha |
+| plan.waiting_empty | No stories are waiting for a date. | No hay historias esperando fecha. |
+| plan.waiting_count | {count} stories | {count} historias |
+| plan.picking | Choose a story for {date}. | Elige una historia para el {date}. |
+| plan.plan_for | Plan for {date} | Planificar para el {date} |
+| plan.no_forms | No form uses the post plan yet. Turn it on in a form's Settings. | Ningún formulario usa el plan de publicaciones todavía. Actívalo en la Configuración de un formulario. |
 
 ### Operations and audit
 
@@ -638,6 +918,21 @@ wrong CSRF token.
 | ops.retry_all | Retry all {type} jobs ({count}) | Reintentar todos los trabajos {type} ({count}) |
 | ops.worker_down | The worker is not running. Jobs will resume when it returns. See the runbook. | El worker no se está ejecutando. Los trabajos continuarán cuando vuelva. Consulta el manual. |
 | ops.runbooks | Runbooks | Manuales de operación |
+| ops.dead_title | Jobs that stopped retrying | Trabajos que dejaron de reintentarse |
+| ops.none_dead | No jobs need attention. | Ningún trabajo necesita atención. |
+| ops.col_type | Type | Tipo |
+| ops.col_story | Story | Historia |
+| ops.col_attempts | Attempts | Intentos |
+| ops.col_error | Last error | Último error |
+| ops.col_first | First attempt | Primer intento |
+| ops.col_last | Last attempt | Último intento |
+| ops.seconds_ago | {n} seconds ago | hace {n} segundos |
+| ops.never | Never | Nunca |
+| ops.no_story | No story | Sin historia |
+| ops.err_reason | Write why you are discarding it, in at most 200 characters. | Escribe por qué lo descartas, en 200 caracteres como máximo. |
+| ops.retried | The job will run again shortly. | El trabajo se ejecutará de nuevo en breve. |
+| ops.retried_all | {count} jobs will run again shortly. | {count} trabajos se ejecutarán de nuevo en breve. |
+| ops.discarded | The job was discarded. | El trabajo se descartó. |
 | au.title | Audit log | Registro de auditoría |
 | au.actor | Who | Quién |
 | au.action | Action | Acción |
@@ -663,12 +958,31 @@ wrong CSRF token.
 | au.action_form_deleted | Form deleted | Formulario eliminado |
 | au.action_form_settings_changed | Settings changed | Configuración cambiada |
 | au.action_retention_shortened | Retention shortened | Retención acortada |
+| au.action_submissions_listed | Submissions listed | Respuestas listadas |
+| au.action_submission_viewed | Submission opened | Respuesta abierta |
+| au.action_photo_viewed | Photo viewed | Foto vista |
+| au.action_media_downloaded | Files downloaded | Archivos descargados |
+| au.action_submissions_exported | Submissions exported | Respuestas exportadas |
+| au.action_submission_deleted | Submission deleted | Respuesta eliminada |
+| au.action_submission_edited | Text corrected | Texto corregido |
+| au.action_submission_reverted | Correction reverted | Corrección revertida |
+| au.action_submission_status_changed | Status changed | Estado cambiado |
+| au.action_staff_photos_added | Photos added | Fotos agregadas |
+| au.action_staff_photo_removed | Photo removed | Foto quitada |
+| au.action_photo_choice_changed | Photo choice changed | Elección de fotos cambiada |
+| au.action_story_check_changed | Check changed | Verificación cambiada |
+| au.action_story_planned | Date planned | Fecha planificada |
+| au.action_post_plan_viewed | Post plan viewed | Plan de publicaciones visto |
+| au.action_job_retried | Job retried | Trabajo reintentado |
+| au.action_job_discarded | Job discarded | Trabajo descartado |
+| au.action_jobs_retried_bulk | Jobs retried | Trabajos reintentados |
 
 ## Test fixtures
 
 Presentation tests cover the forms list in each tab and empty state, the
-drawer for a submission of the reference form including edited, compared
-and reverted text, the lightbox for photo and video, each dialog, settings
-validation, and Operations in each card state, in both languages and at the
-three width tiers. The e2e suite reviews, edits with a stubbed correction
-service, publishes, exports and deletes a synthetic submission.
+submissions list in each filter state, the story page in each state (plain,
+editing, comparing, viewer, each dialog, each flash and refusal, post-plan on
+and off), the Post plan week, each dialog, settings validation, and Operations
+in each heartbeat state, in both languages and at the three width tiers. The
+e2e suites review, correct, choose, plan, publish, export and delete a
+synthetic submission.
