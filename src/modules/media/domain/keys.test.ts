@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { durableKey, fieldSlug, stagingKey, stagingPrefix, uniqueFieldSlugs } from "./keys";
+import {
+  addedFileKey,
+  durableKey,
+  fieldSlug,
+  stagingKey,
+  stagingPrefix,
+  uniqueFieldSlugs,
+} from "./keys";
 
 const RECORD = "00000001-0000-4000-8000-000000000001";
 const FILE = "00000002-0000-4000-8000-000000000002";
@@ -80,5 +87,50 @@ describe("durableKey and stagingKey", () => {
       expect(() => stagingKey(bad, FILE, "jpg")).toThrow();
       expect(() => stagingKey(RECORD, bad, "jpg")).toThrow();
     }
+  });
+});
+
+describe("addedFileKey", () => {
+  const staffFile = "3f2a9c1d-0000-4000-8000-000000000001";
+
+  it("names a staff file apart from the sender's", () => {
+    expect(
+      addedFileKey({
+        formSlug: "historia",
+        reference: "HP-0042",
+        position: 3,
+        fileId: staffFile,
+        ext: "jpg",
+      }),
+    ).toBe("forms/historia/HP-0042/staff-03-3f2a9c1d.jpg");
+  });
+
+  it("never equals a key the sender scheme produces for the same reference", () => {
+    const sender = new Set<string>();
+    for (let position = 1; position <= 99; position += 1)
+      for (const slug of ["photos", "file", "staff-photos", "staff-03-3f2a9c1d"])
+        for (const ext of ["jpg", "png", "webp", "heic", "mp4", "mov"])
+          sender.add(
+            durableKey({
+              formSlug: "historia",
+              reference: "HP-0042",
+              position,
+              fieldSlug: slug,
+              ext,
+            }),
+          );
+    for (let position = 1; position <= 99; position += 1)
+      for (const ext of ["jpg", "png", "webp", "heic"])
+        expect(
+          sender.has(
+            addedFileKey({
+              formSlug: "historia",
+              reference: "HP-0042",
+              position,
+              fileId: staffFile,
+              ext,
+            }),
+          ),
+        ).toBe(false);
   });
 });

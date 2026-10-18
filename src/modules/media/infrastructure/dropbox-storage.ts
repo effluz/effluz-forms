@@ -1,4 +1,5 @@
 import type { MediaStorage } from "../application/ports/media-storage";
+import { VIEW_URL_TTL_SECONDS } from "../application/read-media";
 
 export interface DropboxConfig {
   appKey: string;
@@ -112,6 +113,16 @@ export class DropboxStorage implements MediaStorage {
     const cacheSeconds = Math.min(ttlSeconds, LINK_MAX_CACHE_SECONDS);
     this.links.set(ref, { url: link, expiresAt: this.now() + cacheSeconds * 1000 });
     return link;
+  }
+
+  async openRead(ref: string): Promise<ReadableStream<Uint8Array>> {
+    const url = await this.viewUrl(ref, VIEW_URL_TTL_SECONDS);
+    const res = await this.fetchImpl(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    if (!res.ok || res.body === null) {
+      await res.body?.cancel();
+      throw new Error(`dropbox download failed with ${String(res.status)}`);
+    }
+    return res.body;
   }
 
   private sendJson(endpoint: string, body: unknown, tolerateNotFound: boolean): Promise<Response> {

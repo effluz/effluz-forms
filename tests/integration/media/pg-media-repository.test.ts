@@ -62,6 +62,20 @@ describe("PgMediaRepository", () => {
     ]);
   });
 
+  it("lists a submission's rows on the unit of work's connection, staff photos included", async () => {
+    const sent = record();
+    const staff = record({ fieldKey: "staff-photos", position: 1 });
+    await uow.run(async (u) => {
+      await repo.insert(u, sent);
+      await repo.insert(u, staff);
+      // Not committed yet: only the unit of work's own connection sees the rows.
+      expect(await repo.listBySubmission(sent.submissionId)).toEqual([]);
+      const listed = await repo.listBySubmission(sent.submissionId, u);
+      expect(listed.map((r) => r.id)).toEqual([sent.id, staff.id]);
+      expect(listed.map((r) => r.fieldKey)).toEqual(["photos", "staff-photos"]);
+    });
+  });
+
   it("refuses two rows at the same position of a field", async () => {
     await uow.run((u) => repo.insert(u, record()));
     await expect(uow.run((u) => repo.insert(u, record()))).rejects.toThrow(

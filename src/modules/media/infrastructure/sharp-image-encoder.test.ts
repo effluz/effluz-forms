@@ -87,6 +87,24 @@ describe("SharpImageEncoder", () => {
     expect(meta.orientation).toBeUndefined();
   });
 
+  it("makes a WebP thumbnail without metadata", async () => {
+    const input = await syntheticJpegWithGps(1200, 800);
+    expect((await sharp(input).metadata()).exif).toBeDefined();
+    const thumb = await encoder.thumbnail(input, "image/jpeg", 320);
+    const meta = await sharp(thumb ?? undefined).metadata();
+    expect(meta.format).toBe("webp");
+    expect([meta.width, meta.height]).toEqual([320, 213]);
+    expect(meta.exif).toBeUndefined();
+    expect(contains(thumb ?? undefined, "synthetic test image")).toBe(false);
+    expect(await encoder.thumbnail(new Uint8Array([1, 2, 3, 4]), "image/jpeg", 320)).toBeNull();
+  });
+
+  it("does not enlarge a small image", async () => {
+    const thumb = await encoder.thumbnail(await syntheticJpegWithGps(64, 48), "image/jpeg", 320);
+    const meta = await sharp(thumb ?? undefined).metadata();
+    expect([meta.width, meta.height]).toEqual([64, 48]);
+  });
+
   describe("libheif handles", () => {
     it("releases the context and every image after each successful decode", async () => {
       const freeImage = vi.spyOn(libheif.HeifImage.prototype, "free");

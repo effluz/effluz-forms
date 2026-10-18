@@ -8,7 +8,8 @@
  * - `FakeSniffer`: `ftyp` at byte 4 is `video/mp4`, a `mime:<type>;` prefix is
  *   that type, anything else is unrecognised.
  * - `FakeEncoder`: the word `broken` in the bytes does not decode; otherwise
- *   the output is `reencoded:` plus the input, PNG and WebP kept, all else JPEG.
+ *   the output is `reencoded:` plus the input, PNG and WebP kept, all else JPEG;
+ *   a thumbnail is `thumb:<maxSide>`.
  * - `InMemoryMediaRepository`: `rows` by id, copies in and out; `markStored`
  *   answers false for a missing row, as the real adapter does.
  * - `makeMediaDeps(overrides?)`: every port filled with these fakes and the
@@ -86,6 +87,20 @@ export class InMemoryStorage implements StagingStorage {
     return Promise.resolve(this.files.has(ref));
   }
 
+  openRead(ref: string): Promise<ReadableStream<Uint8Array>> {
+    const file = this.files.get(ref);
+    if (file === undefined) return Promise.reject(new Error("file not found"));
+    const bytes = file.bytes.slice();
+    return Promise.resolve(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        },
+      }),
+    );
+  }
+
   read(ref: string): Promise<Uint8Array> {
     const file = this.files.get(ref);
     if (file === undefined) return Promise.reject(new Error("file not found"));
@@ -116,6 +131,11 @@ export class FakeEncoder implements ImageEncoder {
     out.set(bytes, prefix.length);
     return Promise.resolve({ bytes: out, contentType: keep ? contentType : "image/jpeg" });
   }
+
+  thumbnail(bytes: Uint8Array, _contentType: string, maxSide: number): Promise<Uint8Array | null> {
+    if (decode(bytes).includes("broken")) return Promise.resolve(null);
+    return Promise.resolve(encode(`thumb:${String(maxSide)}`));
+  }
 }
 
 export class InMemoryMediaRepository implements MediaRepository {
@@ -132,6 +152,7 @@ export class InMemoryMediaRepository implements MediaRepository {
     return Promise.resolve(row === undefined ? null : { ...row });
   }
 
+  // The fake has one view of its rows, so a unit of work changes nothing.
   listBySubmission(submissionId: string): Promise<MediaRecord[]> {
     const found = [...this.rows.values()]
       .filter((r) => r.submissionId === submissionId)

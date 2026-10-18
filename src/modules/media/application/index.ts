@@ -1,7 +1,7 @@
 /** Public API of the media module. Other modules and the app import only this. */
 export type { MediaKind, MediaStatus, MediaRecord, StagedFile } from "../domain/media";
 export { MEDIA_KINDS, extensionFor } from "../domain/media";
-export { fieldSlug, uniqueFieldSlugs, durableKey } from "../domain/keys";
+export { fieldSlug, uniqueFieldSlugs, durableKey, addedFileKey } from "../domain/keys";
 
 export type { MediaDeps } from "./deps";
 export type { MediaStorage, StagingStorage } from "./ports/media-storage";
@@ -16,3 +16,14 @@ export { attachToSubmission } from "./attach";
 export { discardStaged, discardRecordFiles } from "./discard";
 export { MEDIA_JOB_TYPES } from "./job-types";
 export { createMediaUploadHandler, createMediaDeleteHandler } from "./jobs";
+export {
+  THUMBNAIL_MAX_SIDE,
+  VIEW_URL_TTL_SECONDS,
+  findMedia,
+  listSubmissionMedia,
+  openMedia,
+  mediaThumbnail,
+  videoViewUrl,
+  openStoredKey,
+} from "./read-media";
+export { enqueueSubmissionMediaDeletes, enqueueMediaDelete } from "./delete-media";

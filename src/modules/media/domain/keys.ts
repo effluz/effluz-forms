@@ -72,3 +72,20 @@ export function stagingPrefix(recordId: string): string {
 export function stagingKey(recordId: string, fileId: string, ext: string): string {
   return `${stagingPrefix(recordId)}${requireUuid(fileId, "file id")}.${ext}`;
 }
+
+/**
+ * A file staff added to a story: `staff-<nn>-<first 8 hex of fileId>.<ext>`
+ * beside the sender's files. The sender's names start with two digits, so the
+ * schemes never collide. See specs/system/media-storage.md.
+ */
+export function addedFileKey(parts: {
+  formSlug: string;
+  reference: string;
+  position: number;
+  fileId: string;
+  ext: string;
+}): string {
+  const nn = String(parts.position).padStart(2, "0");
+  const short = parts.fileId.replace(/-/g, "").slice(0, 8);
+  return `forms/${parts.formSlug}/${parts.reference}/staff-${nn}-${short}.${parts.ext}`;
+}
