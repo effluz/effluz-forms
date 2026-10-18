@@ -33,7 +33,8 @@ Sentry is proposed. Requirements for whichever tool is chosen:
   commit SHA.
 - Scrubs request bodies, cookies and headers by default. Breadcrumbs may
   carry ids only.
-- Alerts on: any new error type, and any `dead` job.
+- Alerts on: any new error type, and any `dead` job. For now the alert email
+  covers dead jobs (see "Alert destinations").
 
 ## Health and uptime
 
@@ -52,5 +53,8 @@ question cannot be answered from those.
 
 ## Alert destinations
 
-One team channel for everything. Alerts are few by design; if they become
-noisy, fix the cause rather than route them elsewhere.
+Dead jobs alert `ALERT_EMAIL`, one configured address, grouped as in
+`use-cases/operate-jobs.md` ("Alerts"): at most one email per job type per
+clock hour, with a link to Operations. The uptime monitor and the error tracker
+keep "the team channel" until those tools are chosen. Alerts are few by
+design; if they become noisy, fix the cause rather than route them elsewhere.

@@ -44,6 +44,9 @@ Rules:
   of work are for display and early refusals. These are transactional row locks,
   held until the unit of work ends; they are not editor-visible locks (see
   `use-cases/create-and-edit-form.md`).
+- Review use cases lock the `submission` row (through `lockSubmission`), then
+  the `story` row, then the day locks (`pg_advisory_xact_lock` on
+  `story-plan:<date>`) in date order.
 
 ## Connections
 
@@ -61,7 +64,9 @@ Rules:
 - Every table has `id` (random UUID), `created_at`, `updated_at` in UTC.
   Exceptions: `schema_migration`, the migration ledger; and the two
   `definitions` tables whose key is their natural one, `form_draft`
-  (`form_id`) and `form_visit` (`form_id`, `email`).
+  (`form_id`) and `form_visit` (`form_id`, `email`). `story` is keyed by
+  `submission_id`, like `form_draft`, and `staff_photo.id` is the media row's
+  id (ADR 0028).
 - Core tables and the module that owns their migrations:
 
   | Table | Owner | Notes |
@@ -72,7 +77,9 @@ Rules:
   | `form_visit` | `definitions` | `form_id`, `email`, `last_opened_at`: when each staff member last opened each form, for the "new submissions" count. Key (`form_id`, `email`); deleted with the form. |
   | `submission_in_progress` | `submissions` | `id` (the random value of the `effluz_fill` cookie), `form_id`, `form_version_id` (the pinned version), `locale`, `page_key`, `answers` (jsonb, only valid answers), `files` (jsonb, staged files per field key), `pending` (jsonb, the last refused post's typed values and issues, or null; never a file name), `submit_token` (uuid), `started_at`, `expires_at` (24 hours after creation). Personal data; deleted at submit, on a filled honeypot or a too-fast Submit (silent accept), by `jobs.cleanup` after expiry, and with its form by cascade. |
   | `submission` | `submissions` | `form_id`, `form_version_id`, `locale`, `answers` (jsonb, **immutable after insert**: the trigger `submission_answers_immutable` rejects an update that changes it), `consent` (jsonb), `received_at`, `reference` (unique per form, `submission_form_reference_key`), `submit_token` (unique, `submission_submit_token_key`, so a repeated Submit finds the first submission), `status` (`new`, `viewed`, `edited`, `published`; default `new`), `curated_answers` (jsonb, default `{}`), `published_post_url`, `status_changed_by`, `status_changed_at` |
-  | `submission_edit` | `review` | submission_id, field_key, text, source (`manual`, `suggested`), editor, created_at. Append-only. |
+  | `submission_edit` | `review` | `submission_id` (on delete cascade), `field_key`, `text`, `source` (`manual`, `suggested`), `editor`, `created_at`, `updated_at`. Append-only: the trigger `submission_edit_no_update` rejects an update. |
+  | `story` | `review` | `submission_id` (key, on delete cascade), `form_id`, `planned_on` (date), `published_on` (date), `chosen_media` (uuid array, default empty), `photos_edited_for` (uuid array: the chosen set recorded at the "edited" tick), `photos_edited_by`, `photos_edited_at`, `text_checked_by`, `text_checked_at`, `created_at`, `updated_at`. Never holds a "ready" flag: readiness is worked out when read. |
+  | `staff_photo` | `review` | `id` (the media row's id), `submission_id` (on delete cascade), `source` (`whatsapp`, `instagram`, `email`, `other`), `sender_confirmed` (a check constraint requires true), `added_by`, `created_at`, `updated_at`. The file itself is a `media` row under the field key `staff-photos`. |
   | `media` | `media` | `submission_id`, `form_id`, `field_key`, `position` (1-based within the field), `kind` (`image`, `video`), `status` (`staged`, `stored`, `failed`), `content_type`, `size`, `staging_ref` (null once the staging copy is gone), `durable_key`, `provider_ref` (null until stored). No foreign key to `submission`: deletion goes through `media.delete` so a provider outage cannot leave a row pointing at nothing. |
   | `email_delivery` | `notifications` | `delivery_key` (unique: `<job type>:<submission id>`), `provider_message_id`. Lets a retried email job see the message was sent (ADR 0025). |
   | `schema_migration` | `shared` | the ledger: `id` (the four-digit migration id, text), `name`, `applied_at`. Created by the runner itself, not by a migration file. |
@@ -92,7 +99,9 @@ Rules:
   never-published forms are deleted.
 - `answers` is personal data as a whole. Retention and export treat the
   document, never individual keys.
-- Indexes: `submission (form_id, received_at desc)` for review listing;
+- Indexes: `story_plan_slot_key`, unique on `story (planned_on)` where planned
+  and not published, which holds one unpublished story per day across every
+  post-plan form; `submission (form_id, received_at desc)` for review listing;
   `submission_in_progress (expires_at)` for cleanup; the unique
   `media (submission_id, field_key, position)`, which also serves lookups by
   submission; `form (slug)` unique (`form_slug_key`) and `form (status)`;

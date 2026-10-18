@@ -24,8 +24,8 @@ Handlers are registered by `type` in the worker's composition root
 that receives the payload and a context with the job id, the attempt number, the
 job's `maxAttempts`, a logger already tagged with the job, and the unit of work,
 queue and clock ports. Registered today: `jobs.cleanup`, `identity.cleanup`,
-`media.upload`, `media.delete`, `email.submitter_confirmation` and
-`email.staff_notification`.
+`media.upload`, `media.delete`, `email.submitter_confirmation`,
+`email.staff_notification` and `email.job_alert`.
 
 ## The `job` table
 
@@ -38,9 +38,9 @@ Migration `0001_job.sql`, owned by `shared`.
 | `attempts`, `max_attempts` | `attempts` starts at 0 and counts runs started; `max_attempts` defaults to 8 |
 | `run_at` | Earliest execution time, used for backoff and scheduling; defaults to now |
 | `locked_at`, `locked_by` | Worker claim; the claim expires after the lease |
-| `unique_key` | Partial unique index `job_unique_key_idx` where status in (`pending`, `running`) |
+| `unique_key` | Partial unique index `job_unique_key_idx` where status in (`pending`, `running`); Retry on Operations clears it |
 | `last_error` | Message with email-like tokens replaced by `[redacted]`, cut to 500 characters |
-| `discard_reason` | Reason an operator gave when discarding. Nothing sets `discarded` yet; the operator action is specified in `use-cases/operate-jobs.md` |
+| `discard_reason` | Set by Discard on Operations (`use-cases/operate-jobs.md`) |
 | `created_at`, `updated_at`, `finished_at` | Lifecycle; `finished_at` is set on `succeeded` and `dead` |
 
 `job_claim_idx` on (`status`, `run_at`) for `pending` and `failed` rows serves
@@ -96,6 +96,14 @@ any other. A dead job is logged at `error` level and counted in the health
 endpoint's `deadJobs`. Listing dead jobs with a retry action is part of
 `use-cases/operate-jobs.md`; the error-tracker event arrives with the tracker
 (`observability.md`).
+
+The dead transition, in `fail` and `markDead`, also enqueues `email.job_alert`
+in the same transaction (`decisions/0029`), with the unique key
+`email.job_alert:<type>:<YYYY-MM-DDTHH>` when no job with that key exists in
+any status. When that hour's alert exists but has already run, it enqueues the
+next hour's (`run_at` at its start) unless that key exists too. While the
+hour's alert is still waiting nothing more is needed, since it reports every
+dead job of the type when it runs. A dead `email.job_alert` raises nothing.
 
 A handler that throws `PermanentJobError` (from
 `src/shared/application/ports/job-queue.ts`) makes the job `dead` at once with
@@ -177,6 +185,7 @@ counts.
 | `media.delete` | Retention purge or admin delete | Remove the durable file, the staging copy and the media row, in that order |
 | `email.submitter_confirmation` | Submission stored, version defines one | Confirmation in the submitter's locale |
 | `email.staff_notification` | Submission stored, form cadence is per submission | Link to the manager, no content |
+| `email.job_alert` | A job went dead (raised by the job store in the same transaction) | One grouped alert to `ALERT_EMAIL` |
 | `email.staff_digest` | Daily schedule per form with daily cadence | List of new references with links, skipped when empty |
 | `retention.purge` | Daily schedule | Delete submissions past their form's retention setting |
 | `backup.database` | Nightly schedule | Encrypted dump to Dropbox backup folder |
@@ -189,4 +198,5 @@ the waits reach the cap from the twelfth attempt, and 36 attempts keep retrying
 for about a day, so an outage of Dropbox or the email provider that lasts most
 of a day does not leave dead jobs that nothing re-runs.
 
-Payloads: `media.*` carry `{ mediaId }`, `email.*` carry `{ submissionId }`.
+Payloads: `media.*` carry `{ mediaId }`, `email.*` carry `{ submissionId }`,
+except `email.job_alert`, which carries `{ jobType }`.

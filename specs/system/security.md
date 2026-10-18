@@ -289,6 +289,29 @@ answered, so it is not optional.
   | `retention_shortened` | `from` and `to` in months, `count` of submissions the next purge removes; written only when that count is above zero and the editor confirmed |
 
   The constant list is `definitionsAuditActions` in the module's public API.
+- **Review's actions.** Each target is the submission id unless noted:
+
+  | Action | Details |
+  |---|---|
+  | `submissions_listed` | `page`, `count`; target the form |
+  | `submission_viewed` | none |
+  | `photo_viewed` | `mediaId`, `kind` |
+  | `media_downloaded` | `mediaId`, or `set` (`all`, `chosen`) and `count` |
+  | `submissions_exported` | `versions` (`all` or a number), `text`, `paths`, `count`, `search` (boolean), `from`, `to` when set; target the form |
+  | `submission_deleted` | `reference` |
+  | `submission_edited` | `fieldKey`, `source` |
+  | `submission_reverted` | `fieldKey` |
+  | `submission_status_changed` | `from`, `to`, `link` |
+  | `staff_photos_added` | `count`, `source`, `senderConfirmed` |
+  | `staff_photo_removed` | `mediaId` |
+  | `photo_choice_changed` | `mediaId`, `chosen` |
+  | `story_check_changed` | `check`, `value`, `by` |
+  | `story_planned` | `from`, `to` (`YYYY-MM-DD` or `none`), `resolution` |
+  | `post_plan_viewed` | `week`; no target |
+  | `job_retried`, `job_discarded` | `type`; target the job |
+  | `jobs_retried_bulk` | `type`, `count`; no target |
+
+  The constant list is `reviewAuditActions` in the module's public API.
 - **Details never carry an address.** Values are strings, numbers or booleans,
   and the write throws if any string contains `@`. Identity's details are the
   attempted domain on `sign_in_rejected`, the expiry reason (`idle_expired` or
@@ -305,7 +328,7 @@ answered, so it is not optional.
 | Service | What leaves | When |
 |---|---|---|
 | DeepL (translate) | Staff-authored form text | On an editor's request in the builder |
-| DeepL Write | One text answer at a time | On a curator's request in the manager |
+| DeepL Write | Deferred: not sent in the first review release | |
 | Dropbox | Uploaded files, encrypted database dumps | Always, by job |
 | SMTP2GO | Submitter address and staff-authored confirmation copy; staff addresses and references | Always, by job |
 | Google | Staff identity only | Sign-in |

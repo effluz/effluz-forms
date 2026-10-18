@@ -21,6 +21,7 @@ copy. It is Spanish single-language, like the original.
 | Notification recipients | one Effluz staff group address |
 | Notification cadence | per submission |
 | Bot challenge | off |
+| Use submissions in the post plan | on |
 
 ## Header image
 
@@ -80,7 +81,8 @@ variant adds one to exercise the alt text validation.
 - `consent`, required. The original text ("Soy mayor de edad y acepto que
   usen la información y fotos enviadas en las redes sociales y página web
   de Effluz") does not meet the checklist in `form-definition.md`. The
-  fixture uses this text, which does:
+  fixture uses this text, which does. Its last sentence covers checklist item
+  10, which the reference form needs because its post-plan setting is on:
 
   > Soy mayor de edad y tengo autoridad para compartir la información y las
   > fotos o videos de mi hijo o hija. Autorizo a Effluz a usar lo que envío
@@ -91,7 +93,8 @@ variant adds one to exercise the alt text validation.
   > pueden verlos, que Effluz puede revisar la ortografía y gramática de mis
   > textos con un servicio automático de corrección (DeepL) conservando el
   > original, y que puedo pedir que se eliminen antes escribiendo a
-  > {privacy contact}.
+  > {privacy contact}. Las fotos que nos envíes después para esta historia se
+  > guardan y usan de la misma forma.
 
   English reference translation, for the bilingual template:
 
@@ -103,7 +106,8 @@ variant adds one to exercise the alt text validation.
   > access to that account can see them, that Effluz may check the spelling
   > and grammar of my texts with an automated correction service (DeepL)
   > while keeping the original, and that I can ask for earlier deletion by
-  > writing to {privacy contact}.
+  > writing to {privacy contact}. Photos you send us later for this story are
+  > kept and used the same way.
 
 ## Confirmation
 

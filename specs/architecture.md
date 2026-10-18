@@ -1,7 +1,8 @@
 # System Architecture
 
 Status: first pass, revised 2026-10-10 for the definitions module and the
-manager's forms pages (ADRs 0016, 0021, 0022).
+manager's forms pages (ADRs 0016, 0021, 0022), revised 2026-10-18 for the
+review module (ADRs 0028, 0029).
 Core decisions are accepted and recorded in `decisions/`. Two tooling choices
 remain proposed; see Open items.
 
@@ -63,7 +64,7 @@ imports the application layer directly and never loads Next.js.
 |---|---|---|---|
 | **Renderer** | The public | `/f/<slug>` | `submissions` |
 | **Builder** | Staff | `/admin/forms/<id>/edit` | `definitions` |
-| **Manager** | Staff | `/admin/...` | `definitions` (lifecycle, settings), `review` (submissions) |
+| **Manager** | Staff | `/admin/...` | `definitions` (lifecycle, settings), `review` (submissions, `/admin/plan`, `/admin/operations`) |
 
 The manager's routes, their guards and which of them are built are listed in
 `ui-ux/manager.md`, "Routes". The builder route is a placeholder page until
@@ -82,7 +83,7 @@ this table and go through each module's public application API.
 | `notifications` | Email rendering and sending ports, delivery receipts, job handlers for email; templates live in `src/shared/presentation/email/` | `shared` |
 | `definitions` | Forms, drafts, versions, lifecycle, operational settings, QR codes, translation suggestions | `identity` |
 | `submissions` | Public rendering of a published version, server validation, intake transaction, enqueuing jobs | `definitions`, `media`, `notifications` |
-| `review` | Listing, viewing, exporting, downloading and deleting submissions; curation status and text edits; dead job retry | `definitions`, `submissions`, `media`, `identity` |
+| `review` | Story page, list, export, download and delete; curation status and text edits; staff photos, readiness and the post plan; Operations and dead-job alerts | `definitions`, `submissions`, `media`, `identity`, `notifications` |
 
 `shared/` holds the kernel: `LocalizedText`, ids, `Clock`, `UnitOfWork`,
 `JobQueue`, logging, and nothing that belongs to one module.
@@ -104,8 +105,12 @@ or a module's public API:
 | Port | Responsibility | First adapter | Spec |
 |---|---|---|---|
 | `UnitOfWork` | Transaction boundary; lets a use case persist state and enqueue jobs atomically | Postgres | `system/database.md` |
-| `MediaStorage` | Store a file, return a reference, produce a time-limited view URL, delete; staging adds read, prefix delete and prefix listing | Local disk (staging), Dropbox (durable) | `system/media-storage.md` |
+| `MediaStorage` | Store a file, return a reference, produce a time-limited view URL, read as a stream, delete; staging adds read, prefix delete and prefix listing | Local disk (staging), Dropbox (durable) | `system/media-storage.md` |
 | `JobQueue` | Enqueue typed jobs with retry and scheduling semantics | Postgres outbox table | `system/jobs.md` |
+| `JobAdmin` | List dead jobs, retry, discard, and read the worker heartbeat. Shared | Postgres (`job`, `worker_heartbeat`) | `system/jobs.md` |
+| `AlertSource` | The data a dead-job alert email needs, looked up at run time from a job type. Owned by `notifications`, implemented by `review` | Postgres (`review`) | `system/email.md` |
+| `ReviewQueries` | The read model of ADR 0028: list, plan and export in one query each. Owned by `review` | Postgres (`PgReviewQueries`) | `decisions/0028` |
+| `ZipWriter` | Write a stored (uncompressed) ZIP stream of a story's files. Owned by `review` | Stored ZIP writer (`zlib.crc32`) | `system/media-storage.md` |
 | `EmailSender` | Send one rendered transactional message | SMTP2GO (Mailpit locally) | `system/email.md` |
 | `EmailRenderer` | Render the two messages from their data; the implementation is the template module in `src/shared/presentation/email` | Templates, wired at the composition root | `system/email.md` |
 | `MessageSource` | The data an email job needs, looked up at run time from a submission id. Owned by `notifications`, implemented by `submissions` | Postgres (`submissions`) | `system/email.md` |
@@ -116,7 +121,7 @@ or a module's public API:
 | `Clock`, `IdGenerator`, `Logger` | Determinism in tests; structured logging with defensive redaction | System clock, random UUIDs, pino | `system/observability.md` (`Logger`) |
 | `FieldTypeRegistry` | Look up a field type's validator, normalizer, exporter | In-code registry in `shared/domain/form-model` | `form-definition.md` |
 | `Translator` | Suggest a translation of staff-authored text; available to `definitions` only | DeepL API | `decisions/0010` |
-| `TextCorrector` | Suggest spelling and grammar corrections for one text answer; available to `review` only | DeepL Write | `decisions/0011` |
+| `TextCorrector` | Suggest spelling and grammar corrections for one text answer; available to `review` only; deferred, nothing calls it yet | DeepL Write | `decisions/0011` |
 
 Repositories belong to the module that owns the aggregate (`definitions` owns
 forms and versions, `submissions` owns submissions) and are defined as ports
@@ -204,9 +209,8 @@ page's `<html lang>` follows the submitter; `src/app/global-not-found.tsx`
    each photo it serves the staging copy if still present, otherwise a
    short-lived Dropbox link.
 
-The staff notification links to the form's page in the manager until the
-review plan adds the submission page, and carries no answers or photos. Email
-is the least controlled channel we have.
+The staff notification links to the story page in the manager and carries no
+answers or photos. Email is the least controlled channel we have.
 
 ## Environments
 
@@ -230,6 +234,7 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 - No configuration value is ever logged.
 - `PRIVACY_CONTACT_EMAIL` is the one configuration value shown to the
   public, in the renderer's privacy footer and consent template.
+- `ALERT_EMAIL` is the one address dead-job alerts go to (ADR 0029).
 - `PUBLIC_BASE_URL` is the public origin (no path); public links and QR codes
   are built on it. `NOTIFICATION_ALLOWED_DOMAINS` is an optional,
   comma-separated list of partner domains that form notification recipients
