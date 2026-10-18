@@ -1,5 +1,6 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { getContainer, type Container } from "@/app/container";
 import type { Actor } from "@/modules/definitions/application";
 import { currentSession, type Session } from "@/modules/identity/application";
@@ -18,6 +19,7 @@ export interface PageSession {
  * specs/use-cases/sign-in.md, "Trigger".
  */
 export async function pageSession(path: string): Promise<PageSession> {
+  await connection(); // request time only, so a page's audit writes run once: ADR 0027
   const [jar, head] = await Promise.all([cookies(), headers()]);
   const container = getContainer();
   const sessionId = jar.get(container.config.session.cookieName)?.value || null;

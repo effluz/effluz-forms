@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const request = vi.hoisted(() => ({ cookies: new Map<string, string>() }));
 
+vi.mock("next/server", () => ({ connection: () => Promise.resolve() }));
 vi.mock("next/headers", () => ({
   cookies: () =>
     Promise.resolve({

@@ -58,3 +58,7 @@ keeps its own path (a 303 to `?error=1`, which renders the error screen).
   not-found screen; the renderer root layout keeps the slug parameter.
 - Revisit when Next renders not-found and error pages on the server under
   Cache Components, or if the proxy is ever allowed a cached slug lookup.
+- Admin pages call `connection()` in `pageSession` because
+  `partialPrefetching` otherwise renders a session page a second time at
+  request time, repeating its audit writes; the renderer keeps runtime
+  prefetching.
