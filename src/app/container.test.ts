@@ -13,10 +13,17 @@ import { PgAuditLog } from "@/modules/identity/infrastructure/pg-audit-log";
 import { PgAuditLogReader } from "@/modules/identity/infrastructure/pg-audit-log-reader";
 import { PgSessionRepository } from "@/modules/identity/infrastructure/pg-session-repository";
 import { PgSignInAttemptStore } from "@/modules/identity/infrastructure/pg-sign-in-attempt-store";
+import { PLAN_TIME_ZONE } from "@/modules/review/application";
+import { PgEditRepository } from "@/modules/review/infrastructure/pg-edit-repository";
+import { PgReviewQueries } from "@/modules/review/infrastructure/pg-review-queries";
+import { PgStaffPhotoRepository } from "@/modules/review/infrastructure/pg-staff-photo-repository";
+import { PgStoryRepository } from "@/modules/review/infrastructure/pg-story-repository";
+import { StoredZipWriter } from "@/modules/review/infrastructure/stored-zip-writer";
 import { PgSubmissionStats } from "@/modules/submissions/infrastructure/pg-submission-stats";
 import { buildDefaultRegistry } from "@/shared/domain/form-model";
 import { systemClock } from "@/shared/infrastructure/clock";
 import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
+import { PgJobAdmin } from "@/shared/infrastructure/jobs/pg-job-admin";
 import { loadConfig } from "./config";
 import { buildContainer, type Container } from "./container";
 
@@ -64,11 +71,13 @@ describe("buildContainer", () => {
       media: undefined,
       submissions: undefined,
       auditReader: undefined,
+      review: undefined,
     };
     const c = buildContainer(config, overrides as unknown as Partial<Container>);
     expect(c.config).toBe(config);
     expect(c.identity.publicBaseUrl).toBe(config.publicBaseUrl);
     expect(c.auditReader).toBeInstanceOf(PgAuditLogReader);
+    expect(c.review.definitions).toBe(c.definitions);
     expect(typeof c.uow.run).toBe("function");
     expect(typeof c.queue.enqueue).toBe("function");
     expect(c.jobStore.leaseSeconds).toBe(config.worker.leaseSeconds);
@@ -128,6 +137,29 @@ describe("buildContainer", () => {
     expect(c.submissions.queue).toBe(c.queue);
     expect(c.submissions.uow).toBe(c.uow);
     expect(c.submissions.logger).toBe(c.logger);
+  });
+
+  it("builds review on the shared definitions, submissions and media", () => {
+    const pool = {} as unknown as Pool;
+    const c = buildContainer(config, { pool });
+    expect(c.review.definitions).toBe(c.definitions);
+    expect(c.review.submissions).toBe(c.submissions);
+    expect(c.review.media).toBe(c.media);
+    expect(c.review.registry).toBe(c.definitions.registry);
+    expect(c.review.uow).toBe(c.uow);
+    expect(c.review.audit).toBe(c.identity.audit);
+    expect(c.review.auditReader).toBe(c.auditReader);
+    expect(c.review.stories).toBeInstanceOf(PgStoryRepository);
+    expect(c.review.staffPhotos).toBeInstanceOf(PgStaffPhotoRepository);
+    expect(c.review.edits).toBeInstanceOf(PgEditRepository);
+    expect(c.review.queries).toBeInstanceOf(PgReviewQueries);
+    expect(c.review.jobs).toBeInstanceOf(PgJobAdmin);
+    expect(c.review.zip).toBeInstanceOf(StoredZipWriter);
+    expect(c.review.clock).toBe(systemClock);
+    expect(c.review.ids).toBe(systemIdGenerator);
+    expect(c.review.planTimeZone).toBe(PLAN_TIME_ZONE);
+    const review = {} as unknown as Container["review"];
+    expect(buildContainer(config, { pool, review }).review).toBe(review);
   });
 
   it("lets an override replace media and submissions", () => {

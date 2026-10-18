@@ -59,6 +59,33 @@ describe("workerHandlers", () => {
     ]);
   });
 
+  it("registers email.job_alert", async () => {
+    const notifications = makeNotificationsDeps();
+    notifications.alerts.next = {
+      to: ["alerts@example.com"],
+      data: {
+        jobType: "media.upload",
+        count: 1,
+        references: ["ST-0001"],
+        moreCount: 0,
+        link: "https://forms.example.com/admin/operations",
+      },
+    };
+    const handlers = workerHandlers({
+      store,
+      pool: {} as Pool,
+      media: makeMediaDeps(),
+      notifications,
+      submissions: makeSubmissionsDeps(),
+    });
+    const alert = handlers[EMAIL_JOB_TYPES.jobAlert];
+    if (!alert) throw new Error("email.job_alert is not registered");
+    await alert({ jobType: "media.upload" }, handlerContext());
+    expect(notifications.sender.sent.map((m) => [m.to, m.subject])).toEqual([
+      [["alerts@example.com"], "Alert media.upload 1"],
+    ]);
+  });
+
   it("has a handler for every job type the use cases enqueue", async () => {
     const submissions = makeSubmissionsDeps();
     const { versionId } = await publishStory(submissions);

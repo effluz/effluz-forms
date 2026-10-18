@@ -1,4 +1,6 @@
 import os from "node:os";
+import { EMAIL_JOB_MAX_ATTEMPTS, EMAIL_JOB_TYPES } from "@/modules/notifications/application";
+import { ReviewAlertSource } from "@/modules/review/application";
 import { PgAuditLog } from "@/modules/identity/infrastructure/pg-audit-log";
 import { PgAuditLogReader } from "@/modules/identity/infrastructure/pg-audit-log-reader";
 import { systemClock } from "@/shared/infrastructure/clock";
@@ -10,7 +12,13 @@ import { createLogger } from "@/shared/infrastructure/logging/logger";
 import { createPool } from "@/shared/infrastructure/postgres/pool";
 import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
 import { loadConfig } from "./config";
-import { buildDefinitions, buildMedia, buildNotifications, buildSubmissions } from "./modules";
+import {
+  buildDefinitions,
+  buildMedia,
+  buildNotifications,
+  buildReview,
+  buildSubmissions,
+} from "./modules";
 import { RECURRING, workerHandlers } from "./worker-handlers";
 
 /** Worker composition root. See specs/system/jobs.md and specs/architecture.md. */
@@ -26,22 +34,25 @@ function main(): void {
     max: config.worker.concurrency + 2,
     logger,
   });
-  const store = new PgJobStore(pool, systemClock, { leaseSeconds: config.worker.leaseSeconds });
+  // A job going dead enqueues its grouped alert in the same transaction (decisions/0029).
+  const store = new PgJobStore(pool, systemClock, {
+    leaseSeconds: config.worker.leaseSeconds,
+    deadAlert: { type: EMAIL_JOB_TYPES.jobAlert, maxAttempts: EMAIL_JOB_MAX_ATTEMPTS },
+  });
   const uow = new PgUnitOfWorkFactory(pool);
   const queue = new PgJobQueue(systemIdGenerator, systemClock);
-  const definitions = buildDefinitions(
-    config,
-    pool,
-    uow,
-    new PgAuditLog(),
-    new PgAuditLogReader(pool),
-  );
+  const audit = new PgAuditLog();
+  const auditReader = new PgAuditLogReader(pool);
+  const definitions = buildDefinitions(config, pool, uow, audit, auditReader);
   const media = buildMedia(config, pool, uow, queue);
   const submissions = buildSubmissions({ pool, uow, queue, definitions, media, logger });
-  const notifications = buildNotifications(config, pool, submissions, {
-    // Review implements the real source (Task 19); until then there is nothing to alert about.
-    jobAlert: () => Promise.resolve(null),
-  });
+  const review = buildReview({ pool, uow, definitions, submissions, media, audit, auditReader });
+  const notifications = buildNotifications(
+    config,
+    pool,
+    submissions,
+    new ReviewAlertSource(review, { to: config.alertEmail, publicBaseUrl: config.publicBaseUrl }),
+  );
   const worker = new Worker(
     { store, queue, uow, clock: systemClock, logger },
     {

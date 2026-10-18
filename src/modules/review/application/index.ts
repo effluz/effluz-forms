@@ -16,6 +16,7 @@ export type { DayView, PlanItem, PlanResult, WeekView } from "./plan";
 export type { MediaAccess, MediaView, PhotoArchiveResult } from "./media-access";
 export type { ExportLabels, ExportOptions, ExportResult } from "./export";
 export type { DeleteStoryResult } from "./delete";
+export type { DeadJobRow, OperationsView } from "./operations";
 export type { EditRepository, EditRow } from "./ports/edit-repository";
 export type {
   ExportSource,
@@ -40,6 +41,17 @@ export { planStory, postPlanWeek, waitingStories } from "./plan";
 export { accessMedia, photoArchive } from "./media-access";
 export { exportLocale, exportStories } from "./export";
 export { deleteStory } from "./delete";
+export {
+  DISCARD_REASON_MAX,
+  OPERATIONS_DEAD_LIMIT,
+  discardJob,
+  operationsView,
+  retryAllOfType,
+  retryJob,
+  retryStoryJobs,
+  storyOfJob,
+} from "./operations";
+export { ALERT_REFERENCES_MAX, ReviewAlertSource } from "./alert-source";
 
 export type { ReviewAuditAction } from "../domain/audit";
 export { reviewAuditActions } from "../domain/audit";
