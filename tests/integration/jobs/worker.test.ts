@@ -281,6 +281,36 @@ describe("Worker", () => {
     expect(lines.some((l) => l.level === "error" && l.msg === "job failed permanently")).toBe(true);
   });
 
+  it("a handler that dies at its last attempt leaves an alert for its type", async () => {
+    const alertStore = new PgJobStore(pool, clock, {
+      leaseSeconds: 60,
+      deadAlert: { type: "email.job_alert", maxAttempts: 36 },
+    });
+    const id = crypto.randomUUID();
+    await pool.query(
+      `insert into job (id, type, status, attempts, max_attempts, run_at)
+       values ($1, 'probe.fail', 'pending', 35, 36, $2)`,
+      [id, NOW],
+    );
+    const worker = new Worker(
+      { store: alertStore, queue, uow, clock, logger: recordingLogger(lines) },
+      {
+        workerId: "test-worker",
+        concurrency: 4,
+        pollIntervalMs: 10,
+        jobTimeoutMs: 5_000,
+        handlers: { "probe.fail": () => Promise.reject(new Error("probe")) },
+        recurring: [],
+      },
+    );
+    await worker.tick();
+    expect((await job(id)).status).toBe("dead");
+    const alerts = await pool.query<{ status: string; payload: unknown }>(
+      "select status, payload from job where type = 'email.job_alert'",
+    );
+    expect(alerts.rows).toEqual([{ status: "pending", payload: { jobType: "probe.fail" } }]);
+  });
+
   it("tells the handler the job's attempt limit", async () => {
     await enqueue("test.limits", {}, 3);
     const seen: JobHandlerContext[] = [];

@@ -1,7 +1,12 @@
 import type { Pool } from "pg";
 import type { Clock } from "@/shared/application/ports/clock";
 import type { JobPayload } from "@/shared/application/ports/job-queue";
+import { PgUnitOfWorkFactory } from "../postgres/unit-of-work";
+import { txOf } from "../postgres/tx";
 import { backoffMs } from "./backoff";
+import { raiseDeadAlert, type DeadAlertOptions } from "./dead-alert";
+
+export type { DeadAlertOptions } from "./dead-alert";
 
 export interface ClaimedJob {
   id: string;
@@ -31,18 +36,22 @@ function ageSeconds(now: Date, then: Date): number {
 
 /**
  * Worker-side persistence of the outbox: claiming, outcomes, heartbeat and
- * housekeeping. Every statement is a single autocommitted query. Times come
- * from the injected clock. See specs/system/jobs.md.
+ * housekeeping. Every statement is a single autocommitted query, except the
+ * dead transition when `deadAlert` is set: it and the alert enqueue share one
+ * transaction (decisions/0029). Times come from the injected clock. See
+ * specs/system/jobs.md.
  */
 export class PgJobStore {
   readonly leaseSeconds: number;
+  private readonly deadAlert: DeadAlertOptions | undefined;
 
   constructor(
     private readonly pool: Pool,
     private readonly clock: Clock,
-    opts: { leaseSeconds: number },
+    opts: { leaseSeconds: number; deadAlert?: DeadAlertOptions },
   ) {
     this.leaseSeconds = opts.leaseSeconds;
+    this.deadAlert = opts.deadAlert;
   }
 
   /**
@@ -118,15 +127,31 @@ export class PgJobStore {
     return res.rowCount === 1 ? "retry" : "lost";
   }
 
-  /** Marks a claimed job dead without further retries. Fenced like `succeed`. */
+  /**
+   * Marks a claimed job dead without further retries. Fenced like `succeed`.
+   * With `deadAlert` set, the alert for the job's type is enqueued in the same
+   * transaction; any error rolls both back and is rethrown.
+   */
   async markDead(job: ClaimedJob, workerId: string, error: string): Promise<"dead" | "lost"> {
-    const res = await this.pool.query(
-      `update job
+    const now = this.clock.now();
+    const sql = `update job
           set status = 'dead', last_error = $4, finished_at = $5, locked_at = null, locked_by = null, updated_at = now()
-        where id = $1 and status = 'running' and locked_by = $2 and attempts = $3`,
-      [job.id, workerId, job.attempts, scrubError(error), this.clock.now()],
-    );
-    return res.rowCount === 1 ? "dead" : "lost";
+        where id = $1 and status = 'running' and locked_by = $2 and attempts = $3
+        returning type`;
+    const params = [job.id, workerId, job.attempts, scrubError(error), now];
+    const alert = this.deadAlert;
+    if (!alert) {
+      const res = await this.pool.query(sql, params);
+      return res.rowCount === 1 ? "dead" : "lost";
+    }
+    return new PgUnitOfWorkFactory(this.pool).run(async (uow): Promise<"dead" | "lost"> => {
+      const { client } = txOf(uow);
+      const res = await client.query<{ type: string }>(sql, params);
+      const type = res.rows[0]?.type;
+      if (type === undefined) return "lost";
+      if (type !== alert.type) await raiseDeadAlert(client, alert, type, now);
+      return "dead";
+    });
   }
 
   /**
