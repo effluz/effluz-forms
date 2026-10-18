@@ -16,7 +16,7 @@ describe("review copy", () => {
   it("binds every row of the groups review owns", () => {
     // The `pub.` group is shared with builder.md, which owns the publish dialog's rows; the
     // manager spec alone holds the nine rows review owns.
-    const owned = /^(sub|st|pub|del|ex|plan|ops)\./;
+    const owned = /^(sub|list|st|pub|del|ex|plan|ops)\./;
     const managerRows = specCopyRows("specs/ui-ux/manager.md");
     const expected = [...managerRows.keys()].filter((key) => owned.test(key)).sort();
     expect(Object.keys(reviewCopy).sort()).toEqual(expected);

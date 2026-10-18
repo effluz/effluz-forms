@@ -4,7 +4,7 @@ import { bothLanguages, type Text } from "@/shared/presentation/copy";
 
 /**
  * Copy bindings for the review surfaces: the submissions list and export dialog (`sub.`,
- * `ex.`), the story page (`st.`, `pub.`, `del.`), the Post plan page (`plan.`) and the
+ * `list.`, `ex.`), the story page (`st.`, `pub.`, `del.`), the Post plan page (`plan.`) and the
  * Operations page (`ops.`). The text is owned by specs/ui-ux/manager.md ("Fixed chrome
  * copy"); `copy.test.ts` keeps this object equal to those rows. Rows whose placeholder would
  * take a different value per language are split (`_one`/`_other`, `pub.unmark_viewed`).
@@ -37,7 +37,8 @@ export const reviewCopy = {
     en: "No submissions match these filters.",
     es: "Ninguna respuesta coincide con estos filtros.",
   },
-  "sub.count": { en: "{count} submissions", es: "{count} respuestas" },
+  "sub.count_one": { en: "{count} submission", es: "{count} respuesta" },
+  "sub.count_other": { en: "{count} submissions", es: "{count} respuestas" },
   "sub.filter_status": { en: "Status", es: "Estado" },
   "sub.filter_plan": { en: "Post plan", es: "Plan de publicaciones" },
   "sub.plan_planned": { en: "Planned", es: "Planificadas" },
@@ -57,6 +58,9 @@ export const reviewCopy = {
   "sub.newer_page": { en: "Newer", es: "Más recientes" },
   "sub.older_page": { en: "Older", es: "Más antiguas" },
   "sub.deleted": { en: "Submission {ref} was deleted.", es: "Se eliminó la respuesta {ref}." },
+  "list.version": { en: "v{n}", es: "v{n}" },
+  "list.files_one": { en: "{n} file", es: "{n} archivo" },
+  "list.files_other": { en: "{n} files", es: "{n} archivos" },
   // st.*
   "st.back": { en: "Back to the list", es: "Volver a la lista" },
   "st.newer": { en: "Newer", es: "Más reciente" },
@@ -322,7 +326,11 @@ export const reviewCopy = {
   },
   // ex.*
   "ex.title": { en: "Export submissions", es: "Exportar respuestas" },
-  "ex.scope": {
+  "ex.scope_one": {
+    en: "{count} submission matching the current filters",
+    es: "{count} respuesta que coincide con los filtros actuales",
+  },
+  "ex.scope_other": {
     en: "{count} submissions matching the current filters",
     es: "{count} respuestas que coinciden con los filtros actuales",
   },

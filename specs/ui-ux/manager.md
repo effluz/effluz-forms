@@ -610,7 +610,8 @@ wrong CSRF token.
 | sub.export | Export | Exportar |
 | sub.empty | No submissions yet. Share the form to start receiving them. | Aún no hay respuestas. Comparte el formulario para empezar a recibirlas. |
 | sub.empty_filtered | No submissions match these filters. | Ninguna respuesta coincide con estos filtros. |
-| sub.count | {count} submissions | {count} respuestas |
+| sub.count_one | {count} submission | {count} respuesta |
+| sub.count_other | {count} submissions | {count} respuestas |
 | sub.filter_status | Status | Estado |
 | sub.filter_plan | Post plan | Plan de publicaciones |
 | sub.plan_planned | Planned | Planificadas |
@@ -788,7 +789,8 @@ used, so such rows are split (`pub.unmark_viewed` and `pub.unmark_edited`).
 | Key | English | Spanish |
 |---|---|---|
 | ex.title | Export submissions | Exportar respuestas |
-| ex.scope | {count} submissions matching the current filters | {count} respuestas que coinciden con los filtros actuales |
+| ex.scope_one | {count} submission matching the current filters | {count} respuesta que coincide con los filtros actuales |
+| ex.scope_other | {count} submissions matching the current filters | {count} respuestas que coinciden con los filtros actuales |
 | ex.versions | Versions | Versiones |
 | ex.text | Text answers | Respuestas de texto |
 | ex.text_original | Original | Original |
