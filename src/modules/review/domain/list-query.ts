@@ -6,6 +6,17 @@ export const PLAN_FILTERS = ["planned", "waiting", "not_ready"] as const;
 export type PlanFilter = (typeof PLAN_FILTERS)[number];
 
 const SEARCH_MAX = 100;
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+/** Replaces any half of a surrogate pair with U+FFFD, so the text can always be URL-encoded. */
+function wellFormed(value: string): string {
+  return value.replace(LONE_SURROGATE, "\uFFFD");
+}
+
+/** Cuts by code points, so a character is never split. */
+function cut(value: string, max: number): string {
+  return Array.from(wellFormed(value)).slice(0, max).join("");
+}
 
 export interface ListQuery {
   status: ReviewStatus | null;
@@ -48,7 +59,7 @@ export function parseListQuery(
 ): ListQuery {
   const from = first(params["from"]);
   const to = first(params["to"]);
-  const q = (first(params["q"]) ?? "").trim().slice(0, SEARCH_MAX).trim();
+  const q = cut((first(params["q"]) ?? "").trim(), SEARCH_MAX).trim();
   return {
     status: oneOf(REVIEW_STATUSES, first(params["status"])),
     plan: oneOf(PLAN_FILTERS, first(params["plan"])),
@@ -66,7 +77,7 @@ export function listQueryString(q: ListQuery, over: Partial<ListQuery> = {}): st
   const m: ListQuery = { ...q, ...over };
   const pairs: string[] = [];
   const add = (key: string, value: string): void => {
-    pairs.push(`${key}=${encodeURIComponent(value)}`);
+    pairs.push(`${key}=${encodeURIComponent(wellFormed(value))}`);
   };
   if (m.status !== null) add("status", m.status);
   if (m.plan !== null) add("plan", m.plan);

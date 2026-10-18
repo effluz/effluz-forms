@@ -1,4 +1,9 @@
-/** A calendar date, `YYYY-MM-DD`, with no time or zone. */
+/**
+ * A calendar date, `YYYY-MM-DD`, with no time or zone.
+ *
+ * Not branded: `addDays` and `mondayOf` accept only values that came from
+ * `parseIsoDate` or `todayIn`. Any other string can throw a `RangeError`.
+ */
 export type IsoDate = string;
 
 /** The zone in which a planned day is a day: the organisation works in Panama. */

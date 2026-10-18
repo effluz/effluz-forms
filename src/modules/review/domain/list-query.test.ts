@@ -46,6 +46,25 @@ describe("parseListQuery", () => {
     expect(parseListQuery({ q: "a".repeat(150) }).q).toBe("a".repeat(100));
     expect(parseListQuery({ q: "   " }).q).toBeNull();
   });
+
+  it("cuts a long search without splitting a character", () => {
+    const q = parseListQuery({ q: `${"a".repeat(99)}\u{1F600}` }).q;
+    expect(q).toBe(`${"a".repeat(99)}\u{1F600}`);
+    const query = parseListQuery({ q: q ?? undefined });
+    expect(() => listQueryString(query)).not.toThrow();
+    expect(parseListQuery(Object.fromEntries(new URLSearchParams(listQueryString(query))))).toEqual(
+      query,
+    );
+    const cut = parseListQuery({ q: `${"a".repeat(99)}\u{1F600}\u{1F600}` }).q;
+    expect(Array.from(cut ?? "")).toHaveLength(100);
+    expect(() => encodeURIComponent(cut ?? "")).not.toThrow();
+  });
+
+  it("replaces a lone surrogate so the query string never throws", () => {
+    const parsedLone = parseListQuery({ q: "ab\uD83D" });
+    expect(parsedLone.q).toBe("ab\uFFFD");
+    expect(() => listQueryString(EMPTY_QUERY, { q: "x\uDE00y\uD83D" })).not.toThrow();
+  });
 });
 
 describe("listQueryString", () => {

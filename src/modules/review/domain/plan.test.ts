@@ -12,7 +12,7 @@ describe("decidePlan", () => {
     });
   });
 
-  it("writes the same date when the story already holds the day", () => {
+  it("planning the day it already holds writes nothing new", () => {
     const planned = { ...story, plannedOn: "2026-10-21" };
     expect(
       decidePlan({ story: planned, date: "2026-10-21", holder: planned, resolution: null }),
@@ -31,7 +31,7 @@ describe("decidePlan", () => {
     ).toEqual({ kind: "conflict", other, canSwap: true });
   });
 
-  it("swaps by moving this story off first", () => {
+  it("swap moves this story off first", () => {
     const planned = { ...story, plannedOn: "2026-10-20" };
     expect(
       decidePlan({ story: planned, date: "2026-10-21", holder: other, resolution: "swap" }),
@@ -45,23 +45,27 @@ describe("decidePlan", () => {
     });
   });
 
-  it("sends the other story to waiting on a move, and treats a swap of an unplanned story as a move", () => {
-    const expected = {
-      kind: "write",
-      writes: [
-        { submissionId: "s-2", plannedOn: null },
-        { submissionId: "s-1", plannedOn: "2026-10-21" },
-      ],
-    };
+  const moveWrites = {
+    kind: "write",
+    writes: [
+      { submissionId: "s-2", plannedOn: null },
+      { submissionId: "s-1", plannedOn: "2026-10-21" },
+    ],
+  };
+
+  it("move sends the other to waiting", () => {
     expect(decidePlan({ story, date: "2026-10-21", holder: other, resolution: "move" })).toEqual(
-      expected,
-    );
-    expect(decidePlan({ story, date: "2026-10-21", holder: other, resolution: "swap" })).toEqual(
-      expected,
+      moveWrites,
     );
   });
 
-  it("clears the day by writing null", () => {
+  it("treats a swap asked for an unplanned story as a move", () => {
+    expect(decidePlan({ story, date: "2026-10-21", holder: other, resolution: "swap" })).toEqual(
+      moveWrites,
+    );
+  });
+
+  it("clearing writes null", () => {
     const planned = { ...story, plannedOn: "2026-10-20" };
     expect(decidePlan({ story: planned, date: null, holder: null, resolution: null })).toEqual({
       kind: "write",
@@ -71,14 +75,14 @@ describe("decidePlan", () => {
 });
 
 describe("publishDay", () => {
-  it("is the planned date, or today when unplanned", () => {
+  it("publish day", () => {
     expect(publishDay("2026-10-21", "2026-10-18")).toBe("2026-10-21");
     expect(publishDay(null, "2026-10-18")).toBe("2026-10-18");
   });
 });
 
 describe("plannedAfterUnpublish", () => {
-  it("moves the story to waiting when its day was taken meanwhile", () => {
+  it("unmark moves the story to waiting when its day was taken meanwhile", () => {
     expect(plannedAfterUnpublish({ plannedOn: "2026-10-21", dayHeldByOther: true })).toBeNull();
     expect(plannedAfterUnpublish({ plannedOn: "2026-10-21", dayHeldByOther: false })).toBe(
       "2026-10-21",

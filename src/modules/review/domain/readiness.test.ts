@@ -27,7 +27,7 @@ describe("readiness", () => {
     expect(readiness(NO_CHECKS).done).toBe(0);
   });
 
-  it("counts photos edited only for the same chosen set", () => {
+  it("photos edited counts only for the same chosen set", () => {
     const stale: StoryChecks = { chosen: ["a", "b"], photosEditedFor: ["a"], textCheckedAt: T };
     expect(readiness(stale).photosEdited).toBe(false);
     expect(editedStale(stale)).toBe(true);
