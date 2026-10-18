@@ -18,7 +18,8 @@ with a 2 px offset.
 - Full width below `breakpoint.sm` on public. Never full width on staff.
 - Loading: label stays, spinner replaces the icon slot, button is disabled
   and announces "busy".
-- Destructive appears only inside a confirmation dialog or drawer menu.
+- Destructive appears only inside a confirmation dialog or the story page's
+  in-page confirmations.
 - Do: verbs ("Publish version 3"). Do not: "OK", "Yes", icon-only.
 
 ## Link
@@ -182,7 +183,7 @@ with a 2 px offset.
 
 - `size.photoTile` square, radius `radius.md`, 1 px `border.default`; the
   image `object-fit: cover`, generated at 2x. A video has no image: the tile
-  shows a film icon on `surface.subtle`.
+  shows a film icon in `color.text.muted` on `surface.subtle` (at least 3:1).
 - Beneath the image the caption ("Photo n of total" or "Video n of total")
   and the tile's actions as tertiary buttons stacked, each at least
   `size.touchTarget` tall.
@@ -192,9 +193,15 @@ with a 2 px offset.
 ## Readiness checks
 
 - A list of three rows, each an icon (check or cross, 20 px), the check's
-  name, then "Done" or "Missing" in text. Done is `color.text.success`,
-  missing is `color.text.warning`; the words and the icon carry the state,
-  the color only supports it.
+  name, then "Done" or "Missing" in text. On `surface.card` the icon and the
+  words are `color.text.success` for done and `color.text.warning` for
+  missing (both at least 4.5:1); the words and the icon carry the state, the
+  color only supports it.
+- Inside a `surface.selected` row (today's Week day row) the words "Done" and
+  "Missing" and the check's name use `color.text.default` (4.5:1 or more);
+  `color.text.success` on `surface.selected` is only 4.30:1, below AA for
+  text. The icon keeps `color.text.success` or `color.text.warning`, both at
+  least 3:1 there, and the icon and the words still carry the state.
 - The summary line above the list reads "Ready" or "Not ready: n of 3
   done".
 
@@ -205,6 +212,9 @@ with a 2 px offset.
   `surface.selected` and the word "Today". Rows are separated by
   `border.default`. The row stacks (date above content) below
   `breakpoint.md`.
+- Text on today's row stays AA: weekday, date and "Today" use
+  `color.text.default`, secondary text `color.text.muted` (4.69:1), and the
+  readiness words use `color.text.default` (see Readiness checks).
 
 ## Viewer (staff, no JavaScript)
 
@@ -216,7 +226,7 @@ with a 2 px offset.
 ## Skeleton
 
 - `surface.subtle` blocks with a 1.2 s opacity pulse, disabled under
-  reduced motion. Used for lists and the drawer only.
+  reduced motion. Used for lists and the story page only.
 
 ## Wordmark
 

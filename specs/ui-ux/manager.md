@@ -197,7 +197,7 @@ the correction editor and the readiness panel, which do not fit a drawer. Route
 4. Banners: the flash of the last change, a refusal, and the dead-jobs warning
    with Try again.
 5. **Answers** card: per page title, each answer through its field type's
-   review display; a file upload answer shows `st.files_below` and its files
+   review display; a file upload answer shows `st.files_below_one` or `st.files_below_other` and its files
    sit in the Photos and videos card. Text answers show the corrected text when
    a correction exists, with an "Edited" tag, "Compare with original" and
    "Edit"; unedited text answers show "Edit". Other types have no actions.
@@ -205,7 +205,7 @@ the correction editor and the readiness panel, which do not fit a drawer. Route
    "Added by the team". Per file: the thumbnail (a tile with the words "Video n
    of total" for a video), "View full size", "Download"; on post-plan forms
    "Choose for the post" or "Remove from the post". Above the grid "Download
-   chosen ({count})" and "Download all ({count})". An "Add photos" form (post-
+   all ({count})" and, on post-plan forms only, "Download chosen ({count})". An "Add photos" form (post-
    plan forms only).
 7. **Ready to post?** panel (post-plan forms only): the three checks, each with
    "Done" or "Missing" and a tick or a cross, the two tick buttons ("Mark photos
@@ -245,7 +245,7 @@ returns to the answer with the Edited tag, ticks "Text checked" and shows
 "Compare with original" (`?compare=<field>`) opens the same two columns
 read-only. Each change is marked with `<ins>` or `<del>`, a visually hidden
 "Added" or "Removed", underline or strike-through, and `tabindex="0"`; the
-change count is a polite status (`st.changes`, or `st.no_changes`). Compare
+change count is a polite status (`st.changes_one`, `st.changes_other` or `st.no_changes`). Compare
 offers Edit and "Revert to original", which opens its in-page confirmation
 (`st.revert_confirm`).
 
@@ -262,7 +262,9 @@ downloading are audited.
 An in-page confirmation with an optional "Link to the post" field accepting
 only `https` URLs, and Confirm. The badge updates on the story page and in the
 list. Unmark asks for confirmation and says which status it returns to
-(`pub.unmark_viewed` or `pub.unmark_edited`); it clears the post link. A story
+(`pub.unmark_viewed` or `pub.unmark_edited`); it clears the post link and
+keeps the planned date when that day is still free, otherwise the story returns
+to Waiting for a date (`pub.unmark_waiting`). A story
 published keeps its planned date as the day it went out; a story published
 with no planned date takes the publish date as its day without taking that
 day's slot.
@@ -650,7 +652,8 @@ used, so such rows are split (`pub.unmark_viewed` and `pub.unmark_edited`).
 | st.no_answer | No answer | Sin respuesta |
 | st.yes | Yes | Sí |
 | st.no | No | No |
-| st.files_below | {n} files, shown under Photos and videos | {n} archivos, en Fotos y videos |
+| st.files_below_one | {n} file, shown under Photos and videos | {n} archivo, en Fotos y videos |
+| st.files_below_other | {n} files, shown under Photos and videos | {n} archivos, en Fotos y videos |
 | st.edited_tag | Edited | Editada |
 | st.edited_by | Corrected by {name} on {date} | Corregida por {name} el {date} |
 | st.edit | Edit | Editar |
@@ -661,7 +664,8 @@ used, so such rows are split (`pub.unmark_viewed` and `pub.unmark_edited`).
 | st.corrected | Corrected | Corregida |
 | st.correction_hint | Fix spelling, grammar and punctuation. The sender's original is kept. | Corrige ortografía, gramática y puntuación. El original se conserva. |
 | st.save | Save correction | Guardar corrección |
-| st.changes | {n} changes | {n} cambios |
+| st.changes_one | {n} change | {n} cambio |
+| st.changes_other | {n} changes | {n} cambios |
 | st.no_changes | No differences from the original | Sin diferencias con el original |
 | st.added | Added | Agregado |
 | st.removed | Removed | Quitado |
@@ -707,7 +711,8 @@ used, so such rows are split (`pub.unmark_viewed` and `pub.unmark_edited`).
 | st.upload | Upload | Subir |
 | st.remove_photo | Remove this photo | Quitar esta foto |
 | st.remove_photo_confirm | Remove this photo from the story? Its file in Dropbox is deleted too. | ¿Quitar esta foto de la historia? Su archivo en Dropbox también se elimina. |
-| st.photos_added | {count} files added | Se agregaron {count} archivos |
+| st.photos_added_one | {count} file added | Se agregó {count} archivo |
+| st.photos_added_other | {count} files added | Se agregaron {count} archivos |
 | st.photo_removed | Photo removed | Foto quitada |
 | st.err_not_confirmed | Tick the box to confirm the sender sent these for this story. | Marca la casilla para confirmar que la persona las envió para esta historia. |
 | st.err_source | Choose where the photos came from. | Elige de dónde llegaron las fotos. |
@@ -731,7 +736,7 @@ used, so such rows are split (`pub.unmark_viewed` and `pub.unmark_edited`).
 | st.mark_text | Mark text as checked | Marcar texto como revisado |
 | st.unmark_text | Text not checked yet | El texto aún no está revisado |
 | st.checked_by | {name}, {date} | {name}, {date} |
-| st.edited_stale | The chosen photos changed after they were edited. Tick again once the new set is edited. | Las fotos elegidas cambiaron después de editarlas. Vuelve a marcar cuando el nuevo grupo esté editado. |
+| st.edited_stale | The chosen photos changed after they were edited. Tick again once the new set is edited. | Las fotos elegidas cambiaron después de editarlas. Vuelve a marcar cuando el nuevo conjunto esté editado. |
 | st.err_no_photos_chosen | Choose at least one photo first. | Primero elige al menos una foto. |
 | st.check_saved | Check saved | Verificación guardada |
 | st.choice_saved | Photo choice saved | Elección de fotos guardada |
@@ -893,7 +898,8 @@ used, so such rows are split (`pub.unmark_viewed` and `pub.unmark_edited`).
 | plan.published | Published | Publicada |
 | plan.waiting | Waiting for a date | Esperando fecha |
 | plan.waiting_empty | No stories are waiting for a date. | No hay historias esperando fecha. |
-| plan.waiting_count | {count} stories | {count} historias |
+| plan.waiting_count_one | {count} story | {count} historia |
+| plan.waiting_count_other | {count} stories | {count} historias |
 | plan.picking | Choose a story for {date}. | Elige una historia para el {date}. |
 | plan.plan_for | Plan for {date} | Planificar para el {date} |
 | plan.no_forms | No form uses the post plan yet. Turn it on in a form's Settings. | Ningún formulario usa el plan de publicaciones todavía. Actívalo en la Configuración de un formulario. |
@@ -926,7 +932,8 @@ used, so such rows are split (`pub.unmark_viewed` and `pub.unmark_edited`).
 | ops.col_error | Last error | Último error |
 | ops.col_first | First attempt | Primer intento |
 | ops.col_last | Last attempt | Último intento |
-| ops.seconds_ago | {n} seconds ago | hace {n} segundos |
+| ops.seconds_ago_one | {n} second ago | hace {n} segundo |
+| ops.seconds_ago_other | {n} seconds ago | hace {n} segundos |
 | ops.never | Never | Nunca |
 | ops.no_story | No story | Sin historia |
 | ops.err_reason | Write why you are discarding it, in at most 200 characters. | Escribe por qué lo descartas, en 200 caracteres como máximo. |
