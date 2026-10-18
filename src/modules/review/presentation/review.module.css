@@ -1,0 +1,165 @@
+/*
+ * The review surfaces: answers, photo tiles, readiness checks and the week day row. Every
+ * value is a token from design-system/tokens.json (staff surfaces), named in a comment; the
+ * standards are in design-system/components.md. The shell's custom properties (`--text`,
+ * `--border`, ...) come from `.shell` in shared/presentation/manager.module.css.
+ */
+
+/* An answer's text: kept line breaks and long words wrapped; font.size.staff.body. */
+.answerText {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A list of chosen options: space.1 between items. */
+.answerList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+/* Secondary text beside an answer, such as the consent text version: color.text.muted (6.2:1). */
+.answerMeta {
+  display: block;
+  color: #774c60;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* The answer to a field that was left empty: color.text.muted. */
+.noAnswer {
+  margin: 0;
+  color: #774c60;
+}
+
+/* A section field's title inside the answers: font.size.staff.heading, font.weight.semibold. */
+.answerHeading {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/*
+ * Photo tile (staff): size.photoTile square, radius.md, 1 px border.default; the image covers
+ * the tile (thumbnails are generated at 2x).
+ */
+.photoTile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* size.photoTile */
+  width: 160px;
+}
+
+.photoFrame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* size.photoTile */
+  width: 160px;
+  height: 160px;
+  overflow: hidden;
+  /* radius.md, border.width.default, color.border.default */
+  border: 1px solid #eff0f5;
+  border-radius: 12px;
+  /* color.surface.subtle, with color.text.muted (at least 3:1) for a video's film icon */
+  background: #eff0f5;
+  color: #774c60;
+}
+
+.photoFrame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A chosen tile: border.width.focus in color.action.primary.bg, plus the words and a check. */
+.photoChosen .photoFrame {
+  border: 2px solid #372549;
+}
+
+/* Readiness checks: a list of three rows, an icon, the check's name, then Done or Missing. */
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The icon is 20 px. */
+.checkIcon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+/* On surface.card: color.text.success (6.2:1) and color.text.warning (6.8:1). */
+.checkDone {
+  color: #1f6b4a;
+}
+
+.checkMissing {
+  color: #7a4b00;
+}
+
+/* The check's name and its Done or Missing words, which carry the state with the icon. */
+.checkWords {
+  font-weight: 500;
+}
+
+/* Week day row: a list item per day, the day on the left, its content on the right. */
+.weekRow {
+  display: flex;
+  flex-direction: column;
+  /* space.2 stacked, space.4 once side by side */
+  gap: 8px;
+  padding: 12px 16px;
+  /* color.border.default */
+  border-bottom: 1px solid #eff0f5;
+}
+
+@media (min-width: 768px) {
+  /* breakpoint.md */
+  .weekRow {
+    flex-direction: row;
+    gap: 16px;
+  }
+}
+
+/* Today's row: surface.selected, with the word "Today" and every text in color.text.default. */
+.weekToday {
+  /* color.surface.selected */
+  background: #eacdc2;
+  /* color.text.default (12.1:1 on surface.selected) */
+  color: #1a1423;
+}
+
+/*
+ * Inside today's row the readiness words and names use color.text.default: color.text.success
+ * on surface.selected is only 4.30:1, below AA for text. The icon keeps its state colour (at
+ * least 3:1) and the icon and words still carry the state.
+ */
+.weekToday .checkDone .checkWords,
+.weekToday .checkMissing .checkWords {
+  color: #1a1423;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photoTile * {
+    transition: none;
+    animation: none;
+  }
+}
