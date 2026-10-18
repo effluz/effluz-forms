@@ -89,7 +89,8 @@ export interface StoryView {
   neighbours: { newer: string | null; older: string | null };
 }
 
-function maxLengthOf(field: Field, registry: FieldTypeRegistry): number | null {
+/** The field's own `max_length` rule, else the type's cap, else null. */
+export function maxLengthOf(field: Field, registry: FieldTypeRegistry): number | null {
   for (const rule of field.validation) if (rule.rule === "max_length") return rule.value;
   return registry.get(field.type).maxLength ?? null;
 }

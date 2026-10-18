@@ -1,8 +1,10 @@
 /** Public API of the review module. The app imports only this; no module depends on review. */
 export type { ReviewDeps } from "./deps";
 export type { FormContext, StoryContext } from "./context";
+export type { CorrectionResult, RevertResult } from "./curation";
 export type { StoryList, StoryListRow } from "./list";
 export type { AnswerPageView, AnswerView, PhotoView, StoryView } from "./open-story";
+export type { MarkResult, UnmarkResult } from "./publishing";
 export type { EditRepository, EditRow } from "./ports/edit-repository";
 export type {
   ExportSource,
@@ -19,6 +21,8 @@ export type { ZipEntry, ZipWriter } from "./ports/zip-writer";
 export { loadFormContext } from "./context";
 export { listStories } from "./list";
 export { openStory } from "./open-story";
+export { revertCorrection, saveCorrection } from "./curation";
+export { markPublished, unmarkPublished } from "./publishing";
 
 export type { ReviewAuditAction } from "../domain/audit";
 export { reviewAuditActions } from "../domain/audit";
