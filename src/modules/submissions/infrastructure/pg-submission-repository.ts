@@ -5,10 +5,19 @@ import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
 import { txOf } from "@/shared/infrastructure/postgres/tx";
 import { isUuid } from "@/shared/infrastructure/uuid";
 import type { SubmissionRepository } from "../application/ports/submission-repository";
-import type { Submission } from "../domain/submission";
+import {
+  CURATION_STATUSES,
+  type Curation,
+  type StoredSubmission,
+  type Submission,
+} from "../domain/submission";
 
 const COLUMNS = `id, form_id, form_version_id, locale, answers, consent, received_at,
   reference, submit_token`;
+const STORED_COLUMNS = `${COLUMNS}, status, curated_answers, published_post_url,
+  status_changed_by, status_changed_at`;
+
+const curatedAnswersSchema = z.record(z.string(), z.string());
 
 const answersSchema = z.record(z.string(), z.unknown());
 const consentSchema = z.object({
@@ -27,6 +36,32 @@ interface SubmissionRow {
   received_at: Date;
   reference: string;
   submit_token: string;
+}
+
+interface StoredRow extends SubmissionRow {
+  status: string;
+  curated_answers: unknown;
+  published_post_url: string | null;
+  status_changed_by: string | null;
+  status_changed_at: Date | null;
+}
+
+function toStored(row: StoredRow): StoredSubmission {
+  const submission = toSubmission(row);
+  const curated = curatedAnswersSchema.safeParse(row.curated_answers);
+  if (!curated.success) throw new Error(`stored curation of submission ${row.id} is corrupt`);
+  const status = CURATION_STATUSES.find((s) => s === row.status);
+  if (status === undefined) throw new Error(`stored status of submission ${row.id} is corrupt`);
+  return {
+    ...submission,
+    curation: {
+      status,
+      curatedAnswers: curated.data,
+      publishedPostUrl: row.published_post_url,
+      statusChangedBy: row.status_changed_by,
+      statusChangedAt: row.status_changed_at,
+    },
+  };
 }
 
 function toSubmission(row: SubmissionRow): Submission {
@@ -115,5 +150,59 @@ export class PgSubmissionRepository implements SubmissionRepository {
     );
     const row = rows[0];
     return row ? toSubmission(row) : null;
+  }
+
+  async findStored(id: string): Promise<StoredSubmission | null> {
+    if (!isUuid(id)) return null;
+    const { rows } = await this.pool.query<StoredRow>(
+      `select ${STORED_COLUMNS} from submission where id = $1`,
+      [id],
+    );
+    const row = rows[0];
+    return row ? toStored(row) : null;
+  }
+
+  async findByReference(formId: string, reference: string): Promise<StoredSubmission | null> {
+    if (!isUuid(formId)) return null;
+    const { rows } = await this.pool.query<StoredRow>(
+      `select ${STORED_COLUMNS} from submission where form_id = $1 and reference = $2`,
+      [formId, reference],
+    );
+    const row = rows[0];
+    return row ? toStored(row) : null;
+  }
+
+  async lockForUpdate(uow: UnitOfWork, id: string): Promise<StoredSubmission | null> {
+    if (!isUuid(id)) return null;
+    const { rows } = await txOf(uow).client.query<StoredRow>(
+      `select ${STORED_COLUMNS} from submission where id = $1 for update`,
+      [id],
+    );
+    const row = rows[0];
+    return row ? toStored(row) : null;
+  }
+
+  async writeCuration(uow: UnitOfWork, id: string, curation: Curation): Promise<void> {
+    // The statement names the curation columns only; the trigger guards `answers` regardless.
+    await txOf(uow).client.query(
+      `update submission
+          set status = $2, curated_answers = $3::jsonb, published_post_url = $4,
+              status_changed_by = $5, status_changed_at = $6, updated_at = now()
+        where id = $1`,
+      [
+        id,
+        curation.status,
+        JSON.stringify(curation.curatedAnswers),
+        curation.publishedPostUrl,
+        curation.statusChangedBy,
+        curation.statusChangedAt,
+      ],
+    );
+  }
+
+  async delete(uow: UnitOfWork, id: string): Promise<boolean> {
+    if (!isUuid(id)) return false;
+    const { rowCount } = await txOf(uow).client.query("delete from submission where id = $1", [id]);
+    return (rowCount ?? 0) > 0;
   }
 }

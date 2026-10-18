@@ -5,8 +5,10 @@
  *   rejects an existing id and `update` a missing one, as the table would;
  *   `findForUpdate` is `find` (one process needs no locks); `claimedStaging`
  *   also sees the media fake's staging references.
- * - `InMemorySubmissionRepository`: `rows` by id; `insert` answers
- *   `duplicate_token` when any row has the submit token.
+ * - `InMemorySubmissionRepository`: `rows` by id, `curation` beside them (a
+ *   row without an entry is `new`); `insert` answers `duplicate_token` when
+ *   any row has the submit token; `writeCuration` never touches `rows`;
+ *   `lockForUpdate` is `findStored` (one process needs no locks).
  * - `makeSubmissionsDeps()`: one clock, one id generator and one queue shared
  *   by definitions, media and submissions, plus the two repositories above.
  * - `publishStory(deps, settings?)`: the three-page story form, published as
@@ -33,7 +35,7 @@ import {
 import { buildDefaultRegistry } from "@/shared/domain/form-model";
 import type { InProgress } from "../../domain/in-progress";
 import { storyVersion } from "../../domain/testing/versions";
-import type { Submission } from "../../domain/submission";
+import type { Curation, StoredSubmission, Submission } from "../../domain/submission";
 import type { SubmissionsDeps } from "../deps";
 import type { PagePost } from "../fill-state";
 import type { InProgressRepository } from "../ports/in-progress-repository";
@@ -98,8 +100,22 @@ export class InMemoryInProgressRepository implements InProgressRepository {
   }
 }
 
+const NEW_CURATION: Curation = {
+  status: "new",
+  curatedAnswers: {},
+  publishedPostUrl: null,
+  statusChangedBy: null,
+  statusChangedAt: null,
+};
+
 export class InMemorySubmissionRepository implements SubmissionRepository {
   readonly rows = new Map<string, Submission>();
+  readonly curation = new Map<string, Curation>();
+
+  private stored(row: Submission | undefined): StoredSubmission | null {
+    if (!row) return null;
+    return structuredClone({ ...row, curation: this.curation.get(row.id) ?? NEW_CURATION });
+  }
 
   insert(_uow: UnitOfWork, submission: Submission): Promise<"inserted" | "duplicate_token"> {
     for (const row of this.rows.values())
@@ -119,6 +135,32 @@ export class InMemorySubmissionRepository implements SubmissionRepository {
   findById(id: string): Promise<Submission | null> {
     const row = this.rows.get(id);
     return Promise.resolve(row ? structuredClone(row) : null);
+  }
+
+  findStored(id: string): Promise<StoredSubmission | null> {
+    return Promise.resolve(this.stored(this.rows.get(id)));
+  }
+
+  findByReference(formId: string, reference: string): Promise<StoredSubmission | null> {
+    for (const row of this.rows.values())
+      if (row.formId === formId && row.reference === reference)
+        return Promise.resolve(this.stored(row));
+    return Promise.resolve(null);
+  }
+
+  lockForUpdate(_uow: UnitOfWork, id: string): Promise<StoredSubmission | null> {
+    return this.findStored(id);
+  }
+
+  writeCuration(_uow: UnitOfWork, id: string, curation: Curation): Promise<void> {
+    if (!this.rows.has(id)) return Promise.reject(new Error(`submission ${id} does not exist`));
+    this.curation.set(id, structuredClone(curation));
+    return Promise.resolve();
+  }
+
+  delete(_uow: UnitOfWork, id: string): Promise<boolean> {
+    this.curation.delete(id);
+    return Promise.resolve(this.rows.delete(id));
   }
 }
 

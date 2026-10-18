@@ -86,10 +86,44 @@ describe("SubmissionMessageSource", () => {
         formTitle: "Sample form",
         reference: "SF-0001",
         receivedAt: "2026-10-10 09:00 America/Panama, 14:00 UTC",
-        link: `https://forms.example.com/admin/forms/${formId}`,
+        link: `https://forms.example.com/admin/forms/${formId}/submissions/SF-0001`,
       },
     });
     expect(await source.submitterConfirmation(randomUUID())).toBeNull();
+  });
+
+  it("links the staff notification to the story page", async () => {
+    const { formId, versionId } = await seedPublishedForm(pool, storyVersion(), {
+      notificationRecipients: ["stories@example.com"],
+    });
+    const deps = pgSubmissionsDeps(pool, dirs());
+    const repo = new PgSubmissionRepository(pool);
+    const id = randomUUID();
+    await deps.uow.run((u) =>
+      repo.insert(u, {
+        id,
+        formId,
+        versionId,
+        locale: "en",
+        answers: { f_name: "Ana Prueba" },
+        consent: null,
+        receivedAt: new Date("2026-10-10T14:00:00Z"),
+        reference: "SF-0003",
+        submitToken: randomUUID(),
+      }),
+    );
+    const source = new SubmissionMessageSource({
+      submissions: repo,
+      definitions: deps.definitions,
+      versions: new VersionCache(),
+      registry,
+      publicBaseUrl: "https://forms.example.com",
+      privacyContact: "privacy@example.com",
+    });
+    const message = await source.staffNotification(id);
+    expect(message?.data.link).toBe(
+      `https://forms.example.com/admin/forms/${formId}/submissions/SF-0003`,
+    );
   });
 
   it("returns null when there is nothing to send", async () => {

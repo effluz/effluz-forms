@@ -395,6 +395,11 @@ describe("the intake against Postgres", () => {
       insert: (u, s) => real.insert(u, s),
       findById: (sid) => real.findById(sid),
       findBySubmitToken: () => Promise.resolve(null),
+      findStored: (sid) => real.findStored(sid),
+      findByReference: (f, r) => real.findByReference(f, r),
+      lockForUpdate: (u, sid) => real.lockForUpdate(u, sid),
+      writeCuration: (u, sid, c) => real.writeCuration(u, sid, c),
+      delete: (u, sid) => real.delete(u, sid),
     };
     const before = await formRow();
     expect(await submit({ ...deps, submissions: blind }, id)).toEqual({

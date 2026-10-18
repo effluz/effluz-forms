@@ -1,6 +1,6 @@
 /**
- * Public API of the submissions module. Only `src/app` imports it; no module
- * depends on submissions. Later tasks add their use cases here.
+ * Public API of the submissions module. `src/app` and `review` import it; no
+ * other module depends on submissions. Later tasks add their use cases here.
  */
 export type { SubmissionsDeps } from "./deps";
 export type {
@@ -23,7 +23,8 @@ export type {
   FileIssueCode,
   RefusedFile,
 } from "../domain/in-progress";
-export type { Submission } from "../domain/submission";
+export type { Curation, CurationStatus, StoredSubmission, Submission } from "../domain/submission";
+export { CURATION_STATUSES } from "../domain/submission";
 
 export { VersionCache } from "./version-cache";
 export { postContext } from "./post-context";
@@ -34,6 +35,13 @@ export { uploadFile, removeFile } from "./upload-file";
 export { submitForm } from "./submit-form";
 export { expireInProgress } from "./expire";
 export { sweepStaging } from "./sweep-staging";
+export {
+  deleteSubmission,
+  findSubmission,
+  findSubmissionByReference,
+  lockSubmission,
+  writeCuration,
+} from "./review-access";
 export type { UploadOutcome, UploadRefusal } from "./upload-file";
 export { HONEYPOT_FIELD, MIN_FILL_MS } from "../domain/protection";
 export { uploadFields } from "../domain/intake";

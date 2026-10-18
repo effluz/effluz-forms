@@ -103,8 +103,8 @@ export class SubmissionMessageSource implements MessageSource {
         formTitle: resolveText(form.title, "en", form.languages),
         reference: submission.reference,
         receivedAt: receivedAt(submission.receivedAt, settings.timezone),
-        // The form's page until the review plan adds the submission page.
-        link: `${deps.publicBaseUrl}/admin/forms/${form.id}`,
+        // The story page; opening it records the first view.
+        link: `${deps.publicBaseUrl}/admin/forms/${form.id}/submissions/${submission.reference}`,
       },
     };
   }
