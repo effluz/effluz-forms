@@ -22,7 +22,7 @@ Runs on every pull request and every push to `main`.
 | `typecheck` | Static types | nothing |
 | `unit` | Domain and application tests, no I/O; includes the field type conformance suite | nothing |
 | `integration` | Infrastructure adapters against a Postgres 17 service container (identity's Google adapter runs against a local fake OIDC issuer), plus the local disk media adapter, a fake Dropbox (`tests/fakes/dropbox-api.ts`), and HTTP stubs for SMTP2GO and Mailpit | Postgres service |
-| `e2e` | Builds the app, then publishes and submits the reference form over HTTP without script; covers an invalid page, a refused file, a closed form, the honeypot, a repeated Submit and the renderer budgets. Review joins with the review plan | Postgres service |
+| `e2e` | Builds the app, then publishes and submits the reference form over HTTP without script; covers an invalid page, a refused file, a closed form, the honeypot, a repeated Submit and the renderer budgets; then reviews the submission as staff without script (story page, correction, staff photos, photo choice, checks, plan, publishing, ZIP and CSV export, delete) with its failure paths and the dead-job warning, Try again and Operations | Postgres service |
 | `e2e-browser` | Builds the app and completes the reference form in Chromium on a phone viewport with script enabled (ADR 0024) | Postgres service |
 | `build` | Builds the production image to prove it builds; not pushed on PRs | nothing |
 
@@ -46,7 +46,16 @@ As built (`.github/workflows/ci.yml`):
 - `e2e` builds the app, starts it with `next start` on port 3199 against a
   throwaway database and temporary media directories, and drives the reference
   form over HTTP exactly as a browser without script does, plus the budgets of
-  `ui-ux/renderer.md`. It writes `reports/e2e.xml`, uploaded as the
+  `ui-ux/renderer.md`. It then reviews the stored submission over HTTP as
+  staff without script (`tests/e2e/review.test.ts`, `operations.test.ts`):
+  the story page, a correction, staff photos, the photo choice, the checks,
+  the plan, publishing, the ZIP and CSV downloads and delete, the refusals
+  (unconfirmed sender, over-long correction, a taken day, an unknown story,
+  no session, a stale token) and dead jobs (the list flag, the story warning
+  with Try again, Operations). Staff reach the manager through an
+  `admin_session` row the suite inserts (`tests/support/admin-session.ts`),
+  as a completed sign-in would; no worker runs, so dead jobs are inserted. It
+  writes `reports/e2e.xml`, uploaded as the
   `e2e-report` artifact when the job fails. The throwaway database lives in a
   holder process (`tests/support/database-holder.ts`) that drops it when the
   run ends, however it ends, so an interrupted local run leaves none behind.

@@ -5,7 +5,8 @@ import { afterAll, describe, expect, inject, it } from "vitest";
 import { applyLifecycle } from "@/modules/definitions/application";
 import { catalog } from "@/modules/submissions/presentation/copy";
 import { createPool } from "@/shared/infrastructure/postgres/pool";
-import { syntheticJpegWithGps, syntheticMp4 } from "../fakes/media-files";
+import { syntheticMp4 } from "../fakes/media-files";
+import { asFiles, fillToPhotos, photos, waitForMinimumTime } from "./fill";
 import { textOf, Visitor } from "./http";
 import { pageAnswers, publishReferenceForm } from "./publish";
 
@@ -16,9 +17,6 @@ const pool = createPool(inject("databaseUrl"), { max: 2 });
 afterAll(async () => {
   await pool.end();
 });
-
-const MINIMUM_TIME_MS = 3_200;
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function count(sql: string, args: unknown[]): Promise<number> {
   const { rows } = await pool.query<{ n: number }>(sql, args);
@@ -43,52 +41,15 @@ async function stagedFiles(recordId: string | null): Promise<string[]> {
   }
 }
 
-async function photos(n: number): Promise<File[]> {
-  const out: File[] = [];
-  for (let i = 0; i < n; i += 1) {
-    const bytes = new Uint8Array(await syntheticJpegWithGps(64 + i, 48));
-    out.push(new File([bytes], `IMG_${String(i)}.jpg`, { type: "image/jpeg" }));
-  }
-  return out;
-}
-
 const video = (): File =>
   new File([new Uint8Array(syntheticMp4())], "mensaje.mp4", { type: "video/mp4" });
 
-const asFiles = (list: readonly File[]) => list.map((file) => ({ field: "photos", file }));
-
-async function waitForMinimumTime(renderedAt: number): Promise<void> {
-  const left = renderedAt + MINIMUM_TIME_MS - Date.now();
-  if (left > 0) await sleep(left);
-}
-
 const refusedAt = (slug: string) => new RegExp(`^/f/${slug}\\?refused=\\d+$`);
-
-/** Fills pages 1 to 4 with the reference answers and opens page 5. */
-async function fillToPhotos(
-  slug: string,
-): Promise<{ v: Visitor; renderedAt: number; html: string }> {
-  const v = new Visitor(inject("baseUrl"));
-  const first = await v.get(`/f/${slug}`);
-  expect(first.status).toBe(200);
-  expect(textOf(first.html)).toContain("Historias");
-  const renderedAt = Date.now();
-  let html = first.html;
-  for (const page of ["page1", "page2", "page3", "page4"]) {
-    if (page !== "page1") html = (await v.get(`/f/${slug}`)).html;
-    const next = await v.submit(html, { _action: "next", "website-url": "", ...pageAnswers(page) });
-    expect(next.status, page).toBe(303);
-    expect(next.location, page).toBe(`/f/${slug}`);
-  }
-  const last = await v.get(`/f/${slug}`);
-  expect(textOf(last.html)).toContain("Página 5 de 5");
-  return { v, renderedAt, html: last.html };
-}
 
 describe("the reference form without script", () => {
   it("is completed with nine photos and a video, and stored with its media rows and jobs", async () => {
     const { slug, formId } = await publishReferenceForm(pool);
-    const { v, renderedAt, html } = await fillToPhotos(slug);
+    const { v, renderedAt, html } = await fillToPhotos(slug, inject("baseUrl"));
     await waitForMinimumTime(renderedAt);
 
     const tooMany = await v.submit(
@@ -204,7 +165,7 @@ describe("the reference form without script", () => {
 
   it("names a refused file only on the page its post redirects to", async () => {
     const { slug, formId } = await publishReferenceForm(pool);
-    const { v, renderedAt, html } = await fillToPhotos(slug);
+    const { v, renderedAt, html } = await fillToPhotos(slug, inject("baseUrl"));
     await waitForMinimumTime(renderedAt);
 
     const refused = await v.submit(
@@ -251,7 +212,7 @@ describe("the reference form without script", () => {
 
   it("refuses a submission once the form is closed, even from a tab opened before", async () => {
     const { slug, formId, deps } = await publishReferenceForm(pool);
-    const { v, renderedAt, html } = await fillToPhotos(slug);
+    const { v, renderedAt, html } = await fillToPhotos(slug, inject("baseUrl"));
     const closed = await applyLifecycle(
       deps,
       { email: "editor@example.com", ip: "203.0.113.7" },
@@ -275,7 +236,7 @@ describe("the reference form without script", () => {
 
   it("answers a repeated Submit with the same confirmation and one submission", async () => {
     const { slug, formId } = await publishReferenceForm(pool);
-    const { v, renderedAt, html } = await fillToPhotos(slug);
+    const { v, renderedAt, html } = await fillToPhotos(slug, inject("baseUrl"));
     await waitForMinimumTime(renderedAt);
 
     const fields = { _action: "submit", "website-url": "", ...pageAnswers("page5") };
@@ -297,7 +258,7 @@ describe("the reference form without script", () => {
 
   it("silently accepts a filled honeypot: the confirmation, and nothing stored", async () => {
     const { slug, formId } = await publishReferenceForm(pool);
-    const { v, renderedAt, html } = await fillToPhotos(slug);
+    const { v, renderedAt, html } = await fillToPhotos(slug, inject("baseUrl"));
     await waitForMinimumTime(renderedAt);
 
     const sent = await v.submit(
