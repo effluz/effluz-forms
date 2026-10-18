@@ -36,30 +36,34 @@ export function TPer(props: {
 /**
  * An in-page confirmation of the story page: a `<section role="dialog">` labelled by its
  * heading and described by its body, holding a plain POST form, so it works without
- * JavaScript, as the shared `ConfirmForm` does for copy without per-story placeholders. See
- * design-system/components.md, "Dialog".
+ * JavaScript, as the shared `ConfirmForm` does for copy without per-story placeholders. A
+ * dialog whose form explains itself (Mark as published) has no body, and then no
+ * description. See design-system/components.md, "Dialog".
  */
 export function StoryDialog(props: {
   title: ReactNode;
-  body: ReactNode;
+  body?: ReactNode;
   children: (ids: { bodyId: string }) => ReactNode;
 }): ReactElement {
   const id = useId();
   const titleId = `${id}-title`;
   const bodyId = `${id}-body`;
+  const hasBody = props.body !== undefined;
   return (
     <section
       role="dialog"
       aria-labelledby={titleId}
-      aria-describedby={bodyId}
+      {...(hasBody ? { "aria-describedby": bodyId } : {})}
       className={ui.dialog}
     >
       <h2 id={titleId} className={ui.dialogTitle}>
         {props.title}
       </h2>
-      <p id={bodyId} className={ui.dialogBody}>
-        {props.body}
-      </p>
+      {hasBody ? (
+        <p id={bodyId} className={ui.dialogBody}>
+          {props.body}
+        </p>
+      ) : null}
       {props.children({ bodyId })}
     </section>
   );

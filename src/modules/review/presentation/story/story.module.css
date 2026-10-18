@@ -374,3 +374,278 @@
   gap: 8px;
   margin: 0 0 24px;
 }
+
+/* The ZIP links above the photo grid: secondary buttons in one wrapping row, space.3 gap. */
+.zipLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+/* A group's heading in a card: font.size.staff.label, font.weight.semibold, space.5 above. */
+.groupTitle {
+  margin: 24px 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.zipLinks + .groupTitle,
+.cardTitle + .groupTitle {
+  margin-top: 0;
+}
+
+/* The photo grid: size.photoTile tiles, wrapping, space.4 apart. */
+.photoGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A video's film icon in its tile: size.controlHeight; color.text.muted from the frame. */
+.filmIcon {
+  width: 48px;
+  height: 48px;
+}
+
+/* A tile's caption: font.weight.medium, font.lineHeight.label. */
+.tileCaption {
+  margin: 0;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* "Chosen for the post" with its check: color.action.primary.bg, font.weight.medium, space.1 gap. */
+.chosenMark {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  color: #372549;
+  font-weight: 500;
+}
+
+.chosenMark [lang="es"] {
+  color: inherit;
+}
+
+/* Who added a team photo and from where: color.text.muted at font.size.staff.small. */
+.tileMeta {
+  margin: 0;
+  color: #774c60;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* A file kept only on the server: color.text.warning at font.size.staff.small; the words carry it. */
+.tileWarning {
+  margin: 0;
+  color: #7a4b00;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.tileWarning [lang="es"] {
+  color: inherit;
+}
+
+/* The tile's actions: tertiary buttons stacked, each a size.touchTarget row. */
+.tileActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.tileForm {
+  margin: 0;
+}
+
+/* A tertiary button that is a <button>: the tertiary link's look, no box. */
+.tertiaryButton {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  /* color.action.tertiary.fg */
+  color: #372549;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tertiaryButton:hover {
+  /* color.action.tertiary.hoverFg */
+  color: #6c344e;
+}
+
+.tertiaryButton:focus-visible {
+  /* color.focus.ring at border.width.focus, 2 px offset */
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Add photos: space.5 above, its fields one column. */
+.addPhotos {
+  margin-top: 24px;
+}
+
+.uploadForm {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+/* File upload dropzone: a dashed 2 px color.border.input box, radius.md, space.5 padding. */
+.dropzone {
+  padding: 24px;
+  border: 2px dashed #774c60;
+  border-radius: 12px;
+}
+
+.dropzone input {
+  max-width: 100%;
+  /* size.touchTarget */
+  min-height: 44px;
+  font: inherit;
+}
+
+.dropzone:focus-within {
+  /* color.border.inputFocus */
+  border-color: #372549;
+}
+
+/* The sender's confirmation: space.2 gap, space.5 below. */
+.confirmField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 24px;
+}
+
+/* The viewer: the card's look (surface.card, border.default, radius.md, space.4), space.5 below. */
+.viewer {
+  margin: 0 0 24px;
+  padding: 16px;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+/* The image at most 100% wide, or the native video player; surface.subtle behind it, radius.md. */
+.viewerMedia {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 12px;
+  border-radius: 12px;
+  background: var(--surface-subtle);
+}
+
+.viewerFile {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  max-height: 80vh;
+}
+
+/* Where the file is kept: long paths wrap; space.1 below. */
+.viewerFacts {
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+
+/* Previous, Next, Download and Back: secondary buttons in one wrapping row, space.3 gap. */
+.viewerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* "Ready" or "Not ready: n of 3 done": space.3 below. */
+.checkSummary {
+  margin-bottom: 12px;
+}
+
+/* A check's ticks and notes: a full row under the check's words, in color.text.default. */
+.checkExtra {
+  display: flex;
+  flex-basis: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  /* the 20 px icon plus the space.2 gap, so the notes line up with the words */
+  padding-left: 28px;
+  color: var(--text);
+  font-weight: 400;
+}
+
+/* Who ticked a check, or why it was cleared: color.text.muted at font.size.staff.small. */
+.checkNote {
+  margin: 0;
+  color: #774c60;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.inlineForm {
+  margin: 0;
+}
+
+/* The planned date: space.5 above, divided from the checks by border.default; space.3 gaps. */
+.planBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.planForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.planForm .hint {
+  margin: 0;
+}
+
+/* The date field and Plan on one wrapping row: space.3 gap. */
+.planRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+/* A line of the publishing card: space.3 below, the last one none. */
+.publishLine {
+  margin: 0 0 12px;
+}
+
+.publishLine:last-child {
+  margin: 0;
+}
+
+/* The post link's field takes the dialog's width. */
+.urlInput {
+  width: 100%;
+}
