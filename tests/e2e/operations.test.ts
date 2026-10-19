@@ -76,7 +76,7 @@ describe("dead jobs without script", () => {
   });
 
   it("Operations lists dead jobs, discards with a reason and retries all of a type", async () => {
-    const { slug } = await publishReferenceForm(pool, { usePostPlan: true });
+    const { formId, slug } = await publishReferenceForm(pool, { usePostPlan: true });
     const { submissionId } = await submitReference(pool, slug, 2, base);
     const [first, second] = await storyMedia(submissionId);
     if (first === undefined || second === undefined) throw new Error("no media rows");
@@ -89,7 +89,7 @@ describe("dead jobs without script", () => {
     const text = textOf(operations.html);
     expect(text).toContain("media.upload");
     expect(text).toContain("jobs.cleanup");
-    expect(operations.html).toMatch(/<a\b[^>]*href="\/admin\/forms\/[^"]+\/submissions\/HP-0001"/);
+    expect(operations.html).toContain(`href="/admin/forms/${formId}/submissions/HP-0001"`);
     expect(text).toContain("Reintentar todos los trabajos media.upload (2)");
 
     const blank = await staff.post("/admin/operations/discard", { job: uploadOne, reason: "" });

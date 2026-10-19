@@ -82,7 +82,7 @@ describe("review without script", () => {
     const list = await staff.get(`/admin/forms/${formId}`);
     expect(list.status).toBe(200);
     expect(textOf(list.html)).toContain("HP-0001");
-    expect(textOf(list.html)).toContain("1 respuesta");
+    expect(textOf(list.html)).toMatch(/\b1 respuesta\b(?!s)/);
 
     const opened = await staff.get(path);
     expect(opened.status).toBe(200);
@@ -137,6 +137,7 @@ describe("review without script", () => {
     const tomorrow = addDays(todayIn(PLAN_TIME_ZONE, new Date()), 1);
     const planned = await staff.post(`${path}/plan`, { date: tomorrow, back: "" });
     expect(planned.status).toBe(303);
+    expect(await plannedOn(submissionId)).toBe(tomorrow);
     const week = await staff.get(`/admin/plan?week=${tomorrow}`);
     expect(textOf(week.html)).toContain("HP-0001");
     expect(textOf(week.html)).toContain("Lista");
