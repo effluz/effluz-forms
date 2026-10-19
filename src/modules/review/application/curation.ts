@@ -78,12 +78,15 @@ export async function saveCorrection(
   const found = await loadStory(deps, input.formId, input.reference);
   if (!found) return { ok: false, code: "not_found" };
   const field = fieldIndex(found.version.document).get(input.fieldKey)?.field;
-  if (!field || deps.registry.get(field.type).reviewTraits?.curatable !== true)
-    return { ok: false, code: "not_curatable" };
+  const type = field === undefined ? null : deps.registry.get(field.type);
+  if (!field || type?.reviewTraits?.curatable !== true) return { ok: false, code: "not_curatable" };
   const original = found.submission.answers[input.fieldKey];
   if (typeof original !== "string") return { ok: false, code: "not_answered" };
+  // The correction is read as the field type reads an answer on receipt (a single-line
+  // field collapses line breaks); a curatable type's answer is a string.
+  const received: unknown = type.normalize(input.text, field.settings);
   const checked = checkCorrection(
-    input.text,
+    typeof received === "string" ? received : input.text,
     maxLengthOf(field, deps.registry) ?? Number.POSITIVE_INFINITY,
   );
   if (!checked.ok)

@@ -92,6 +92,25 @@ describe("saveCorrection", () => {
     expect(auditOf(deps, "story_check_changed")).toHaveLength(1);
   });
 
+  it("normalizes a correction as its field type normalizes an answer on receipt", async () => {
+    const deps = makeReviewDeps();
+    const { formId, submissionId } = await seedStory(deps, { status: "viewed" });
+
+    // A single-line field collapses line breaks and trims, as it did for the original.
+    expect(await save(deps, formId, "f_name", " Ana\r\n  María Prueba\n")).toEqual({
+      ok: true,
+      changed: true,
+    });
+    expect(curationOf(deps, submissionId)?.curatedAnswers.f_name).toBe("Ana María Prueba");
+    expect(deps.edits.rows.map((r) => r.text)).toEqual(["Ana María Prueba"]);
+
+    expect(await save(deps, formId, "f_name", "Ana Prueba\n")).toEqual({
+      ok: true,
+      changed: false,
+    });
+    expect(curationOf(deps, submissionId)?.curatedAnswers).toEqual({});
+  });
+
   it("refuses fields that are not curatable or not answered", async () => {
     const deps = makeReviewDeps();
     const { formId, submissionId } = await seedStory(deps);
