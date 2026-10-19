@@ -416,7 +416,7 @@ describe("choosePhoto", () => {
     const automatic = () =>
       auditOf(deps, "story_check_changed")
         .map((e) => e.details)
-        .filter((d) => d.automatic === true);
+        .filter((d) => d?.automatic === true);
 
     await choose(deps, story.formId, p1, false);
     await choose(deps, story.formId, p1, true);
