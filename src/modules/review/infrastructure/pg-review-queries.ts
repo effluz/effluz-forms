@@ -29,10 +29,12 @@ class Params {
 const PLAN_SQL: Record<PlanFilter, string> = {
   planned: "st.planned_on is not null and st.published_on is null",
   waiting: "st.planned_on is null and st.published_on is null",
-  // The negation of `readiness(checks).ready`; the edited tick compares null-safely.
+  // The negation of `readiness(checks).ready`; the edited tick compares the two as sets.
   not_ready: `st.published_on is null and not (
       cardinality(coalesce(st.chosen_media, '{}')) > 0
-      and st.photos_edited_for is not distinct from st.chosen_media
+      and st.photos_edited_for is not null
+      and st.photos_edited_for @> st.chosen_media
+      and st.photos_edited_for <@ st.chosen_media
       and st.text_checked_at is not null)`,
 };
 
@@ -99,7 +101,8 @@ function exportColumns(p: Params): string {
         order by m.field_key, m.position) from media m
       where m.submission_id = s.id and m.field_key <> ${staff}), '[]') as sender_files,
     coalesce((select array_agg(m.durable_key order by m.created_at, m.position, m.id) from media m
-      where m.submission_id = s.id and m.field_key = ${staff}), '{}') as staff_keys`;
+      where m.submission_id = s.id and m.field_key = ${staff}
+        and exists (select 1 from staff_photo sp where sp.id = m.id)), '{}') as staff_keys`;
 }
 
 const PLAN_COLUMNS = `${STORY_COLUMNS}, s.published_post_url`;
@@ -345,7 +348,7 @@ export class PgReviewQueries implements ReviewQueries {
     after: ListCursor | null,
     size: number,
   ): Promise<ExportSource[]> {
-    if (size < 1) return [];
+    if (!Number.isInteger(size) || size < 1) return [];
     if (after !== null && !isUuid(after.submissionId)) return [];
     const p = new Params();
     const where = conditions(filter, p);
@@ -357,7 +360,7 @@ export class PgReviewQueries implements ReviewQueries {
     const columns = exportColumns(p);
     const { rows } = await this.pool.query<ExportRowSql>(
       `select ${columns} ${FROM} where ${where.join(" and ")} ${ORDER_NEWEST}
-        limit ${p.add(Math.floor(size))}`,
+        limit ${p.add(size)}`,
       p.values,
     );
     return rows.map(toExportSource);

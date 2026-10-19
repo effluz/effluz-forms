@@ -57,6 +57,15 @@ describe("PgReviewQueries", () => {
     return id;
   }
 
+  /** The live `staff_photo` row of a staff media row (same id). */
+  async function insertStaffPhoto(mediaId: string, submissionId: string): Promise<void> {
+    await pool.query(
+      `insert into staff_photo (id, submission_id, source, sender_confirmed, added_by)
+       values ($1, $2, 'whatsapp', true, 'owner@example.com')`,
+      [mediaId, submissionId],
+    );
+  }
+
   async function insertJob(
     type: string,
     status: string,
@@ -272,6 +281,29 @@ describe("PgReviewQueries", () => {
     ]);
   });
 
+  it("not_ready compares the chosen and edited photos as sets", async () => {
+    const [a, b] = [randomUUID(), randomUUID()].sort();
+    if (a === undefined || b === undefined) throw new Error("no ids");
+    const checked = new Date("2026-10-17T10:00:00.000Z");
+    const ready = await seedStoredStory(pool, { receivedAt: minutesAgo(2) });
+    const { formId } = ready;
+    const short = await seedStoredStory(pool, { formId, receivedAt: minutesAgo(1) });
+    // Written out of order, as no use case writes them, to pin the comparison itself.
+    await insertStory(ready.submissionId, formId, {
+      chosen: [b, a],
+      photosEditedFor: [a, b, a],
+      textCheckedAt: checked,
+    });
+    await insertStory(short.submissionId, formId, {
+      chosen: [b, a],
+      photosEditedFor: [a],
+      textCheckedAt: checked,
+    });
+
+    const notReady = await queries.list(filterOf(formId, { plan: "not_ready" }), 1);
+    expect(refs(notReady.rows)).toEqual([short.reference]);
+  });
+
   it("neighbours are found for a story outside the filter", async () => {
     const statuses = ["new", "new", "viewed", "new", "new"] as const;
     const first = await seedStoredStory(pool, { receivedAt: minutesAgo(5), status: statuses[0] });
@@ -369,13 +401,19 @@ describe("PgReviewQueries", () => {
     await insertMedia(withFiles.submissionId, formId, "f_photos", 2, { durableKey: "k/photos-2" });
     await insertMedia(withFiles.submissionId, formId, "f_docs", 1, { durableKey: "k/docs-1" });
     await insertMedia(withFiles.submissionId, formId, "f_photos", 1, { durableKey: "k/photos-1" });
-    await insertMedia(withFiles.submissionId, formId, "staff-photos", 1, {
+    const later = await insertMedia(withFiles.submissionId, formId, "staff-photos", 1, {
       durableKey: "k/staff-later",
       createdAt: new Date("2026-10-18T12:00:00.000Z"),
     });
-    await insertMedia(withFiles.submissionId, formId, "staff-photos", 2, {
+    const earlier = await insertMedia(withFiles.submissionId, formId, "staff-photos", 2, {
       durableKey: "k/staff-earlier",
       createdAt: new Date("2026-10-18T11:00:00.000Z"),
+    });
+    for (const id of [later, earlier]) await insertStaffPhoto(id, withFiles.submissionId);
+    // Removed: its staff_photo row is gone, its media row awaits media.delete.
+    await insertMedia(withFiles.submissionId, formId, "staff-photos", 3, {
+      durableKey: "k/staff-removed",
+      createdAt: new Date("2026-10-18T10:00:00.000Z"),
     });
 
     const filter = filterOf(formId);
@@ -407,6 +445,14 @@ describe("PgReviewQueries", () => {
       postUrl: null,
       plannedOn: null,
     });
+  });
+
+  it("an export batch of a size that is not a positive whole number is empty", async () => {
+    const { formId } = await seedStoredStory(pool);
+    const filter = filterOf(formId);
+    expect(await queries.exportBatch(filter, null, 1)).toHaveLength(1);
+    for (const size of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])
+      expect(await queries.exportBatch(filter, null, size)).toEqual([]);
   });
 
   it("a malformed form id or version id lists nothing", async () => {
