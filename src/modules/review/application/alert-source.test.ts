@@ -70,6 +70,31 @@ describe("ReviewAlertSource", () => {
     expect(alert?.data.moreCount).toBe(5);
   });
 
+  it("looks up at most five stories at a time", async () => {
+    const deps = makeReviewDeps();
+    const story = await seedStory(deps);
+    for (let i = 1; i <= 12; i += 1) {
+      const id = cloneStory(deps, story.submissionId, `ST-${String(100 + i).padStart(4, "0")}`);
+      deps.jobs.add({ type: "email.staff_notification", payload: { submissionId: id } });
+    }
+    const repository = deps.submissions.submissions;
+    const findStored = repository.findStored.bind(repository);
+    let open = 0;
+    let most = 0;
+    repository.findStored = async (id) => {
+      open += 1;
+      most = Math.max(most, open);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      open -= 1;
+      return findStored(id);
+    };
+
+    const alert = await new ReviewAlertSource(deps, OPTS).jobAlert("email.staff_notification");
+
+    expect(alert?.data.references).toHaveLength(12);
+    expect(most).toBe(5);
+  });
+
   it("sends nothing without an address or without dead jobs", async () => {
     const deps = makeReviewDeps();
     await seedThreeDeadUploads(deps);

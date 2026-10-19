@@ -1,5 +1,6 @@
 import type { AlertSource, JobAlertData } from "@/modules/notifications/application";
 import type { ReviewDeps } from "./deps";
+import { mapLimited } from "./map-limited";
 import { storyResolver } from "./operations";
 
 /** The alert lists at most this many story references, then "and {n} more". */
@@ -7,6 +8,9 @@ export const ALERT_REFERENCES_MAX = 20;
 
 /** The newest dead jobs of the type read for their stories; the count itself has no limit. */
 export const ALERT_SCAN_LIMIT = 500;
+
+/** Story lookups in flight at once, so one alert never holds the worker's pool. */
+export const ALERT_LOOKUP_CONCURRENCY = 5;
 
 /**
  * Review's answer to notifications' `AlertSource`: how many jobs of the type are dead now and
@@ -29,7 +33,7 @@ export class ReviewAlertSource implements AlertSource {
     const { count, jobs } = await this.deps.jobs.deadOfType(jobType, ALERT_SCAN_LIMIT);
     if (count === 0) return null;
     const resolve = storyResolver(this.deps);
-    const stories = await Promise.all(jobs.map((job) => resolve(job)));
+    const stories = await mapLimited(jobs, ALERT_LOOKUP_CONCURRENCY, resolve);
     const references = [
       ...new Set(stories.flatMap((story) => (story ? [story.reference] : []))),
     ].sort();
