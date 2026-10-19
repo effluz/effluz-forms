@@ -228,6 +228,9 @@ export async function exportStories(
   };
   if (query.from !== null) details.from = query.from;
   if (query.to !== null) details.to = query.to;
+  if (query.status !== null) details.status = query.status;
+  if (query.plan !== null) details.plan = query.plan;
+  if (query.media) details.media = true;
   const now = deps.clock.now();
   await deps.uow.run((uow) =>
     deps.audit.record(

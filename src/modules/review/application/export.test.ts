@@ -275,6 +275,34 @@ describe("exportStories", () => {
     expect(JSON.stringify(audit[0]?.details)).not.toContain("ana");
   });
 
+  it("records the status, plan and with-files filters when set", async () => {
+    const deps = makeReviewDeps();
+    const story = await seedStory(deps);
+    deps.queries.countResult = 1;
+
+    await run(deps, story, undefined, {
+      ...EMPTY_QUERY,
+      status: "viewed",
+      plan: "waiting",
+      media: true,
+      to: "2026-10-18",
+    });
+
+    expect(reviewAudit(deps).map((e) => e.details)).toEqual([
+      {
+        versions: "all",
+        text: "original",
+        paths: false,
+        count: 1,
+        search: false,
+        to: "2026-10-18",
+        status: "viewed",
+        plan: "waiting",
+        media: true,
+      },
+    ]);
+  });
+
   it("names the file by slug and time", async () => {
     const deps = makeReviewDeps();
     const story = await seedStory(deps);
