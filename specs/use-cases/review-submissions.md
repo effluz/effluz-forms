@@ -84,7 +84,8 @@ removable; adding and choosing photos are hidden.
 2. The export is a CSV, UTF-8 with BOM, one row per submission. Columns:
    reference, status, received (UTC), version, language, planned date
    (post-plan forms), post link, one column per field key in the union of the
-   selected versions, then with paths "File paths" and "Added photos".
+   selected versions, then with paths "File paths" and "Added photos" (team photos not
+   removed).
    Headers and labels use Spanish when the form has Spanish, else English.
    With "Corrected", a correctable text column holds the correction where
    there is one and the original elsewhere; with "Both columns", it is

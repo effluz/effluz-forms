@@ -306,7 +306,7 @@ timestamp, IP, and an optional `details` object. This is the only place where
   | `staff_photos_added` | `count`, `source`, `senderConfirmed` |
   | `staff_photo_removed` | `mediaId` |
   | `photo_choice_changed` | `mediaId`, `chosen` |
-  | `story_check_changed` | `check` (`photos_edited`, `text_checked`), `value`, and `by` (`hand`, `correction`); an automatic clear of `photos_edited` by a change of the chosen photos carries `automatic` (true) in place of `by` |
+  | `story_check_changed` | `check` (`photos_edited`, `text_checked`), `value`, and `by` (`hand`, `correction`); an automatic change of `photos_edited` by a change of the chosen photos (cleared, or reading as done again) carries `automatic` (true) in place of `by` |
   | `story_planned` | `from`, `to` (`YYYY-MM-DD` or `none`), and `resolution` (`swap`, `move`) when a conflict was resolved; also written when Unmark as published moves the story off its day |
   | `post_plan_viewed` | `week`; no target |
   | `job_retried`, `job_discarded` | `type`; target the job |

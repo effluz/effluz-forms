@@ -26,14 +26,17 @@ in `architecture.md` for later and nothing calls it yet.
 
 Rules: `new` becomes `viewed` automatically and never returns. An edit on a
 `viewed` or `new` submission makes it `edited`. "Mark as published" works
-from any status and stores an optional `https` post URL. "Unmark published"
+from any status and stores an optional post URL, which must start with
+`https://` and name a host. "Unmark published"
 returns to `edited` if any edits exist, otherwise `viewed`; see "Main flow:
 change status".
 
 ## Main flow: edit a text answer
 
 1. The curator opens a submission and chooses "Edit" on a `short_text` or
-   `long_text` answer. Other types have no edit action.
+   `long_text` answer. Other types have no edit action. A correction is read
+   the way the field type reads an answer on receipt: trimmed, NFC, and a
+   `short_text` correction has its line breaks collapsed.
 2. The answer opens in a two-column editor: **Original** on the left, read
    only, and **Curated** on the right, prefilled with the current curated
    text or the original if none exists.
@@ -73,8 +76,9 @@ three checks. They are worked out when read, never stored as a "ready" flag.
 
 Ready means all three. Audit entries `photo_choice_changed` (media id, chosen)
 and `story_check_changed` (check, value, `by` = `hand` or `correction`). A
-change of the chosen set that clears "Photos edited" writes
-`story_check_changed` with value false and `automatic` true in place of `by`.
+change of the chosen set that clears "Photos edited", or makes it read as
+done again, writes `story_check_changed` with that value and `automatic` true
+in place of `by`.
 
 ## Planning
 
