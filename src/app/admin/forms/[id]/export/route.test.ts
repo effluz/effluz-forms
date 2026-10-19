@@ -126,7 +126,7 @@ describe("POST /admin/forms/[id]/export", () => {
   it("export applies the dialog's choices and the list filters", async () => {
     await exportPost({ csrf: CSRF, ...DIALOG, text: "both", page: "3" });
     expect(exported().map((e) => e.entry.details)).toEqual([
-      { versions: "all", text: "both", paths: false, count: 0, search: true },
+      { versions: "all", text: "both", paths: false, count: 0, search: true, status: "viewed" },
     ]);
     const count = review.queries.calls.find((call) => call.method === "count");
     expect(count?.args[0]).toMatchObject({

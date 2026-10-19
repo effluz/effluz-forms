@@ -1,8 +1,7 @@
 import { useId, type ReactElement } from "react";
 import { Bilingual } from "@/shared/presentation/Bilingual";
 import { cx, styles as ui } from "@/shared/presentation/styles";
-import { EXPORT_ROW_CAP } from "../domain/csv";
-import type { ListQuery } from "../application";
+import { EXPORT_ROW_CAP, type ListQuery } from "../application";
 import { T, type ReviewCopyKey } from "./copy";
 import { listHref } from "./list-view";
 import { styles } from "./styles";

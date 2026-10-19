@@ -77,7 +77,8 @@ describe("planning in Postgres", () => {
     reference: string,
     date: string,
     resolution = "",
-  ) => planStory(review, OWNER, { formId, reference, date, resolution });
+    expected = "",
+  ) => planStory(review, OWNER, { formId, reference, date, resolution, expected });
 
   /**
    * Stories whose first day lock holds its unit of work open: `taken` settles once that lock
@@ -163,8 +164,16 @@ describe("planning in Postgres", () => {
 
     const results = await race(
       hold,
-      () => plan({ ...deps(), stories: hold.repository }, formId, a.reference, DAY, "swap"),
-      () => plan(deps(), formId, b.reference, "2026-10-20", "swap"),
+      () =>
+        plan(
+          { ...deps(), stories: hold.repository },
+          formId,
+          a.reference,
+          DAY,
+          "swap",
+          b.reference,
+        ),
+      () => plan(deps(), formId, b.reference, "2026-10-20", "swap", a.reference),
     );
 
     expect(results).toEqual([
@@ -184,7 +193,15 @@ describe("planning in Postgres", () => {
     // The curation waits on the holder's story row, which the planner locked with the day.
     const [planned, corrected] = await race(
       hold,
-      () => plan({ ...deps(), stories: hold.repository }, formId, a.reference, DAY, "move"),
+      () =>
+        plan(
+          { ...deps(), stories: hold.repository },
+          formId,
+          a.reference,
+          DAY,
+          "move",
+          b.reference,
+        ),
       () =>
         saveCorrection(deps(), OWNER, {
           formId,
@@ -250,7 +267,7 @@ describe("planning in Postgres", () => {
     };
 
     await expect(
-      plan({ ...real, audit: failing }, formId, a.reference, DAY, "swap"),
+      plan({ ...real, audit: failing }, formId, a.reference, DAY, "swap", b.reference),
     ).rejects.toThrow("injected audit failure");
 
     expect(await state(a.submissionId)).toEqual(before.a);
@@ -275,7 +292,9 @@ describe("planning in Postgres", () => {
       save: (uow, row, at) => stories.save(uow, row, at),
     };
 
-    expect(await plan({ ...deps(), stories: blind }, formId, a.reference, DAY, "move")).toEqual({
+    expect(
+      await plan({ ...deps(), stories: blind }, formId, a.reference, DAY, "move", b.reference),
+    ).toEqual({
       ok: false,
       code: "conflict",
       date: DAY,

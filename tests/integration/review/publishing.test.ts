@@ -3,7 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuditLog } from "@/modules/identity/application";
-import { markPublished, unmarkPublished, type ReviewDeps } from "@/modules/review/application";
+import {
+  markPublished,
+  unmarkPublished,
+  type ReviewDeps,
+  type StoryRepository,
+} from "@/modules/review/application";
 import { emptyStory } from "@/modules/review/application/ports/story-repository";
 import { OWNER } from "@/modules/review/application/testing/fixtures";
 import { PgStoryRepository } from "@/modules/review/infrastructure/pg-story-repository";
@@ -104,8 +109,38 @@ describe("publishing in Postgres", () => {
     expect(before.a).toMatchObject({ status: "published", planned_on: DAY, published_on: DAY });
   });
 
-  // Lands with the unmark rerun on a 23505 on story_plan_slot_key (publishing.ts).
-  it.todo("an unmark whose slot write escapes the day lock runs once more");
+  it("an unmark whose slot write escapes the day lock runs once more", async () => {
+    const { a, b } = await dayTakenMeanwhile();
+    const holderBefore = await state(b.submissionId);
+    let missed = false;
+    // The first look at the day misses the holder, so the write reaches the unique index.
+    const blind: StoryRepository = {
+      find: (id) => stories.find(id),
+      lockOrCreate: (uow, id, form) => stories.lockOrCreate(uow, id, form),
+      lockDay: async (uow, date) => {
+        const holder = await stories.lockDay(uow, date);
+        if (missed) return holder;
+        missed = true;
+        return null;
+      },
+      save: (uow, row, at) => stories.save(uow, row, at),
+    };
+
+    expect(
+      await unmarkPublished({ ...deps(), stories: blind }, OWNER, {
+        formId: a.formId,
+        reference: a.reference,
+      }),
+    ).toEqual({ ok: true, status: "viewed", movedToWaiting: true, dayHeldBy: b.reference });
+
+    expect(await state(a.submissionId)).toMatchObject({
+      status: "viewed",
+      published_post_url: null,
+      planned_on: null,
+      published_on: null,
+    });
+    expect(await state(b.submissionId)).toEqual(holderBefore);
+  });
 
   it("refusals write nothing", async () => {
     const story = await seedStoredStory(pool, { status: "viewed" });
