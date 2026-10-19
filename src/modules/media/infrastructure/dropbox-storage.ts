@@ -11,6 +11,8 @@ export interface DropboxConfig {
   contentUrl: string;
   fetch?: typeof fetch;
   now?: () => number;
+  /** How long a call waits; REQUEST_TIMEOUT_MS when unset. */
+  requestTimeoutMs?: number;
 }
 
 /** A Dropbox call that did not succeed. The message carries the endpoint and status only. */
@@ -62,6 +64,7 @@ function asciiJson(value: unknown): string {
 export class DropboxStorage implements MediaStorage {
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
+  private readonly timeoutMs: number;
   private token: CachedToken | null = null;
   private refreshing: Promise<string> | null = null;
   private readonly links = new Map<string, CachedLink>();
@@ -69,6 +72,7 @@ export class DropboxStorage implements MediaStorage {
   constructor(private readonly config: DropboxConfig) {
     this.fetchImpl = config.fetch ?? fetch;
     this.now = config.now ?? Date.now;
+    this.timeoutMs = config.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
   }
 
   /** The content type is not sent: Dropbox stores the bytes as received. */
@@ -115,10 +119,28 @@ export class DropboxStorage implements MediaStorage {
     return link;
   }
 
+  /**
+   * Streams the file through its temporary link. The timeout covers the wait for the headers
+   * only, so a slow reader can drain the body. A failed download drops the cached link, so the
+   * next read asks for a fresh one.
+   */
   async openRead(ref: string): Promise<ReadableStream<Uint8Array>> {
     const url = await this.viewUrl(ref, VIEW_URL_TTL_SECONDS);
-    const res = await this.fetchImpl(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    const abort = new AbortController();
+    const timer = setTimeout(() => {
+      abort.abort(new DOMException("the download timed out", "TimeoutError"));
+    }, this.timeoutMs);
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, { signal: abort.signal });
+    } catch (error) {
+      this.links.delete(ref);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
     if (!res.ok || res.body === null) {
+      this.links.delete(ref);
       await res.body?.cancel();
       throw new Error(`dropbox download failed with ${String(res.status)}`);
     }
@@ -153,7 +175,7 @@ export class DropboxStorage implements MediaStorage {
         method: "POST",
         headers: { ...headers, Authorization: `Bearer ${token}` },
         body,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
       if (res.ok) return res;
       if (res.status === 401 && attempt === 0) {
@@ -189,7 +211,7 @@ export class DropboxStorage implements MediaStorage {
         client_id: this.config.appKey,
         client_secret: this.config.appSecret,
       }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
     if (!res.ok) {
       await res.body?.cancel();
