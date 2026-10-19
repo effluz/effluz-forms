@@ -55,6 +55,7 @@ export { ALERT_REFERENCES_MAX, ReviewAlertSource } from "./alert-source";
 
 export type { ReviewAuditAction } from "../domain/audit";
 export { reviewAuditActions } from "../domain/audit";
+export { EXPORT_ROW_CAP } from "../domain/csv";
 export type { IsoDate } from "../domain/days";
 export { PLAN_TIME_ZONE, addDays, parseIsoDate, todayIn } from "../domain/days";
 export type { HeartbeatState } from "../domain/heartbeat";
