@@ -29,7 +29,9 @@ path.
 4. One unpublished story per day is held by a partial unique index
    (`story_plan_slot_key`) and a per-day advisory lock
    (`pg_advisory_xact_lock` on `story-plan:<date>`), taken in date order after
-   the submission and story rows.
+   the submission and story rows, except planning, which takes the day locks
+   first (`system/database.md`). Every writer runs once more when Postgres
+   picks it as a deadlock victim (`40P01`).
 5. `PgReviewQueries` may read `submission`, `media` and `job`, never write
    them, for the list, the plan and the export. Single-story reads still go
    through the owners' use cases.

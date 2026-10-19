@@ -80,9 +80,17 @@ change of the chosen set that clears "Photos edited" writes
 
 A planned date is a field of the story, not a status.
 
-- One unpublished story per day across every post-plan form.
+- One unpublished story per day across every form. A story keeps holding its
+  day after its form's post-plan setting is turned off, although the Post plan
+  no longer shows it; planning another story on that day answers the conflict
+  naming it.
 - Planning on a taken day asks to swap the two dates (only when this story has
   a date) or to move the other story to "Waiting for a date".
+- The answer names the story it acts on. When another story holds the day by
+  the time the planner answers, nothing moves and the conflict is asked again,
+  naming the new holder. A swap asked when this story has no date any more
+  (cleared in another tab) is asked again with only the move offered; nothing
+  moves without being asked.
 - A published story cannot be re-planned.
 - Audit entry `story_planned` (from, to, `resolution` when given), one entry
   per story whose date changed. `resolution` is what was done to the other

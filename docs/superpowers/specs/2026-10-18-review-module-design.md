@@ -150,7 +150,9 @@ As the owner described it, in order:
   Marking as published keeps the planned date as the day it went out.
 - **One story per day.** Planning a story on a day that already has one asks
   whether to swap the two or move the other back to "Waiting for a date".
-  The rule binds unpublished stories only.
+  The rule binds unpublished stories only, across every form: a story keeps
+  holding its day after its form leaves the post plan, and the question
+  names it. The answer acts only on the story the question named.
 - **Published stories stay on their day.** The week view shows a published
   story on its planned date, with its post link. A story published with no
   planned date gets the publish date as its day, without taking or blocking

@@ -52,7 +52,9 @@ Rules:
   `story` row; then the `submission` row; then the `story` row. Every review
   use case that writes runs again once when Postgres picks it as a deadlock
   victim (`40P01`). A planning write that still meets the one-story-per-day
-  index (`23505` on `story_plan_slot_key`) is answered as a conflict.
+  index (`23505` on `story_plan_slot_key`) is answered as a conflict; an
+  unmark that meets it runs once more, finds the holder and moves the story
+  to "Waiting for a date".
 
 ## Connections
 
@@ -107,7 +109,8 @@ Rules:
   document, never individual keys.
 - Indexes: `story_plan_slot_key`, unique on `story (planned_on)` where planned
   and not published, which holds one unpublished story per day across every
-  post-plan form; `story_published_on_idx` on `story (published_on)` where
+  form (a story keeps its day after its form leaves the post plan);
+  `story_published_on_idx` on `story (published_on)` where
   published, for the published stories of a week;
   `staff_photo_submission_idx` on `staff_photo (submission_id, created_at)`
   and `submission_edit_submission_idx` on
