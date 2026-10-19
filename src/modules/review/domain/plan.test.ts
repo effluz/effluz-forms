@@ -6,7 +6,9 @@ const other: PlanSlot = { submissionId: "s-2", reference: "EFF-2", plannedOn: "2
 
 describe("decidePlan", () => {
   it("plans on a free day", () => {
-    expect(decidePlan({ story, date: "2026-10-21", holder: null, resolution: null })).toEqual({
+    expect(
+      decidePlan({ story, date: "2026-10-21", holder: null, resolution: null, expected: null }),
+    ).toEqual({
       kind: "write",
       writes: [{ submissionId: "s-1", plannedOn: "2026-10-21" }],
     });
@@ -15,26 +17,46 @@ describe("decidePlan", () => {
   it("planning the day it already holds writes nothing new", () => {
     const planned = { ...story, plannedOn: "2026-10-21" };
     expect(
-      decidePlan({ story: planned, date: "2026-10-21", holder: planned, resolution: null }),
+      decidePlan({
+        story: planned,
+        date: "2026-10-21",
+        holder: planned,
+        resolution: null,
+        expected: null,
+      }),
     ).toEqual({ kind: "write", writes: [{ submissionId: "s-1", plannedOn: "2026-10-21" }] });
   });
 
   it("asks on a taken day", () => {
-    expect(decidePlan({ story, date: "2026-10-21", holder: other, resolution: null })).toEqual({
+    expect(
+      decidePlan({ story, date: "2026-10-21", holder: other, resolution: null, expected: null }),
+    ).toEqual({
       kind: "conflict",
       other,
       canSwap: false,
     });
     const planned = { ...story, plannedOn: "2026-10-20" };
     expect(
-      decidePlan({ story: planned, date: "2026-10-21", holder: other, resolution: null }),
+      decidePlan({
+        story: planned,
+        date: "2026-10-21",
+        holder: other,
+        resolution: null,
+        expected: null,
+      }),
     ).toEqual({ kind: "conflict", other, canSwap: true });
   });
 
   it("swap moves this story off first", () => {
     const planned = { ...story, plannedOn: "2026-10-20" };
     expect(
-      decidePlan({ story: planned, date: "2026-10-21", holder: other, resolution: "swap" }),
+      decidePlan({
+        story: planned,
+        date: "2026-10-21",
+        holder: other,
+        resolution: "swap",
+        expected: "EFF-2",
+      }),
     ).toEqual({
       kind: "write",
       writes: [
@@ -54,20 +76,58 @@ describe("decidePlan", () => {
   };
 
   it("move sends the other to waiting", () => {
-    expect(decidePlan({ story, date: "2026-10-21", holder: other, resolution: "move" })).toEqual(
-      moveWrites,
-    );
+    expect(
+      decidePlan({
+        story,
+        date: "2026-10-21",
+        holder: other,
+        resolution: "move",
+        expected: "EFF-2",
+      }),
+    ).toEqual(moveWrites);
   });
 
-  it("treats a swap asked for an unplanned story as a move", () => {
-    expect(decidePlan({ story, date: "2026-10-21", holder: other, resolution: "swap" })).toEqual(
-      moveWrites,
-    );
+  it("asks again when a swap is asked for a story with no date to give", () => {
+    expect(
+      decidePlan({
+        story,
+        date: "2026-10-21",
+        holder: other,
+        resolution: "swap",
+        expected: "EFF-2",
+      }),
+    ).toEqual({ kind: "conflict", other, canSwap: false });
+  });
+
+  it("asks again when the day's holder is not the story the planner was shown", () => {
+    const planned = { ...story, plannedOn: "2026-10-20" };
+    for (const resolution of ["swap", "move"] as const) {
+      expect(
+        decidePlan({
+          story: planned,
+          date: "2026-10-21",
+          holder: other,
+          resolution,
+          expected: "EFF-3",
+        }),
+      ).toEqual({ kind: "conflict", other, canSwap: true });
+      expect(
+        decidePlan({
+          story: planned,
+          date: "2026-10-21",
+          holder: other,
+          resolution,
+          expected: null,
+        }),
+      ).toEqual({ kind: "conflict", other, canSwap: true });
+    }
   });
 
   it("clearing writes null", () => {
     const planned = { ...story, plannedOn: "2026-10-20" };
-    expect(decidePlan({ story: planned, date: null, holder: null, resolution: null })).toEqual({
+    expect(
+      decidePlan({ story: planned, date: null, holder: null, resolution: null, expected: null }),
+    ).toEqual({
       kind: "write",
       writes: [{ submissionId: "s-1", plannedOn: null }],
     });

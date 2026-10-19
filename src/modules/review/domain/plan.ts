@@ -15,6 +15,8 @@ export type PlanDecision =
 
 /**
  * Decides how to set `story` on `date` (null clears it) given who holds that day.
+ * A resolution applies only to the holder the planner was shown (`expected`, its reference),
+ * and a swap only while the story has a date to give; otherwise the planner is asked again.
  * The writes come in the order they must run, so the one-story-per-day index never trips.
  */
 export function decidePlan(input: {
@@ -22,16 +24,18 @@ export function decidePlan(input: {
   date: IsoDate | null;
   holder: PlanSlot | null;
   resolution: PlanResolution | null;
+  expected: string | null;
 }): PlanDecision {
-  const { story, date, holder, resolution } = input;
+  const { story, date, holder, resolution, expected } = input;
   if (date === null) {
     return { kind: "write", writes: [{ submissionId: story.submissionId, plannedOn: null }] };
   }
   if (holder === null || holder.submissionId === story.submissionId) {
     return { kind: "write", writes: [{ submissionId: story.submissionId, plannedOn: date }] };
   }
-  if (resolution === null) {
-    return { kind: "conflict", other: holder, canSwap: story.plannedOn !== null };
+  const canSwap = story.plannedOn !== null;
+  if (resolution === null || expected !== holder.reference || (resolution === "swap" && !canSwap)) {
+    return { kind: "conflict", other: holder, canSwap };
   }
   if (resolution === "swap" && story.plannedOn !== null) {
     return {

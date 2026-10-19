@@ -32,13 +32,14 @@ const plan = (
   deps: FakeReviewDeps,
   formId: string,
   date: string,
-  over: { reference?: string; resolution?: string } = {},
+  over: { reference?: string; resolution?: string; expected?: string } = {},
 ) =>
   planStory(deps, OWNER, {
     formId,
     reference: over.reference ?? "ST-0001",
     date,
     resolution: over.resolution ?? "",
+    expected: over.expected ?? "",
   });
 
 async function twoStories(deps: FakeReviewDeps) {
@@ -122,7 +123,9 @@ describe("planStory", () => {
     setPlanned(deps, first, "2026-10-20");
     setPlanned(deps, second, "2026-10-21");
 
-    expect(await plan(deps, first.formId, "2026-10-21", { resolution: "swap" })).toEqual({
+    expect(
+      await plan(deps, first.formId, "2026-10-21", { resolution: "swap", expected: "ST-0002" }),
+    ).toEqual({
       ok: true,
       plannedOn: "2026-10-21",
     });
@@ -153,7 +156,9 @@ describe("planStory", () => {
     setPlanned(deps, first, "2026-10-20");
     setPlanned(deps, second, "2026-10-21");
 
-    expect(await plan(deps, first.formId, "2026-10-21", { resolution: "move" })).toEqual({
+    expect(
+      await plan(deps, first.formId, "2026-10-21", { resolution: "move", expected: "ST-0002" }),
+    ).toEqual({
       ok: true,
       plannedOn: "2026-10-21",
     });
@@ -164,6 +169,48 @@ describe("planStory", () => {
       [first.submissionId, { from: "2026-10-20", to: "2026-10-21", resolution: "move" }],
       [second.submissionId, { from: "2026-10-21", to: "none", resolution: "move" }],
     ]);
+  });
+
+  it("asks again when the day's holder is not the story the dialog named", async () => {
+    const deps = makeReviewDeps();
+    const { first, second } = await twoStories(deps);
+    setPlanned(deps, first, "2026-10-20");
+    setPlanned(deps, second, "2026-10-21");
+
+    for (const resolution of ["swap", "move"])
+      expect(
+        await plan(deps, first.formId, "2026-10-21", { resolution, expected: "ST-0003" }),
+      ).toEqual({
+        ok: false,
+        code: "conflict",
+        date: "2026-10-21",
+        other: "ST-0002",
+        canSwap: true,
+      });
+
+    expect(plannedOf(deps, first.submissionId)).toBe("2026-10-20");
+    expect(plannedOf(deps, second.submissionId)).toBe("2026-10-21");
+    expect(auditOf(deps, "story_planned")).toEqual([]);
+  });
+
+  it("asks again without a swap when the story lost its date before the swap", async () => {
+    const deps = makeReviewDeps();
+    const { first, second } = await twoStories(deps);
+    setPlanned(deps, second, "2026-10-21");
+
+    expect(
+      await plan(deps, first.formId, "2026-10-21", { resolution: "swap", expected: "ST-0002" }),
+    ).toEqual({
+      ok: false,
+      code: "conflict",
+      date: "2026-10-21",
+      other: "ST-0002",
+      canSwap: false,
+    });
+
+    expect(plannedOf(deps, first.submissionId)).toBeNull();
+    expect(plannedOf(deps, second.submissionId)).toBe("2026-10-21");
+    expect(auditOf(deps, "story_planned")).toEqual([]);
   });
 
   it("clears a date", async () => {
@@ -247,7 +294,9 @@ describe("planStory", () => {
       return null;
     };
 
-    expect(await plan(deps, first.formId, "2026-10-21", { resolution: "move" })).toEqual({
+    expect(
+      await plan(deps, first.formId, "2026-10-21", { resolution: "move", expected: "ST-0002" }),
+    ).toEqual({
       ok: false,
       code: "conflict",
       date: "2026-10-21",

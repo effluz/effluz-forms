@@ -12,9 +12,9 @@ const PLAN_PATH = "/admin/plan";
 /**
  * POST .../[reference]/plan from the story's Planned date block (`return=story`) or the Post
  * plan's "Pick a story" (`return=plan`, with the `week` shown): plans the story on `date`, or
- * clears its date when `date` is empty; `resolution` (swap, move) answers a conflict. A
- * planned story goes back where it came from; a conflict or a refusal returns to the story
- * page's plan block. See specs/use-cases/curate-submission.md, "Planning".
+ * clears its date when `date` is empty; `resolution` (swap, move) answers a conflict about the
+ * holder `expected` names. A planned story goes back where it came from; a conflict or a
+ * refusal returns to the story page's plan block. See specs/use-cases/curate-submission.md, "Planning".
  */
 export async function POST(request: Request, context: StoryRouteContext): Promise<Response> {
   const guarded = await guardStoryPost(request, context);
@@ -28,6 +28,7 @@ export async function POST(request: Request, context: StoryRouteContext): Promis
     reference,
     date: text(form, "date"),
     resolution: text(form, "resolution"),
+    expected: text(form, "expected"),
   });
   if (result.ok) {
     if (text(form, "return") === "plan") {

@@ -25,8 +25,8 @@ function PlanFields(props: StoryProps): ReactElement {
  * The plan conflict (`conflict_date`, `conflict_ref`, `conflict_swap=1`): the day already
  * holds another story, named here, with "Swap the two dates" (only when this story has a
  * date to give) and "Move <ref> to Waiting for a date", each a submit button posting the same
- * date and its `resolution`. It sits where the plan form was, which the route returns to
- * (`#plan`).
+ * date, its `resolution` and the named holder as `expected`, so a day taken by another story
+ * meanwhile asks again. It sits where the plan form was, which the route returns to (`#plan`).
  */
 function ConflictDialog(
   props: StoryProps & { conflict: NonNullable<StoryParams["conflict"]> },
@@ -46,6 +46,7 @@ function ConflictDialog(
         >
           <PlanFields {...props} />
           <input type="hidden" name="date" value={conflict.date} />
+          <input type="hidden" name="expected" value={conflict.ref} />
           <div className={ui.actions}>
             <a className={ui.button} href={storyPath(formId, view.reference, params.query)}>
               <Bilingual k="shell.cancel" />

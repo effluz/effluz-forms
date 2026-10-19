@@ -321,6 +321,7 @@ describe("StoryPage readiness, plan and publishing", () => {
     expect(textOf(ask)).toContain("ST-0002 ya está planificada para el 2026-10-21.");
     const form = formsTo(ask, `${BASE}/plan`)[0] ?? "";
     expect(tags(form, "input", 'name="date"', 'value="2026-10-21"')).toHaveLength(1);
+    expect(tags(form, "input", 'name="expected"', 'value="ST-0002"')).toHaveLength(1);
     expect(tags(form, "input", 'name="csrf"', 'value="csrf-token"')).toHaveLength(1);
     const swap = tags(form, "button", 'name="resolution"', 'value="swap"');
     expect(swap).toHaveLength(1);

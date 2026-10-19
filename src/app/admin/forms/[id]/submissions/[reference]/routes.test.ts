@@ -479,6 +479,40 @@ describe("POST .../plan", () => {
     expect(location(res)).toBe(storyAt("conflict_date=2026-10-20&conflict_ref=ST-0002", "plan"));
   });
 
+  it("plan applies a resolution for the holder the conflict named", async () => {
+    const other = await seedAnotherStory(review, story.formId);
+    review.stories.rows.set(other.submissionId, {
+      ...emptyStory(other.submissionId, story.formId),
+      plannedOn: "2026-10-20",
+    });
+    const res = await send(planPost, "plan", {
+      date: "2026-10-20",
+      resolution: "move",
+      expected: "ST-0002",
+      return: "story",
+    });
+    expect(location(res)).toBe(storyAt("done=planned", "plan"));
+    expect(storyRow()?.plannedOn).toBe("2026-10-20");
+    expect(review.stories.rows.get(other.submissionId)?.plannedOn).toBeNull();
+  });
+
+  it("plan returns the conflict again when the day's holder is not the one it named", async () => {
+    const other = await seedAnotherStory(review, story.formId);
+    review.stories.rows.set(other.submissionId, {
+      ...emptyStory(other.submissionId, story.formId),
+      plannedOn: "2026-10-20",
+    });
+    const res = await send(planPost, "plan", {
+      date: "2026-10-20",
+      resolution: "move",
+      expected: "ST-0003",
+      return: "story",
+    });
+    expect(location(res)).toBe(storyAt("conflict_date=2026-10-20&conflict_ref=ST-0002", "plan"));
+    expect(storyRow()?.plannedOn ?? null).toBeNull();
+    expect(review.stories.rows.get(other.submissionId)?.plannedOn).toBe("2026-10-20");
+  });
+
   it("plan returns a refusal with error=date_invalid#plan", async () => {
     const res = await send(planPost, "plan", { date: "2026-02-30", return: "story" });
     expect(location(res)).toBe(storyAt("error=date_invalid", "plan"));

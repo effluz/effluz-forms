@@ -94,6 +94,12 @@ interface Target {
   date: IsoDate | null;
 }
 
+/** The planner's answer to a conflict: what to do, and the holder the dialog named. */
+interface Answer {
+  resolution: PlanResolution | null;
+  expected: string | null;
+}
+
 /** The holder as the plan rules see it, named by its reference. */
 async function holderSlot(deps: ReviewDeps, row: StoryRow): Promise<PlanSlot> {
   const submission = await findSubmission(deps.submissions, row.submissionId);
@@ -114,7 +120,7 @@ async function planInUnit(
   actor: Actor,
   uow: UnitOfWork,
   target: Target,
-  resolution: PlanResolution | null,
+  answer: Answer,
   own: { day: IsoDate | null; checkFresh: boolean },
 ): Promise<PlanResult> {
   const days = [...new Set([target.date, own.day].filter((d): d is IsoDate => d !== null))].sort();
@@ -144,7 +150,8 @@ async function planInUnit(
     },
     date: target.date,
     holder,
-    resolution,
+    resolution: answer.resolution,
+    expected: answer.expected,
   });
   if (decision.kind === "conflict")
     throw new PlanRefusal({
@@ -197,14 +204,14 @@ async function planLocked(
   deps: ReviewDeps,
   actor: Actor,
   target: Target,
-  resolution: PlanResolution | null,
+  answer: Answer,
 ): Promise<PlanResult> {
   for (let attempt = 1; ; attempt++) {
     const day = (await deps.stories.find(target.submissionId))?.plannedOn ?? null;
     const own = { day, checkFresh: attempt < MAX_FRESH_ATTEMPTS };
     try {
       return await withDeadlockRetry(() =>
-        deps.uow.run((uow) => planInUnit(deps, actor, uow, target, resolution, own)),
+        deps.uow.run((uow) => planInUnit(deps, actor, uow, target, answer, own)),
       );
     } catch (error) {
       if (!(error instanceof PlanRefusal)) throw error;
@@ -215,13 +222,22 @@ async function planLocked(
 
 /**
  * Plans a story on a day, or clears its date (specs/use-cases/curate-submission.md,
- * "Planning"). A taken day answers `conflict` until the planner picks `swap` or `move`;
- * a refusal writes nothing.
+ * "Planning"). A taken day answers `conflict` until the planner picks `swap` or `move`
+ * with `expected`, the reference of the holder the conflict named. A day held by another
+ * story by then, or a swap once this story has no date to give, asks again. A refusal
+ * writes nothing.
  */
 export async function planStory(
   deps: ReviewDeps,
   actor: Actor,
-  input: { formId: string; reference: string; date: string; resolution: string },
+  input: {
+    formId: string;
+    reference: string;
+    date: string;
+    resolution: string;
+    /** The holder the conflict named. Missing or empty, it names none: a resolution asks again. */
+    expected?: string;
+  },
 ): Promise<PlanResult> {
   const found = await loadStory(deps, input.formId, input.reference);
   if (!found) return { ok: false, code: "not_found" };
@@ -235,11 +251,14 @@ export async function planStory(
     date,
   };
   try {
-    return await planLocked(deps, actor, target, parseResolution(input.resolution));
+    return await planLocked(deps, actor, target, {
+      resolution: parseResolution(input.resolution),
+      expected: input.expected === undefined || input.expected === "" ? null : input.expected,
+    });
   } catch (error) {
     if (!isSlotTaken(error)) throw error;
     // The index caught a second story on a day: ask again, never moving anyone unasked.
-    return planLocked(deps, actor, target, null);
+    return planLocked(deps, actor, target, { resolution: null, expected: null });
   }
 }
 
