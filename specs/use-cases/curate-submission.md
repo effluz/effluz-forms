@@ -35,8 +35,9 @@ change status".
 
 1. The curator opens a submission and chooses "Edit" on a `short_text` or
    `long_text` answer. Other types have no edit action. A correction is read
-   the way the field type reads an answer on receipt: trimmed, NFC, and a
-   `short_text` correction has its line breaks collapsed.
+   the way the field type reads an answer on receipt (trimmed, NFC,
+   zero-width characters removed; a `short_text` correction has its line
+   breaks collapsed).
 2. The answer opens in a two-column editor: **Original** on the left, read
    only, and **Curated** on the right, prefilled with the current curated
    text or the original if none exists.

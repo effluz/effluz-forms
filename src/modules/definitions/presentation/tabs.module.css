@@ -12,12 +12,12 @@
   gap: 24px;
 }
 
-/* The tab's <h2>: font.size.staff.heading, font.weight.semibold, no margin of its own. */
+/* The tab's <h2>: font.size.staff.heading, font.weight.semibold, lineHeight.heading, no margin of its own. */
 .heading {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.3;
 }
 
 /* The public link: the field fills the row up to 640 px, so the whole address stays readable. */

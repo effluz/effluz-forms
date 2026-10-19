@@ -72,7 +72,8 @@ folder, so the token can reach nothing else in that account. Uses the refresh-to
 flow; the refresh token is an environment variable, access tokens are renewed
 in memory. `viewUrl` wraps the temporary-link API and the result is cached in
 process for slightly less than its validity window so the admin page does not
-hit the API on every render. Respects rate-limit responses by retrying through
+hit the API on every render; a failed download drops the cached link, so the
+next read asks for a fresh one. Respects rate-limit responses by retrying through
 the job system, never inline.
 
 `MEDIA_PROVIDER=dropbox` with `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET` and
@@ -83,7 +84,8 @@ the job system, never inline.
 local fake. A 401 renews the access token once. Any other non-2xx answer (429, 5xx, and
 also 4xx such as a refused path) fails the job, which the job system retries
 until it is dead; there is no permanent class for Dropbox answers. Every call
-stops waiting after 60 seconds, which counts as a failed attempt.
+stops waiting after 60 seconds (for a download, until its headers arrive),
+which counts as a failed attempt.
 
 Any further provider (S3-compatible, Supabase Storage, Google Drive) is a new
 adapter and an ADR. No other code changes.

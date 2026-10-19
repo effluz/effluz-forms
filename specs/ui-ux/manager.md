@@ -249,8 +249,9 @@ know which answers are contact details.
 labelled (`st.original`, `st.corrected`) with `st.correction_hint` under the
 heading. Buttons: Save correction, Cancel. There is no "Suggest correction"
 until a correction service is built; `st.suggest*` rows are reserved. Save
-returns to the answer with the Edited tag, ticks "Text checked" and shows
-`st.saved`.
+returns to the top of the story page with `st.saved`, the answer showing the
+Edited tag, and ticks "Text checked". Cancel and a refusal return to the
+answer.
 
 "Compare with original" (`?compare=<field>`) opens the same two columns
 read-only. Each change is marked with `<ins>` or `<del>`, a visually hidden
@@ -458,13 +459,14 @@ explains that entries are kept for one year.
 
 - **Loading**: skeleton rows, never a spinner on a blank page.
 - **Errors**: inline, with Retry; the shell stays usable.
-- **Not found**: a form route for an unknown form shows, inside the shell,
+- **Not found**: the overview and the story page of an unknown form show, inside the shell,
   a breadcrumb back to Forms, the `<h1>` `shell.not_found_title`, one
   sentence (`shell.not_found_body`) and one link (`shell.not_found_back`) to
   the Forms list, with status 200 (ADR 0027). The overview renders this body
   itself rather than calling `notFound()`, so it shows without script. The
   lifecycle and delete routes send an unknown form to its overview, which
-  shows this page.
+  shows this page. The settings, activity, edit and share tabs still call
+  `notFound()` and show the empty shell without script (ADR 0027).
 - **Closed or archived form**: a banner in the overview explaining what
   the public sees and how to reopen.
 - **Submission deleted while open**: the story page shows its not-found body
