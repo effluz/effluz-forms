@@ -136,12 +136,12 @@ describe("POST /admin/forms/[id]/export", () => {
     });
   });
 
-  it("export returns a refusal with ?export=1&error=too_large plus the query", async () => {
+  it("export returns a refusal with ?export=1&error=too_large#export plus the query", async () => {
     review.queries.countResult = 10_001;
     const res = await exportPost({ csrf: CSRF, ...DIALOG });
     expect(res.status).toBe(303);
     expect(res.headers.get("Location")).toBe(
-      `/admin/forms/${formId}?status=viewed&q=Ana&export=1&error=too_large`,
+      `/admin/forms/${formId}?status=viewed&q=Ana&export=1&error=too_large#export`,
     );
     expect(exported()).toHaveLength(0);
   });

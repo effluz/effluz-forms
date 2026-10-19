@@ -41,9 +41,7 @@ export async function POST(
     labels: exportLabels,
   });
   if (!result.ok)
-    return seeOther(
-      result.code === "too_large" ? `${exportHref(id, query)}&error=too_large` : overview,
-    );
+    return seeOther(result.code === "too_large" ? exportHref(id, query, true) : overview);
   return new Response(result.body, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

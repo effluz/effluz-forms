@@ -1,5 +1,5 @@
 import { useId, type ReactElement, type ReactNode } from "react";
-import { Badge, type BadgeTone } from "@/shared/presentation/Badge";
+import { Badge } from "@/shared/presentation/Badge";
 import { Banner } from "@/shared/presentation/Banner";
 import { Bilingual } from "@/shared/presentation/Bilingual";
 import { formatDate } from "@/shared/presentation/format-date";
@@ -11,7 +11,6 @@ import {
   REVIEW_STATUSES,
   listQueryString,
   type PlanFilter,
-  type ReviewStatus,
   type StoryList,
   type StoryListRow,
 } from "../application";
@@ -19,21 +18,8 @@ import { T, both, type ReviewCopyKey } from "./copy";
 import { ExportDialog } from "./ExportDialog";
 import { shortDay } from "./format";
 import { chipHref, exportHref, listHref, shareHref, storyHref } from "./list-view";
+import { STATUS_LABEL, StatusBadge } from "./StatusBadge";
 import { styles } from "./styles";
-
-const STATUS_TONE: Record<ReviewStatus, BadgeTone> = {
-  new: "neutral",
-  viewed: "neutral",
-  edited: "warning",
-  published: "success",
-};
-
-const STATUS_LABEL: Record<ReviewStatus, ReviewCopyKey> = {
-  new: "sub.status_new",
-  viewed: "sub.status_viewed",
-  edited: "sub.status_edited",
-  published: "sub.status_published",
-};
 
 const PLAN_LABEL: Record<PlanFilter, ReviewCopyKey> = {
   planned: "sub.plan_planned",
@@ -201,9 +187,7 @@ function StatusCell(props: { list: StoryList; row: StoryListRow }): ReactElement
           <T k="sub.planned_on" vars={{ date: shortDay(row.plannedOn) }} />
         </span>
       ) : (
-        <Badge tone={STATUS_TONE[row.status]}>
-          <T k={STATUS_LABEL[row.status]} />
-        </Badge>
+        <StatusBadge status={row.status} />
       )}
       {row.deadJobs ? (
         <Badge tone="danger">
@@ -244,7 +228,7 @@ function rowCells(list: StoryList, row: StoryListRow): ReactNode[] {
       />
     </span>,
     <T key="version" k="list.version" vars={{ n: String(row.versionNumber) }} />,
-    row.locale.toUpperCase(),
+    <T key="locale" k={row.locale === "es" ? "sub.locale_es" : "sub.locale_en"} />,
   ];
 }
 
@@ -269,7 +253,7 @@ function Empty(props: { list: StoryList; publicUrl: string }): ReactElement {
         <T k="sub.empty" />
       </p>
       <p className={styles.emptyLinks}>
-        <a className={ui.link} href={props.publicUrl} target="_blank" rel="noopener">
+        <a className={ui.link} href={props.publicUrl}>
           {props.publicUrl}
         </a>
         <a className={ui.button} href={shareHref(list.ctx.form.id)}>

@@ -89,9 +89,12 @@ describe("OperationsPage", () => {
     expect(english(never)).toContain("Never");
     expect(english(never)).toContain("Critical");
     expect(never).toContain("Crítico");
+    // No worker runbook exists yet, so the banner does not point at one.
     expect(english(never)).toContain(
-      "The worker is not running. Jobs will resume when it returns. See the runbook.",
+      "The worker is not running. Jobs will resume when it returns.",
     );
+    expect(english(never)).not.toContain("runbook");
+    expect(never).not.toContain("Consulta el manual");
     expect(tags(never, "div", 'role="alert"')).toHaveLength(1);
 
     const slow = render(view({ heartbeatAgeSeconds: 200, heartbeat: "warning" }));

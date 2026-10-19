@@ -26,9 +26,10 @@ with a 2 px offset.
 
 - Underlined in running text, `color.text.link`, hover `color.text.link.hover`
   keeping the underline. Visited is not distinguished.
-- External links on staff surfaces show an outward icon and open in a new
-  tab with `rel="noopener"`; public forms open staff-authored links the same
-  way.
+- External links on staff surfaces show an outward icon and open in the same
+  tab with `rel="noopener"` (the manager never opens windows, so Back returns
+  to it); public forms open staff-authored links in a new tab with
+  `rel="noopener"`.
 
 ## Text input and textarea
 

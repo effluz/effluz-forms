@@ -42,7 +42,7 @@ export function PublishPanel(props: StoryProps): ReactElement {
           )}
           {view.postUrl === null ? null : (
             <p className={story.publishLine}>
-              <a className={ui.link} href={view.postUrl} target="_blank" rel="noopener noreferrer">
+              <a className={ui.link} href={view.postUrl} rel="noopener noreferrer">
                 <T k="st.open_post" />
                 <OutwardIcon />
               </a>

@@ -35,7 +35,8 @@ function Radio(props: { name: string; value: string; label: ReviewCopyKey; check
 /**
  * The export dialog: an in-page section (no JavaScript) with the scope, the options and the
  * notice. It posts to the export route, which streams the CSV. Above `EXPORT_ROW_CAP` rows,
- * or when the route has just refused, it asks to narrow the filters and offers no download.
+ * or when the route has just refused, it asks to narrow the filters and offers no download. The
+ * Export link ends in `#export`, so the page lands on it; `tabIndex={-1}` lets that take focus.
  * See specs/ui-ux/manager.md, "Export dialog".
  */
 export function ExportDialog(props: {
@@ -61,6 +62,8 @@ export function ExportDialog(props: {
       aria-labelledby={titleId}
       aria-describedby={scopeId}
       className={ui.dialog}
+      id="export"
+      tabIndex={-1}
     >
       <h2 id={titleId} className={ui.dialogTitle}>
         <T k="ex.title" />

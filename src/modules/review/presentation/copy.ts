@@ -27,6 +27,8 @@ export const reviewCopy = {
   "sub.col_files": { en: "Files", es: "Archivos" },
   "sub.col_version": { en: "Version", es: "Versión" },
   "sub.col_locale": { en: "Language", es: "Idioma" },
+  "sub.locale_en": { en: "English", es: "Inglés" },
+  "sub.locale_es": { en: "Spanish", es: "Español" },
   "sub.needs_attention": { en: "Needs attention", es: "Necesita atención" },
   "sub.export": { en: "Export", es: "Exportar" },
   "sub.empty": {
@@ -403,8 +405,8 @@ export const reviewCopy = {
     es: "Reintentar todos los trabajos {type} ({count})",
   },
   "ops.worker_down": {
-    en: "The worker is not running. Jobs will resume when it returns. See the runbook.",
-    es: "El worker no se está ejecutando. Los trabajos continuarán cuando vuelva. Consulta el manual.",
+    en: "The worker is not running. Jobs will resume when it returns.",
+    es: "El worker no se está ejecutando. Los trabajos continuarán cuando vuelva.",
   },
   "ops.runbooks": { en: "Runbooks", es: "Manuales de operación" },
   "ops.dead_title": {

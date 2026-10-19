@@ -1,32 +1,17 @@
 import type { ReactElement } from "react";
-import { Badge, type BadgeTone } from "@/shared/presentation/Badge";
 import { Bilingual } from "@/shared/presentation/Bilingual";
 import { Breadcrumbs } from "@/shared/presentation/Breadcrumbs";
 import { formatDate } from "@/shared/presentation/format-date";
 import { styles as ui } from "@/shared/presentation/styles";
-import { EMPTY_QUERY, type ReviewStatus, type StoryView } from "../../application";
-import { T, type ReviewCopyKey } from "../copy";
+import { EMPTY_QUERY, type StoryView } from "../../application";
+import { T } from "../copy";
 import { shortDay } from "../format";
 import { listHref } from "../list-view";
+import { StatusBadge } from "../StatusBadge";
 import { storyPath, type StoryParams } from "../story-params";
 import { styles } from "../styles";
 import { Localized } from "./parts";
 import { story } from "./styles";
-
-// The same tones and words as the list's status cell (components.md, "Badge").
-const STATUS_TONE: Record<ReviewStatus, BadgeTone> = {
-  new: "neutral",
-  viewed: "neutral",
-  edited: "warning",
-  published: "success",
-};
-
-const STATUS_LABEL: Record<ReviewStatus, ReviewCopyKey> = {
-  new: "sub.status_new",
-  viewed: "sub.status_viewed",
-  edited: "sub.status_edited",
-  published: "sub.status_published",
-};
 
 /** The status badge, or "Planned · <date>" for a planned story that has not gone out. */
 function StatusMark(props: { view: StoryView }): ReactElement {
@@ -42,11 +27,7 @@ function StatusMark(props: { view: StoryView }): ReactElement {
       </span>
     );
   }
-  return (
-    <Badge tone={STATUS_TONE[view.status]}>
-      <T k={STATUS_LABEL[view.status]} />
-    </Badge>
-  );
+  return <StatusBadge status={view.status} />;
 }
 
 /**

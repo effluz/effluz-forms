@@ -627,6 +627,8 @@ wrong CSRF token.
 | sub.col_files | Files | Archivos |
 | sub.col_version | Version | Versión |
 | sub.col_locale | Language | Idioma |
+| sub.locale_en | English | Inglés |
+| sub.locale_es | Spanish | Español |
 | sub.needs_attention | Needs attention | Necesita atención |
 | sub.export | Export | Exportar |
 | sub.empty | No submissions yet. Share the form to start receiving them. | Aún no hay respuestas. Comparte el formulario para empezar a recibirlas. |
@@ -943,7 +945,7 @@ used, so such rows are split (`pub.unmark_viewed` and `pub.unmark_edited`).
 | ops.discard | Discard | Descartar |
 | ops.discard_reason | Reason | Motivo |
 | ops.retry_all | Retry all {type} jobs ({count}) | Reintentar todos los trabajos {type} ({count}) |
-| ops.worker_down | The worker is not running. Jobs will resume when it returns. See the runbook. | El worker no se está ejecutando. Los trabajos continuarán cuando vuelva. Consulta el manual. |
+| ops.worker_down | The worker is not running. Jobs will resume when it returns. | El worker no se está ejecutando. Los trabajos continuarán cuando vuelva. |
 | ops.runbooks | Runbooks | Manuales de operación |
 | ops.dead_title | Jobs that stopped retrying | Trabajos que dejaron de reintentarse |
 | ops.none_dead | No jobs need attention. | Ningún trabajo necesita atención. |

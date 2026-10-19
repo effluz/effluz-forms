@@ -355,6 +355,7 @@ describe("StoryPage readiness, plan and publishing", () => {
     const link = tags(published, "a", 'href="https://social.example.com/p/123"');
     expect(link).toHaveLength(1);
     expect(attr(link[0] ?? "", "rel")).toBe("noopener noreferrer");
+    expect(link[0]).not.toContain("target=");
     expect(textOf(between(published, 'href="https://social.example.com/p/123"', "</a>"))).toContain(
       "Open the post Abrir la publicación",
     );

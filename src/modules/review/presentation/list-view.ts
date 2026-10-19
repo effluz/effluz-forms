@@ -23,10 +23,14 @@ export function storyHref(formId: string, reference: string, query: ListQuery): 
   return `/admin/forms/${encodeURIComponent(formId)}/submissions/${encodeURIComponent(reference)}${listQueryString(query)}`;
 }
 
-/** The list with the export dialog open (`?export=1`), keeping the filters it will export. */
-export function exportHref(formId: string, query: ListQuery): string {
+/**
+ * The list with the export dialog open (`?export=1`), keeping the filters it will export, and
+ * ending in `#export` so the page lands on the dialog (and on its refusal, when `tooLarge`
+ * adds `error=too_large`) instead of its top.
+ */
+export function exportHref(formId: string, query: ListQuery, tooLarge = false): string {
   const base = listHref(formId, query);
-  return `${base}${base.includes("?") ? "&" : "?"}export=1`;
+  return `${base}${base.includes("?") ? "&" : "?"}export=1${tooLarge ? "&error=too_large" : ""}#export`;
 }
 
 /** The public share page of a form, for the empty state. */

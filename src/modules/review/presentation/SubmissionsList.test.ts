@@ -113,7 +113,10 @@ describe("SubmissionsList", () => {
     const html = render(
       storyList({
         query,
-        rows: [row({ deadJobs: true }), row({ reference: "HP-0041", status: "edited" })],
+        rows: [
+          row({ deadJobs: true }),
+          row({ reference: "HP-0041", status: "edited", locale: "en" }),
+        ],
       }),
     );
     const rows = body(html);
@@ -128,7 +131,9 @@ describe("SubmissionsList", () => {
     expect(rows).toContain("2 files");
     expect(rows).toContain("2 archivos");
     expect(rows).toContain(">v1<");
-    expect(rows).toContain(">ES<");
+    // The language is spelled out in both languages, the Spanish line marked lang="es".
+    expect(rows).toMatch(/>Spanish<span lang="es"[^>]*>Español</);
+    expect(rows).toMatch(/>English<span lang="es"[^>]*>Inglés</);
     expect(occurrences(rows, "Needs attention")).toBe(1);
     expect(occurrences(rows, "Necesita atención")).toBe(1);
   });
@@ -304,6 +309,8 @@ describe("SubmissionsList", () => {
     const none = render(storyList({ rows: [], total: 0 }));
     expect(none).toContain("No submissions yet. Share the form to start receiving them.");
     expect(none).toContain(PUBLIC_URL);
+    // The public URL opens in the same tab.
+    expect(tags(none, "a", `href="${PUBLIC_URL}"`)[0]).not.toContain("target=");
     expect(none).not.toContain("<table");
     const filtered = render(
       storyList({ rows: [], total: 0, query: { ...EMPTY_QUERY, status: "viewed" } }),
@@ -321,7 +328,9 @@ describe("SubmissionsList", () => {
   it("closes the dialog when it is not open and opens it with the Export link", () => {
     const html = render(storyList({ query: { ...EMPTY_QUERY, status: "new" } }));
     expect(html).not.toContain('role="dialog"');
-    expect(tags(html, "a", `href="/admin/forms/${ID}?status=new&amp;export=1"`)).toHaveLength(1);
+    expect(
+      tags(html, "a", `href="/admin/forms/${ID}?status=new&amp;export=1#export"`),
+    ).toHaveLength(1);
   });
 
   it("opens the export dialog with the scope, options and notice", () => {
@@ -341,6 +350,10 @@ describe("SubmissionsList", () => {
     });
     const section = dialog(html);
     expect(section).not.toBe("");
+    // The Export link lands on the dialog, which takes focus there.
+    const open = tags(section, "section")[0] ?? "";
+    expect(open).toContain('id="export"');
+    expect(open).toContain('tabindex="-1"');
     const labelledBy = /aria-labelledby="([^"]+)"/.exec(section)?.[1] ?? "";
     expect(labelledBy).not.toBe("");
     expect(between(section, `<h2 id="${labelledBy}"`, "</h2>")).toContain("Export submissions");

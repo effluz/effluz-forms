@@ -26,9 +26,13 @@ describe("list links", () => {
   });
 
   it("opens the export dialog on top of the current filters", () => {
-    expect(exportHref(ID, EMPTY_QUERY)).toBe(`/admin/forms/${ID}?export=1`);
+    // The link ends in the dialog's id, so the page lands on it (and on its alert).
+    expect(exportHref(ID, EMPTY_QUERY)).toBe(`/admin/forms/${ID}?export=1#export`);
     expect(exportHref(ID, { ...EMPTY_QUERY, status: "edited", page: 2 })).toBe(
-      `/admin/forms/${ID}?status=edited&page=2&export=1`,
+      `/admin/forms/${ID}?status=edited&page=2&export=1#export`,
+    );
+    expect(exportHref(ID, { ...EMPTY_QUERY, status: "edited" }, true)).toBe(
+      `/admin/forms/${ID}?status=edited&export=1&error=too_large#export`,
     );
   });
 });
