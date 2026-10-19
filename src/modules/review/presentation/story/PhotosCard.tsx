@@ -7,7 +7,7 @@ import { both, T, type ReviewCopyKey } from "../copy";
 import { storyActionPath, storyPath, type StoryParams } from "../story-params";
 import { styles } from "../styles";
 import type { CopyLine } from "./Flash";
-import { FilmIcon, StateIcon } from "./icons";
+import { FilmIcon, StateIcon } from "../icons";
 import { StoryDialog, StoryFields } from "./parts";
 import { StaffPhotoForm } from "./StaffPhotoForm";
 import { story } from "./styles";

@@ -6,7 +6,7 @@ import { statusAfterUnpublish } from "../../domain/status";
 import { both, T } from "../copy";
 import { shortDay } from "../format";
 import { storyActionPath, storyPath, type StoryParams } from "../story-params";
-import { OutwardIcon } from "./icons";
+import { OutwardIcon } from "../icons";
 import { StoryDialog, StoryFields } from "./parts";
 import { story } from "./styles";
 

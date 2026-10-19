@@ -1,8 +1,8 @@
 import type { ReactElement } from "react";
-import { styles } from "../styles";
+import { styles } from "./styles";
 
 /**
- * The story page's icons. Each is decorative (`aria-hidden`): the words beside it carry the
+ * The review pages' icons (the story page and the post plan). Each is decorative (`aria-hidden`): the words beside it carry the
  * meaning, and the icon's shape (a tick or a cross) carries the state besides its colour.
  */
 export function StateIcon(props: { done: boolean }): ReactElement {

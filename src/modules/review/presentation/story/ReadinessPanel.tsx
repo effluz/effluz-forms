@@ -6,7 +6,7 @@ import { T, type ReviewCopyKey } from "../copy";
 import { storyActionPath, type StoryParams } from "../story-params";
 import { styles } from "../styles";
 import { refusalLine } from "./Flash";
-import { StateIcon } from "./icons";
+import { StateIcon } from "../icons";
 import { StoryFields } from "./parts";
 import { PlanForm } from "./PlanForm";
 import { story } from "./styles";

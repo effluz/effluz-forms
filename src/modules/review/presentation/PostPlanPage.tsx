@@ -13,6 +13,7 @@ import {
 } from "../application";
 import { T } from "./copy";
 import { dayText } from "./format";
+import { OutwardIcon, StateIcon } from "./icons";
 import { storyHref } from "./list-view";
 import { styles } from "./styles";
 
@@ -34,42 +35,6 @@ function FormName({ title }: { title: LocalizedText }): ReactElement {
   if (en !== "" && es !== "") return <BilingualText text={{ en, es }} />;
   if (es !== "") return <span lang="es">{es}</span>;
   return <>{en}</>;
-}
-
-function StateIcon({ done }: { done: boolean }): ReactElement {
-  return (
-    <svg
-      aria-hidden="true"
-      focusable="false"
-      className={styles.checkIcon}
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {done ? <path d="M4 10.5l4 4 8-9" /> : <path d="M5 5l10 10M15 5L5 15" />}
-    </svg>
-  );
-}
-
-function OutwardIcon(): ReactElement {
-  return (
-    <svg
-      aria-hidden="true"
-      focusable="false"
-      className={styles.externalIcon}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M9 3h4v4M13 3L7 9M11 9.5V13H3V5h3.5" />
-    </svg>
-  );
 }
 
 /**
