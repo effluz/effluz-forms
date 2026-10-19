@@ -112,10 +112,12 @@ endpoint's `deadJobs`. Listing dead jobs with a retry action is part of
 The dead transition, in `fail` and `markDead`, also enqueues `email.job_alert`
 in the same transaction (`decisions/0029`), with the unique key
 `email.job_alert:<type>:<YYYY-MM-DDTHH>` (the hour in UTC) when no job with
-that key exists in any status. When that hour's alert exists but has already
-run, it enqueues the next hour's (`run_at` at its start) unless that key
-exists too. While the hour's alert is still waiting nothing more is needed,
-since it reports every dead job of the type when it runs. A dead
+that key exists in any status. When that hour's alert exists and is running
+or has already run, it enqueues the next hour's (`run_at` at its start)
+unless that key exists too: a running alert may have counted the dead jobs
+already, so it counts as finished. While the hour's alert is still waiting
+(`pending` or `failed`) nothing more is needed, since it reports every dead
+job of the type when it runs. A dead
 `email.job_alert` raises nothing.
 
 A handler that throws `PermanentJobError` (from

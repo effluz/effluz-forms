@@ -25,8 +25,9 @@ The page is **Operations** (`/admin/operations`). This first pass has:
    characters. Audit entry `job_discarded`. Discarding a `media.upload` leaves
    the media row `failed` and the staging file in place; the story page shows
    the photo from staging with a warning.
-5. "Retry all {type} jobs ({count})" appears when more than one dead job
-   shares a type.
+5. "Retry all {type} jobs ({count})" appears for every type in the table
+   that has more than one dead job in all, counting those past the table's
+   200 newest; `{count}` is that full count.
 
 Later: failed jobs awaiting retry, the payload view, pending counts, the last
 successful backup time and the staging size.
@@ -49,8 +50,8 @@ Every job that goes dead, system jobs included, raises an alert email to
 ## Alternate flows and errors
 
 - **Worker heartbeat stale.** A banner tells the operator the worker is down
-  and points at the runbook. Retrying jobs is still allowed and takes effect
-  when it returns.
+  and that jobs resume when it returns. Retrying jobs is still allowed and
+  takes effect when it returns.
 - **Retrying a job whose submission was deleted.** The handler finds no
   submission and succeeds as a no-op by design.
 - **Many dead jobs of one type at once** (provider outage). A "retry all of

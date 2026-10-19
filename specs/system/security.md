@@ -298,7 +298,7 @@ timestamp, IP, and an optional `details` object. This is the only place where
   | `submission_viewed` | none |
   | `photo_viewed` | `mediaId`, `kind` |
   | `media_downloaded` | `mediaId`, or `set` (`all`, `chosen`) and `count`, the files the ZIP was asked to hold, recorded before it streams |
-  | `submissions_exported` | `versions` (`all` or a number), `text`, `paths`, `count`, `search` (boolean), `from`, `to` when set; target the form |
+  | `submissions_exported` | `versions` (`all` or a number), `text`, `paths`, `count`, `search` (boolean); `status` (the status chip), `plan` (`planned`, `waiting`, `not_ready`), `media` (true), `from` and `to` when set; target the form |
   | `submission_deleted` | `reference` |
   | `submission_edited` | `fieldKey`, `source` |
   | `submission_reverted` | `fieldKey` |

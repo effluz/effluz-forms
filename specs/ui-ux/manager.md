@@ -176,13 +176,16 @@ First pass, without JavaScript:
   `aria-pressed` needs a button.
 - Table columns: reference, status (the badge, or "Planned · <date>" for a
   planned, unpublished story), received, label (first short text answer),
-  media count with a camera or film icon, version, locale, dead job flag. A
-  row is a link to the story page, which keeps the list's query.
+  media count with a camera or film icon, version, language (the
+  submission's locale spelled out in both languages, "English / Inglés" or
+  "Spanish / Español", never a bare code), dead job flag. A row is a link to
+  the story page, which keeps the list's query.
 - Pagination of 50 with a total count and Newer and Older links ("Page n of
   total"). Export button opens the export dialog scoped to the current
   filters.
-- Empty states: no submissions yet (with the public URL and Share link), or
-  no submissions match the filters (with a clear-filters action).
+- Empty states: no submissions yet (with the public URL, a link that opens in
+  the same tab, and the Share link), or no submissions match the filters (with
+  a clear-filters action).
 - First pass: rows are links (Tab and Enter). Up, Down, J and K arrive with
   the first client component.
 
@@ -281,7 +284,12 @@ day's slot.
 The planned date is one date per story, in the form `YYYY-MM-DD`, with Plan and
 "Remove the date". One unpublished story per day: planning a day that already
 holds one opens an in-page confirmation naming it, with "Swap the two dates"
-and "Move <ref> to Waiting for a date". A published story stays on the day it
+and "Move <ref> to Waiting for a date". The confirmation posts the reference it
+names: when another story holds the day by then, nothing moves and it opens
+again naming the new holder. A swap asked when this story has no date any more
+opens it again without "Swap the two dates". A story keeps holding its day
+after its form's post-plan setting is turned off; the Post plan no longer shows
+it, and the confirmation names it. A published story stays on the day it
 went out and shows no plan form; the Publishing card states its day. Planning
 is a date on the story, never a new status.
 
@@ -403,7 +411,7 @@ forms with the post-plan setting on, which share the one plan; with none,
   "Nothing planned" (past days).
 - Days are `<li>` items of one list; today's carries `aria-current="date"`
   besides the word. Stories link to their page; a published story's post link
-  opens in a new tab with the outward icon. A day with only published stories
+  has the outward icon and opens in the same tab, like every manager link. A day with only published stories
   is not empty: it shows them and no "Pick a story".
 - "Pick a story" opens `?pick=<date>`, which shows "Choose a story for <date>"
   above Waiting for a date, each row with "Plan for <date>", a plain form posting `date`, `week` (the
@@ -425,9 +433,10 @@ First pass. The page shows:
 - the **worker-down banner** (`ops.worker_down`) when the heartbeat is critical;
 - the **dead jobs table** (`ops.dead_title`): type, story (a link, or
   `ops.no_story`), attempts, last error, first and last attempt, with Retry
-  and Discard with reason for each row; "Retry all of type" when more than one
-  dead job shares a type. The reason is 1 to 200 characters. An empty table
-  says `ops.none_dead`.
+  and Discard with reason for each row, newest first, at most 200 rows;
+  "Retry all of type" for every listed type with more than one dead job in
+  all, those past the 200 included, and that full count on the button. The
+  reason is 1 to 200 characters. An empty table says `ops.none_dead`.
 
 A done change shows a status banner (`ops.retried`, `ops.retried_all_one` or
 `_other` by the count, `ops.discarded`). A refused discard shows `ops.err_reason`
@@ -452,14 +461,16 @@ explains that entries are kept for one year.
 - **Not found**: a form route for an unknown form shows, inside the shell,
   a breadcrumb back to Forms, the `<h1>` `shell.not_found_title`, one
   sentence (`shell.not_found_body`) and one link (`shell.not_found_back`) to
-  the Forms list, with status 404. The lifecycle and delete routes send an
-  unknown form to its overview, which shows this page.
+  the Forms list, with status 200 (ADR 0027). The overview renders this body
+  itself rather than calling `notFound()`, so it shows without script. The
+  lifecycle and delete routes send an unknown form to its overview, which
+  shows this page.
 - **Closed or archived form**: a banner in the overview explaining what
   the public sees and how to reopen.
 - **Submission deleted while open**: the story page shows its not-found body
   (`st.not_found_title`, `st.not_found_body`, and `st.not_found_back` to the
-  list) inside the shell, with status 404. Pages render it themselves rather
-  than throwing, as ADR 0027 requires.
+  list) inside the shell, with status 200 (ADR 0027). Pages render it
+  themselves rather than throwing, as ADR 0027 requires.
 - **Offline**: a banner; read-only actions still show cached data where the
   browser has it; mutations are disabled.
 

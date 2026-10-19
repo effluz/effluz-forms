@@ -49,6 +49,9 @@ full page, not a drawer, for every form.
    audited route redirects to it.
 4. Job status for this story is shown as a warning when any of its jobs is
    dead, with "Try again", which retries all of them (`job_retried` per job).
+   The page then says it is trying again only when a job was retried; when
+   none was still dead (retried from Operations or another tab), it simply
+   reloads.
 5. Consent shows the exact text version accepted and when. Activity closes
    the page: this submission's audit entries, newest 50.
 6. Audit entry `submission_viewed` on open.
@@ -103,8 +106,9 @@ removable; adding and choosing photos are hidden.
 
 ## Alternate flows and errors
 
-- **Dropbox link fetch fails.** The thumbnail shows a retry; the rest of the
-  submission is unaffected.
+- **Dropbox link fetch fails.** The thumbnail does not load, and the tile
+  keeps its caption, "View full size" and "Download"; reloading the page asks
+  again. The rest of the submission is unaffected.
 - **A field key in the export union has no label in the chosen language.**
   Fall back to the other language, then to the key.
 - **Bulk delete.** Not in the first release. Retention handles volume.
