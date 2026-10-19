@@ -104,7 +104,7 @@ export class SubmissionMessageSource implements MessageSource {
         reference: submission.reference,
         receivedAt: receivedAt(submission.receivedAt, settings.timezone),
         // The story page; opening it records the first view.
-        link: `${deps.publicBaseUrl}/admin/forms/${form.id}/submissions/${submission.reference}`,
+        link: `${deps.publicBaseUrl}/admin/forms/${encodeURIComponent(form.id)}/submissions/${encodeURIComponent(submission.reference)}`,
       },
     };
   }

@@ -124,6 +124,25 @@ describe("SubmissionMessageSource", () => {
     expect(message?.data.link).toBe(
       `https://forms.example.com/admin/forms/${formId}/submissions/SF-0003`,
     );
+
+    // A prefix staff typed with characters a path segment cannot hold as they are.
+    const odd = randomUUID();
+    await deps.uow.run((u) =>
+      repo.insert(u, {
+        id: odd,
+        formId,
+        versionId,
+        locale: "en",
+        answers: { f_name: "Ana Prueba" },
+        consent: null,
+        receivedAt: new Date("2026-10-10T15:00:00Z"),
+        reference: "SÉ#-0004",
+        submitToken: randomUUID(),
+      }),
+    );
+    expect((await source.staffNotification(odd))?.data.link).toBe(
+      `https://forms.example.com/admin/forms/${formId}/submissions/S%C3%89%23-0004`,
+    );
   });
 
   it("returns null when there is nothing to send", async () => {
