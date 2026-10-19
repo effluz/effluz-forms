@@ -1,18 +1,34 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { EMPTY_QUERY, openStory } from "@/modules/review/application";
 import type { ListFilter } from "@/modules/review/application/ports/review-queries";
+import { OWNER } from "@/modules/review/application/testing/fixtures";
 import { PgReviewQueries } from "@/modules/review/infrastructure/pg-review-queries";
 import { testPool, truncateAll } from "../db";
 import { seedPublishedForm } from "../submissions/factories";
+import { pgReviewDeps } from "./wiring";
 
-const BUDGET_MS = 500;
+// specs/ui-ux/manager.md, "Performance targets".
+const LIST_BUDGET_MS = 500;
+const STORY_BUDGET_MS = 300;
 
-describe("the review list budget", () => {
+describe("the review budgets", () => {
   const pool = testPool();
-
-  it("lists page 1 of 10,000 submissions within 500 ms", { timeout: 60_000 }, async () => {
+  let dir: string;
+  beforeEach(async () => {
     await truncateAll(pool);
-    const { formId, versionId } = await seedPublishedForm(pool);
-    // Synthetic rows only: "Prueba <n>" names, one a minute.
+    dir = await mkdtemp(path.join(os.tmpdir(), "effluz-budget-"));
+  });
+  afterEach(() => rm(dir, { recursive: true, force: true }));
+
+  /**
+   * 10,000 submissions on one form, with photos on the first 1,000, 50 planned stories and a
+   * job history with dead jobs. Synthetic rows only: "Prueba <n>" names, one a minute.
+   */
+  async function seedTenThousand(): Promise<{ formId: string }> {
+    const { formId, versionId } = await seedPublishedForm(pool, undefined, { usePostPlan: true });
     await pool.query(
       `insert into submission (id, form_id, form_version_id, locale, answers, received_at,
          reference, submit_token)
@@ -43,7 +59,11 @@ describe("the review list budget", () => {
          from media m`,
     );
     await pool.query("analyze submission; analyze media; analyze story; analyze job");
+    return { formId };
+  }
 
+  it("lists page 1 of 10,000 submissions within 500 ms", { timeout: 60_000 }, async () => {
+    const { formId } = await seedTenThousand();
     const queries = new PgReviewQueries(pool);
     const filter: ListFilter = {
       formId,
@@ -65,6 +85,26 @@ describe("the review list budget", () => {
 
     expect(rows.length).toBe(50);
     expect(total).toBe(counted);
-    expect(elapsed).toBeLessThan(BUDGET_MS);
+    expect(elapsed).toBeLessThan(LIST_BUDGET_MS);
+  });
+
+  it("opens a story among 10,000 within 300 ms", { timeout: 60_000 }, async () => {
+    const { formId } = await seedTenThousand();
+    const deps = pgReviewDeps(pool, {
+      staging: path.join(dir, "staging"),
+      durable: path.join(dir, "durable"),
+    });
+    const open = (reference: string) =>
+      openStory(deps, OWNER, { formId, reference, query: EMPTY_QUERY });
+    // BT-00500 has two photos whose jobs are looked up; opening BT-00499 first warms the pool.
+    await open("BT-00499");
+
+    const started = performance.now();
+    const view = await open("BT-00500");
+    const elapsed = performance.now() - started;
+
+    expect(view?.reference).toBe("BT-00500");
+    expect(view?.photos.length).toBeGreaterThan(0);
+    expect(elapsed).toBeLessThan(STORY_BUDGET_MS);
   });
 });
