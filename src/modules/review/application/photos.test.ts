@@ -3,7 +3,7 @@ import { fakeImage } from "@/modules/media/application/testing/fakes";
 import { htmlPretendingToBeJpeg, syntheticMp4 } from "../../../../tests/fakes/media-files";
 import { reviewAuditActions } from "../domain/audit";
 import { EMPTY_QUERY } from "../domain/list-query";
-import { STAFF_PHOTOS_FIELD_KEY } from "../domain/staff-photos";
+import { MAX_STAFF_PHOTOS, STAFF_PHOTOS_FIELD_KEY } from "../domain/staff-photos";
 import { setCheck } from "./checks";
 import { openStory } from "./open-story";
 import { addStaffPhotos, choosePhoto, removeStaffPhoto } from "./photos";
@@ -195,6 +195,34 @@ describe("addStaffPhotos", () => {
     expect(reviewAudit(deps)).toEqual([]);
   });
 
+  it("stays a refusal when discarding the staged files fails", async () => {
+    const deps = makeReviewDeps();
+    const story = await seedStory(deps);
+    deps.media.staging.deletePrefix = () => Promise.reject(new Error("storage unavailable"));
+
+    expect(await add(deps, story.formId, [htmlPretendingToBeJpeg()])).toEqual({
+      ok: false,
+      code: "file_refused",
+      file: 1,
+      reason: "file_wrong_type",
+    });
+
+    // Staged, then refused under the lock: the story filled up after the first look.
+    const full = Array.from({ length: MAX_STAFF_PHOTOS }, (_, i) => ({
+      id: `staff-${String(i)}`,
+      submissionId: story.submissionId,
+      source: "whatsapp" as const,
+      addedBy: OWNER.email,
+      createdAt: deps.clock.now(),
+    }));
+    let reads = 0;
+    deps.staffPhotos.listBySubmission = () => Promise.resolve(reads++ === 0 ? [] : full);
+    expect(await add(deps, story.formId, [fakeImage()])).toEqual({
+      ok: false,
+      code: "staff_photos_max",
+    });
+  });
+
   it("discards staged files when the unit of work fails", async () => {
     const deps = makeReviewDeps();
     const story = await seedStory(deps);
@@ -235,6 +263,26 @@ describe("removeStaffPhoto", () => {
     const [p1] = story.photoIds;
     expect(await remove(deps, story.formId, p1)).toEqual({ ok: false, code: "not_found" });
     expect(deps.media.queue.ofType("media.delete")).toHaveLength(1);
+  });
+
+  it("removes a staff photo on a form whose post plan is off", async () => {
+    const deps = makeReviewDeps();
+    const story = await seedStory(deps);
+    const s1 = await addOne(deps, story);
+    const form = deps.definitions.store.forms.get(story.formId);
+    if (!form) throw new Error("the form is seeded");
+    deps.definitions.store.forms.set(story.formId, {
+      ...form,
+      settings: { ...form.settings, usePostPlan: false },
+    });
+
+    expect(await remove(deps, story.formId, s1)).toEqual({ ok: true });
+
+    expect(deps.staffPhotos.rows.has(s1)).toBe(false);
+    expect(deps.media.queue.ofType("media.delete").map((j) => j.payload)).toEqual([
+      { mediaId: s1 },
+    ]);
+    expect(auditOf(deps, "staff_photo_removed")).toHaveLength(1);
   });
 
   it("removing a chosen staff photo unsets photos edited", async () => {

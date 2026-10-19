@@ -76,7 +76,10 @@ function nextStaffPosition(media: readonly MediaRecord[]): number {
   return highest + 1;
 }
 
-/** Deletes the record's staged files after a failure, keeping the failure itself; the staging sweep removes what this misses. */
+/**
+ * Deletes the record's staged files after a refusal or a failure, keeping that outcome: a
+ * storage error here never replaces it, and the staging sweep removes what this misses.
+ */
 async function discardAfterFailure(deps: ReviewDeps, recordId: string): Promise<void> {
   try {
     await discardRecordFiles(deps.media, recordId);
@@ -120,7 +123,7 @@ export async function addStaffPhotos(
   try {
     const result = await stageAll(deps, recordId, input.files);
     if (!result.ok) {
-      await discardRecordFiles(deps.media, recordId);
+      await discardAfterFailure(deps, recordId);
       return { ok: false, code: "file_refused", file: result.file, reason: result.reason };
     }
     staged = result.files;
@@ -181,7 +184,7 @@ export async function addStaffPhotos(
     await discardAfterFailure(deps, recordId);
     throw error;
   }
-  if (!outcome.ok) await discardRecordFiles(deps.media, recordId);
+  if (!outcome.ok) await discardAfterFailure(deps, recordId);
   return outcome;
 }
 
