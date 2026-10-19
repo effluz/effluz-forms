@@ -104,6 +104,9 @@ describe("publishing in Postgres", () => {
     expect(before.a).toMatchObject({ status: "published", planned_on: DAY, published_on: DAY });
   });
 
+  // Lands with the unmark rerun on a 23505 on story_plan_slot_key (publishing.ts).
+  it.todo("an unmark whose slot write escapes the day lock runs once more");
+
   it("refusals write nothing", async () => {
     const story = await seedStoredStory(pool, { status: "viewed" });
     const before = await state(story.submissionId);
