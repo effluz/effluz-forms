@@ -95,7 +95,7 @@ describe("admin proxy gate on Postgres", () => {
     await new PgUnitOfWorkFactory(pool).run((uow) =>
       new PgSessionRepository(pool).create(uow, {
         id: sessionId,
-        email: "staff.member@effluz.com",
+        email: "staff.member@example.com",
         name: "Staff Member",
         csrfToken: "csrf-1",
         createdAt: now,
