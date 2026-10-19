@@ -92,6 +92,22 @@ describe("operationsView", () => {
       { type: "email.staff_notification", count: 2 },
     ]);
   });
+
+  it("reads the heartbeat as warning up to 300 seconds and critical after", async () => {
+    const deps = makeReviewDeps();
+    const states: Record<number, string> = {};
+    for (const age of [60, 61, 200, 300, 301]) {
+      deps.jobs.heartbeatAge = age;
+      states[age] = (await operationsView(deps)).heartbeat;
+    }
+    expect(states).toEqual({
+      60: "ok",
+      61: "warning",
+      200: "warning",
+      300: "warning",
+      301: "critical",
+    });
+  });
 });
 
 describe("retryJob", () => {
