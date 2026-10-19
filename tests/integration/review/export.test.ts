@@ -10,13 +10,17 @@ import {
   type ReviewDeps,
 } from "@/modules/review/application";
 import { OWNER } from "@/modules/review/application/testing/fixtures";
+import { storyVersion } from "@/modules/submissions/domain/testing/versions";
 import { PgSubmissionRepository } from "@/modules/submissions/infrastructure/pg-submission-repository";
+import type { Version } from "@/shared/domain/form-model";
 import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
 import { testPool, truncateAll } from "../db";
 import { seedPublishedForm } from "../submissions/factories";
 import { pgReviewDeps } from "./wiring";
 
 const ROWS = 1_200;
+/** specs/ui-ux/manager.md, "Performance targets": an export of 10,000 rows starts within 2 s. */
+const FIRST_ROWS_BUDGET_MS = 2_000;
 
 const labels = (): ExportLabels => ({
   reference: "Referencia",
@@ -75,6 +79,14 @@ describe("export in Postgres", () => {
     return { formId, references };
   }
 
+  /** Reads a CSV body to the end, as text without the BOM, split into lines. */
+  async function readLines(body: ReadableStream<Uint8Array>): Promise<string[]> {
+    const text = await new Response(body).text();
+    const lines = text.replace(/^\uFEFF/, "").split("\r\n");
+    expect(lines.pop()).toBe("");
+    return lines;
+  }
+
   it("streams 1,200 rows in batches", async () => {
     const { formId, references } = await seedMany(ROWS);
     const real = deps();
@@ -116,4 +128,69 @@ describe("export in Postgres", () => {
     expect(lines).toHaveLength(ROWS + 1);
     expect(lines.slice(1).map((line) => line.split(",")[0])).toEqual([...references].reverse());
   });
+
+  it("guards a header label that starts like a formula", async () => {
+    const document = storyVersion();
+    const evil: Version = {
+      ...document,
+      pages: document.pages.map((page) => ({
+        ...page,
+        fields: page.fields.map((field) =>
+          field.key === "f_name" ? { ...field, label: { en: "=Name", es: "=Nombre" } } : field,
+        ),
+      })),
+    };
+    const { formId } = await seedPublishedForm(pool, evil);
+
+    const result = await exportStories(deps(), OWNER, {
+      formId,
+      query: EMPTY_QUERY,
+      options: { versions: "all", text: "original", paths: false },
+      labels,
+    });
+    if (!result.ok) throw new Error(`expected an export, got ${result.code}`);
+
+    const [header] = await readLines(result.body);
+    expect(header?.split(",")).toContain("'=Nombre");
+    expect(header).not.toMatch(/(^|,)=Nombre/);
+  });
+
+  it(
+    "sends the first rows of a 10,000-row export within 2 seconds",
+    { timeout: 60_000 },
+    async () => {
+      const { formId, versionId } = await seedPublishedForm(pool);
+      // Synthetic rows only: "Prueba <n>" names, one a minute.
+      await pool.query(
+        `insert into submission (id, form_id, form_version_id, locale, answers, received_at,
+         reference, submit_token)
+       select gen_random_uuid(), $1, $2, 'es', jsonb_build_object('f_name', 'Prueba ' || n),
+              timestamptz '2026-10-18 15:00:00+00' - n * interval '1 minute',
+              'BT-' || lpad(n::text, 5, '0'), gen_random_uuid()
+         from generate_series(1, 10000) as n`,
+        [formId, versionId],
+      );
+      await pool.query("analyze submission");
+
+      const started = performance.now();
+      const result = await exportStories(deps(), OWNER, {
+        formId,
+        query: EMPTY_QUERY,
+        options: { versions: "all", text: "both", paths: true },
+        labels,
+      });
+      if (!result.ok) throw new Error(`expected an export, got ${result.code}`);
+      const reader = result.body.getReader();
+      const header = await reader.read();
+      const rows = await reader.read();
+      const elapsed = performance.now() - started;
+      await reader.cancel();
+
+      expect(result.count).toBe(10_000);
+      expect(header.done).toBe(false);
+      expect(rows.done).toBe(false);
+      expect(new TextDecoder().decode(rows.value)).toMatch(/^BT-00001,/);
+      expect(elapsed).toBeLessThan(FIRST_ROWS_BUDGET_MS);
+    },
+  );
 });
