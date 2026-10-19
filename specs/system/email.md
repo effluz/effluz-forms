@@ -5,9 +5,10 @@ Decision record: `decisions/0006-transactional-email-provider.md`.
 
 ## Role
 
-These messages exist in the first release. The first three are sent as jobs
-after a submission is committed; the job alert is sent as a job when a job goes
-dead (`use-cases/operate-jobs.md`, "Alerts"):
+These messages exist in the first release. The submitter confirmation and the
+staff notification are sent as jobs after a submission is committed; the job
+alert is sent as a job when a job goes dead (`use-cases/operate-jobs.md`,
+"Alerts"); the staff daily digest is a scheduled job:
 
 | Message | To | Language | Content |
 |---|---|---|---|
@@ -44,19 +45,21 @@ the `MessageSource` port, owned by `notifications` and implemented by
 job alert gets its data through the `AlertSource` port, also owned by
 `notifications` and implemented by `review`: `AlertSource.jobAlert(jobType)`
 returns the count of dead jobs of that type and the story references among
-them (`decisions/0029`).
+them (`decisions/0029`). When `ALERT_EMAIL` is unset, or no job of the type is
+dead any more when the alert runs (retried or discarded meanwhile), it returns
+nothing and the job ends without sending.
 
 ## Templates
 
 - Live in `src/shared/presentation/email/`: `copy.ts` (the fixed parts),
   `layout.ts` (the shared document), and one module per template,
-  `confirmation.ts` and `staff-notification.ts`. Each template renders English
-  and Spanish (the staff notification is English only), each with a plain-text
-  and an HTML body.
-- The fixed parts of both templates are specified in `ui-ux/renderer.md`
-  (confirmation) and this file (notification). The variable parts of the
-  confirmation come from the published version and are escaped and
-  sanitized like all staff-authored text.
+  `confirmation.ts`, `staff-notification.ts` and `job-alert.ts`. The
+  confirmation renders English and Spanish; the staff notification and the
+  job alert are English only. Each has a plain-text and an HTML body.
+- The fixed parts of the templates are specified in `ui-ux/renderer.md`
+  (confirmation) and this file (notification and job alert). The variable
+  parts of the confirmation come from the published version and are escaped
+  and sanitized like all staff-authored text.
 - HTML is table-based and inline-styled, uses design-system colors, and reads
   correctly with images blocked. Plain text is not generated from HTML; it is
   written.

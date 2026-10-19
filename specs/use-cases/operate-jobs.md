@@ -40,6 +40,8 @@ Every job that goes dead, system jobs included, raises an alert email to
 - The email lists how many jobs of that type are dead when it is sent and the
   story references among them (at most 20, then "and {n} more"), with a link
   to Operations. It never carries content.
+- An alert that finds no job of its type dead when it runs (all retried or
+  discarded meanwhile) is skipped: no email is sent.
 - An alert job that goes dead raises none.
 - When email itself is failing the alert may fail too. Operations and
   `/health` still show it.

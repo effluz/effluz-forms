@@ -27,6 +27,18 @@ queue and clock ports. Registered today: `jobs.cleanup`, `identity.cleanup`,
 `media.upload`, `media.delete`, `email.submitter_confirmation`,
 `email.staff_notification` and `email.job_alert`.
 
+## The `JobAdmin` port
+
+Shared, implemented on `job` and `worker_heartbeat`; the Operations page, the
+story page's job warning and the alert source use it
+(`use-cases/operate-jobs.md`). It lists dead jobs (newest first, capped), the
+dead jobs whose payload names a submission or its media, and the count of dead
+jobs of a type with the newest of them; it retries one dead job (back to
+`pending`, attempts 0, `run_at` now, lock and unique key cleared), retries
+every dead job of a type, and discards one with its reason; and it reads the
+age of the newest heartbeat. Retry and discard run inside the caller's unit
+of work and change only rows that are still `dead`.
+
 ## The `job` table
 
 Migration `0001_job.sql`, owned by `shared`.
@@ -99,11 +111,12 @@ endpoint's `deadJobs`. Listing dead jobs with a retry action is part of
 
 The dead transition, in `fail` and `markDead`, also enqueues `email.job_alert`
 in the same transaction (`decisions/0029`), with the unique key
-`email.job_alert:<type>:<YYYY-MM-DDTHH>` when no job with that key exists in
-any status. When that hour's alert exists but has already run, it enqueues the
-next hour's (`run_at` at its start) unless that key exists too. While the
-hour's alert is still waiting nothing more is needed, since it reports every
-dead job of the type when it runs. A dead `email.job_alert` raises nothing.
+`email.job_alert:<type>:<YYYY-MM-DDTHH>` (the hour in UTC) when no job with
+that key exists in any status. When that hour's alert exists but has already
+run, it enqueues the next hour's (`run_at` at its start) unless that key
+exists too. While the hour's alert is still waiting nothing more is needed,
+since it reports every dead job of the type when it runs. A dead
+`email.job_alert` raises nothing.
 
 A handler that throws `PermanentJobError` (from
 `src/shared/application/ports/job-queue.ts`) makes the job `dead` at once with
@@ -192,11 +205,12 @@ counts.
 | `jobs.cleanup` | Daily schedule | Prune old succeeded jobs, expired in-progress records and their staged files, and, with `submissions.sweep_staging`, staging prefixes older than 24 hours that no in-progress row and no media staging reference claims |
 | `identity.cleanup` | Daily schedule | Delete expired sign-in attempts and expired admin sessions, no audit entries |
 
-Every `media.*` and `email.*` job is enqueued with `max_attempts` 36 instead of
-the default 8. With the backoff above (2^attempt seconds, capped at one hour),
-the waits reach the cap from the twelfth attempt, and 36 attempts keep retrying
-for about a day, so an outage of Dropbox or the email provider that lasts most
-of a day does not leave dead jobs that nothing re-runs.
+Every `media.*` and `email.*` job, `email.job_alert` included, is enqueued
+with `max_attempts` 36 instead of the default 8. With the backoff above
+(2^attempt seconds, capped at one hour), the waits reach the cap from the
+twelfth attempt, and 36 attempts keep retrying for about a day, so an outage
+of Dropbox or the email provider that lasts most of a day does not leave dead
+jobs that nothing re-runs.
 
 Payloads: `media.*` carry `{ mediaId }`, `email.*` carry `{ submissionId }`,
 except `email.job_alert`, which carries `{ jobType }`.

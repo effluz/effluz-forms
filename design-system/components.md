@@ -169,9 +169,15 @@ with a 2 px offset.
 
 ## Chip (filter)
 
-- 32 px tall, radius `radius.sm`, `surface.subtle` default, `surface.selected`
-  with `text.default` when active, count in `text.muted`; toggles with
-  `aria-pressed`.
+- At least 32 px tall (a bilingual label stacks to two lines), radius
+  `radius.sm`, `surface.subtle` default, `surface.selected` with a
+  `color.action.primary.bg` border and `text.default` when active, count in
+  `text.muted`.
+- A chip is a link that sets its filter in the query string, never a toggle
+  button. The active chip carries `aria-current="true"` and a check mark
+  before its label, so the state is never shown by colour alone;
+  `aria-pressed` would need a button. Each group is a `nav` labelled by its
+  group name.
 
 ## Lightbox
 

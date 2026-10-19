@@ -87,7 +87,7 @@ Rules:
   | `story` | `review` | `submission_id` (key, on delete cascade), `form_id`, `planned_on` (date), `published_on` (date), `chosen_media` (uuid array, default empty), `photos_edited_for` (uuid array: the chosen set recorded at the "edited" tick), `photos_edited_by`, `photos_edited_at`, `text_checked_by`, `text_checked_at`, `created_at`, `updated_at`. Never holds a "ready" flag: readiness is worked out when read. |
   | `staff_photo` | `review` | `id` (the media row's id), `submission_id` (on delete cascade), `source` (`whatsapp`, `instagram`, `email`, `other`), `sender_confirmed` (a check constraint requires true), `added_by`, `created_at`, `updated_at`. The file itself is a `media` row under the field key `staff-photos`. |
   | `media` | `media` | `submission_id`, `form_id`, `field_key`, `position` (1-based within the field), `kind` (`image`, `video`), `status` (`staged`, `stored`, `failed`), `content_type`, `size`, `staging_ref` (null once the staging copy is gone), `durable_key`, `provider_ref` (null until stored). No foreign key to `submission`: deletion goes through `media.delete` so a provider outage cannot leave a row pointing at nothing. |
-  | `email_delivery` | `notifications` | `delivery_key` (unique: `<job type>:<submission id>`), `provider_message_id`. Lets a retried email job see the message was sent (ADR 0025). |
+  | `email_delivery` | `notifications` | `delivery_key` (unique: `<job type>:<submission id>`, or `email.job_alert:<job id>` for a job alert), `provider_message_id`. Lets a retried email job see the message was sent (ADR 0025). |
   | `schema_migration` | `shared` | the ledger: `id` (the four-digit migration id, text), `name`, `applied_at`. Created by the runner itself, not by a migration file. |
   | `job` | `shared` | see `jobs.md` |
   | `worker_heartbeat` | `shared` | one row per worker process: `worker_id` (unique), `last_seen_at`. See `jobs.md`. |
@@ -107,7 +107,12 @@ Rules:
   document, never individual keys.
 - Indexes: `story_plan_slot_key`, unique on `story (planned_on)` where planned
   and not published, which holds one unpublished story per day across every
-  post-plan form; `submission (form_id, received_at desc)` for review listing;
+  post-plan form; `story_published_on_idx` on `story (published_on)` where
+  published, for the published stories of a week;
+  `staff_photo_submission_idx` on `staff_photo (submission_id, created_at)`
+  and `submission_edit_submission_idx` on
+  `submission_edit (submission_id, field_key, created_at desc)`, for the story
+  page; `submission (form_id, received_at desc)` for review listing;
   `submission_in_progress (expires_at)` for cleanup; the unique
   `media (submission_id, field_key, position)`, which also serves lookups by
   submission; `form (slug)` unique (`form_slug_key`) and `form (status)`;

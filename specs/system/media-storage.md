@@ -43,8 +43,9 @@ with the suffixed `Photos`). The base is trimmed first so the suffixed slug
 still fits 40 characters.
 
 Photos staff add to a story (`use-cases/review-submissions.md`, "Main flow:
-staff photos") use the `staff-` key: `nn` is the next position among the
-story's staff photos and the hex is the first eight characters of the media
+staff photos") use the `staff-` key: `nn` is one more than the highest
+position among the story's `staff-photos` media rows, rows awaiting
+`media.delete` included, and the hex is the first eight characters of the media
 id, so a removed photo's pending delete never reaches a newer file. They are
 media rows under the reserved field key `staff-photos`
 (`decisions/0028`).

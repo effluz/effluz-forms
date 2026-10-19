@@ -13,10 +13,11 @@ after the dead write could be lost between the two.
 ## Decision
 
 - The job store enqueues `email.job_alert` inside the dead transition, in
-  `fail` and `markDead`. The job type and attempts are injected by the
-  worker's composition root, so `shared` stays module-agnostic.
+  `fail` and `markDead`. The alert job's own type (`email.job_alert`) and its
+  `maxAttempts` are injected by the worker's composition root, so `shared`
+  stays module-agnostic.
 - Alerts are grouped by an hourly unique key,
-  `email.job_alert:<type>:<YYYY-MM-DDTHH>`, with the rules in
+  `email.job_alert:<type>:<YYYY-MM-DDTHH>` (the hour in UTC), with the rules in
   `system/jobs.md`. A dead `email.job_alert` raises nothing.
 - `notifications` handles the job through an `AlertSource` port that `review`
   implements, which returns the count and the story references. New module

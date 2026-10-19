@@ -252,10 +252,11 @@ An `audit_log` table records every staff action named in the Audit entries
 section of each use case under `specs/use-cases/`: sign-in and rejection,
 form lifecycle and settings, draft saves, submission listing, viewing,
 photo viewing, media download, text edits and reverts, correction
-suggestions, status changes, export, deletion, job retry and discard. Each
-row: actor email, action, target id, timestamp, IP, and an optional `details`
-object. This is the only place where "who looked at a child's photo" can be
-answered, so it is not optional.
+suggestions (deferred: nothing writes `correction_suggested` yet), status
+changes, staff photos, photo choices, readiness checks, planning, export,
+deletion, job retry and discard. Each row: actor email, action, target id,
+timestamp, IP, and an optional `details` object. This is the only place where
+"who looked at a child's photo" can be answered, so it is not optional.
 
 - **Append-only.** A row-level database trigger (`audit_log_no_update`)
   rejects every `UPDATE` and `DELETE`; `TRUNCATE` is not covered. Kept for one
@@ -285,7 +286,7 @@ answered, so it is not optional.
   | `form_published` | `number`, the version published |
   | `form_closed`, `form_reopened`, `form_archived`, `form_unarchived` | none |
   | `form_deleted` | `slug` |
-  | `form_settings_changed` | `keys`, the changed setting keys joined by commas (`slug` among them when the link name changed) |
+  | `form_settings_changed` | `keys`, the changed setting keys joined by commas (`slug` among them when the link name changed, `usePostPlan` when the post-plan setting was turned on or off) |
   | `retention_shortened` | `from` and `to` in months, `count` of submissions the next purge removes; written only when that count is above zero and the editor confirmed |
 
   The constant list is `definitionsAuditActions` in the module's public API.
@@ -296,7 +297,7 @@ answered, so it is not optional.
   | `submissions_listed` | `page`, `count`; target the form |
   | `submission_viewed` | none |
   | `photo_viewed` | `mediaId`, `kind` |
-  | `media_downloaded` | `mediaId`, or `set` (`all`, `chosen`) and `count` |
+  | `media_downloaded` | `mediaId`, or `set` (`all`, `chosen`) and `count`, the files the ZIP was asked to hold, recorded before it streams |
   | `submissions_exported` | `versions` (`all` or a number), `text`, `paths`, `count`, `search` (boolean), `from`, `to` when set; target the form |
   | `submission_deleted` | `reference` |
   | `submission_edited` | `fieldKey`, `source` |
@@ -305,8 +306,8 @@ answered, so it is not optional.
   | `staff_photos_added` | `count`, `source`, `senderConfirmed` |
   | `staff_photo_removed` | `mediaId` |
   | `photo_choice_changed` | `mediaId`, `chosen` |
-  | `story_check_changed` | `check`, `value`, `by` |
-  | `story_planned` | `from`, `to` (`YYYY-MM-DD` or `none`), `resolution` |
+  | `story_check_changed` | `check` (`photos_edited`, `text_checked`), `value`, and `by` (`hand`, `correction`); an automatic clear of `photos_edited` by a change of the chosen photos carries `automatic` (true) in place of `by` |
+  | `story_planned` | `from`, `to` (`YYYY-MM-DD` or `none`), and `resolution` (`swap`, `move`) when a conflict was resolved; also written when Unmark as published moves the story off its day |
   | `post_plan_viewed` | `week`; no target |
   | `job_retried`, `job_discarded` | `type`; target the job |
   | `jobs_retried_bulk` | `type`, `count`; no target |

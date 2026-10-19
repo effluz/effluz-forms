@@ -47,7 +47,10 @@ change status".
    text, editor, time, source `manual` or `suggested`) and updates the
    submission's current curated answers. Status becomes `edited` if it was
    not `published`. A saved correction also sets the "Text checked" readiness
-   check. Audit entry `submission_edited`.
+   check. Audit entry `submission_edited`. Saving text identical to the
+   original when a correction exists removes the correction as "Revert to
+   original" does (step 5, audit entry `submission_reverted`, no new
+   `submission_edit` row) and still sets "Text checked".
 5. The detail view shows the curated text with an "Edited" tag and a
    "Compare" action that opens the two columns with highlights. "Revert to
    original" removes the curated version for that field; if no curated
@@ -62,13 +65,16 @@ three checks. They are worked out when read, never stored as a "ready" flag.
   chosen for the post.
 - **Photos edited in Canva**: a tick that records the chosen set at that
   moment. It reads as done only while the chosen set is the same, so choosing,
-  unchoosing or removing a chosen photo clears it. It cannot be ticked with no
-  photo chosen.
+  unchoosing or removing a chosen photo clears it; choosing exactly the
+  recorded set again reads as done again. It cannot be ticked with no photo
+  chosen.
 - **Text checked**: set by a saved correction or ticked by hand. Reverting does
   not clear it.
 
 Ready means all three. Audit entries `photo_choice_changed` (media id, chosen)
-and `story_check_changed` (check, value, `by` = `hand` or `correction`).
+and `story_check_changed` (check, value, `by` = `hand` or `correction`). A
+change of the chosen set that clears "Photos edited" writes
+`story_check_changed` with value false and `automatic` true in place of `by`.
 
 ## Planning
 
@@ -113,9 +119,9 @@ A planned date is a field of the story, not a status.
 - Only text answers are editable. The curated text obeys the same length
   limit as the field.
 - Export offers original, curated, or both columns; review shows both.
-- Each suggestion request sends exactly one answer's text and the fixed
-  instruction. Never the whole submission, never the submitter's name or
-  address as a separate field. Requests are not cached across submissions.
+- Deferred: each suggestion request sends exactly one answer's text and the
+  fixed instruction. Never the whole submission, never the submitter's name
+  or address as a separate field. Requests are not cached across submissions.
 - The consent text covers automated correction, item 9 of the checklist.
 - Notes and comments on submissions are not in the first release.
 

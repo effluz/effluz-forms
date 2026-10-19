@@ -126,10 +126,11 @@ As the owner described it, in order:
   holds the photos, the correction editor and the readiness panel, which do
   not fit a drawer comfortably.
 - **The full story page applies to every form**, replacing the drawer. The
-  post-plan features on it (staff photos, choosing photos, readiness checks,
-  the planned date) appear only on forms with the post-plan setting on.
-  Turning the setting off later is allowed; planned dates and ticks are kept
-  but hidden until it is turned back on.
+  post-plan features on it (adding staff photos, choosing photos, readiness
+  checks, the planned date) appear only on forms with the post-plan setting
+  on. Turning the setting off later is allowed; planned dates and ticks are
+  kept but hidden until it is turned back on. Photos the team already added
+  stay shown and removable; adding and choosing photos are hidden.
 - **No special contact card.** A form is data, so the page cannot know which
   answers are the sender's contact details. The mockup's "Contact the
   sender" card is dropped; the contact answers show as ordinary answers in

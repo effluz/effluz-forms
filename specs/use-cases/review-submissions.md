@@ -55,8 +55,10 @@ full page, not a drawer, for every form.
 
 ## Main flow: staff photos
 
-Available on post-plan forms whose current version covers checklist item 10
-(`form-definition.md`, "Consent text").
+Adding staff photos is available on post-plan forms whose current version
+covers checklist item 10 (`form-definition.md`, "Consent text"). On a form
+whose post-plan setting is off, photos the team already added stay shown and
+removable; adding and choosing photos are hidden.
 
 1. The owner uploads up to 10 photos or videos per upload, at most 30 per
    story, chooses "from where" (WhatsApp, Instagram, Email, Other) and must
@@ -73,8 +75,9 @@ Available on post-plan forms whose current version covers checklist item 10
 
 ## Main flow: export
 
-1. The dialog offers the versions (as filtered, or all), the date range, the
-   text answers (original, corrected, or both) and "Include file paths".
+1. The dialog offers the versions (as filtered, or all), the text answers
+   (original, corrected, or both) and "Include file paths". The list's other
+   filters, its date range (`from`, `to`) included, carry over as they stand.
 2. The export is a CSV, UTF-8 with BOM, one row per submission. Columns:
    reference, status, received (UTC), version, language, planned date
    (post-plan forms), post link, one column per field key in the union of the
@@ -110,7 +113,7 @@ Available on post-plan forms whose current version covers checklist item 10
 
 - Every view of personal data is audited. The list view counts as one entry
   per page load, not per row.
-- Exports contain personal data; the download page says so and the file name
+- Exports contain personal data; the export dialog says so and the file name
   carries the form slug and timestamp, never answers.
 - Deleted means deleted. No trash, no undo.
 - Review never mutates received answers. Curation, in

@@ -10,11 +10,15 @@ reached from here.
 
 Built: the shell, the Forms list, the New form page, the form overview with
 its lifecycle actions, the Settings, Share and Activity tabs, the Submissions
-tab (list and export), the story page, the Post plan page and a first-pass
-Operations page. Pending, each with its own plan: the Audit page, the banner
-above the Forms list, the language menu and keyboard shortcuts of the shell,
-and the builder (its route is a placeholder). The sections below specify the
-target; the "First pass" notes say what the built pages do today.
+tab (list and export), the story page (answers, photos and staff photos,
+corrections, readiness, the planned date, publishing and delete), the Post
+plan page and a first-pass Operations page (the heartbeat card and the dead
+jobs table). Pending, each with its own plan: the Audit page, the banner above
+the Forms list, the language menu and keyboard shortcuts of the shell, the
+builder (its route is a placeholder), the Operations cards beyond the
+heartbeat, and DeepL correction suggestions (the `st.suggest*` rows are
+reserved for them). The sections below specify the target; the "First pass"
+notes say what the built pages do today.
 
 ## Principles
 
@@ -223,12 +227,13 @@ plan conflict) is an in-page `<section role="dialog">` opened by `?action=`,
 labelled by its heading and described by its body, as the lifecycle
 confirmations are.
 
-Post-plan parts (staff photos, choosing photos, the readiness panel, the
-planned date) appear only on forms with the post-plan setting on. Turning the
-setting off later keeps planned dates and ticks but hides them until it is
-turned back on. "Add photos" also needs the form's current version to cover
-consent item 10 (`later_photos`); otherwise the form shows `st.laterphotos_off`
-in its place.
+Post-plan parts (adding staff photos, choosing photos, the readiness panel,
+the planned date) appear only on forms with the post-plan setting on. Turning
+the setting off later keeps planned dates and ticks but hides them until it is
+turned back on; photos the team already added stay shown and removable, while
+adding and choosing photos are hidden. "Add photos" also needs the form's
+current version to cover consent item 10 (`later_photos`); otherwise the form
+shows `st.laterphotos_off` in its place.
 
 The contact answers are ordinary answers: a form is data, so the page cannot
 know which answers are contact details.
@@ -277,7 +282,8 @@ The planned date is one date per story, in the form `YYYY-MM-DD`, with Plan and
 "Remove the date". One unpublished story per day: planning a day that already
 holds one opens an in-page confirmation naming it, with "Swap the two dates"
 and "Move <ref> to Waiting for a date". A published story stays on the day it
-went out. Planning is a date on the story, never a new status.
+went out and shows no plan form; the Publishing card states its day. Planning
+is a date on the story, never a new status.
 
 ### Export dialog
 
