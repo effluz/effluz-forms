@@ -88,9 +88,9 @@ export interface AppConfig {
         apiUrl: string;
         contentUrl: string;
       };
-  /** How email leaves the system; `from` and `replyTo` apply to every message. */
   /** Where dead-job alerts go (ADR 0029); null outside production when unset. */
   alertEmail: string | null;
+  /** How email leaves the system; `from` and `replyTo` apply to every message. */
   email:
     | { provider: "mailpit"; url: string; from: string; replyTo: string }
     | { provider: "smtp2go"; apiKey: string; apiUrl: string; from: string; replyTo: string };
