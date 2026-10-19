@@ -9,18 +9,27 @@ Module: `review`. Surface: manager. Model: `form-definition.md`.
 ## Trigger
 
 The reviewer opens a form's Submissions tab, or follows the link in a staff
-notification email.
+notification email. That link goes straight to the story page.
 
 ## Main flow: list
 
 1. The list shows submissions newest first with: reference, status,
    received time, version number, locale, the first `short_text` answer as
-   a label, media count, and a flag if any of its jobs are dead.
+   a label, media count, and a flag if any of its jobs are dead. A planned,
+   unpublished story of a post-plan form shows "Planned · <date>" in place of
+   the status badge.
 2. Filters: status, date range, version, has media, text search over
-   answers of `short_text` and `email` fields.
-3. Pagination of 50.
+   answers of `short_text` and `email` fields and over the reference. On
+   post-plan forms only, a "Post plan" group adds Planned, Waiting for a date
+   and Not ready (`curate-submission.md`, "Readiness" and "Planning").
+3. The filters live in the query string with the keys `status`, `plan`,
+   `from`, `to`, `version`, `media`, `q` and `page`.
+4. Pagination of 50.
 
-## Main flow: view one
+## Main flow: view one (the story page)
+
+The story page is at `/admin/forms/<id>/submissions/<reference>`. It is a
+full page, not a drawer, for every form.
 
 1. Answers are displayed in page and field order of the pinned version,
    each through its field type's review display, with the label in the
@@ -28,40 +37,79 @@ notification email.
    answers with a curated version show it with an "Edited" tag and a
    Compare action; see `curate-submission.md`. Opening a `new` submission
    makes it `viewed`.
-2. Photos display as thumbnails with a full-size view; videos play inline
-   without autoplay. Each file has a download action and the submission has
-   a "Download all" ZIP; both write `media_downloaded`. Each view is served
-   through the media port: staging copy if present, else a short-lived
-   Dropbox link fetched server-side. Audit entry `photo_viewed` per full-size
-   view.
-3. Consent shows the exact text version accepted and when.
-4. Job status for this submission is shown with a retry action for dead ones.
-5. Audit entry `submission_viewed` on open.
+2. Newer and Older links move through the list the reviewer came from and
+   follow its filters, even when the story itself no longer matches them
+   (opening a `new` story under the "New" filter makes it `viewed`).
+3. Photos display as thumbnails (320 px, not audited) with a full-size view
+   in the page. Each file has a download action and the story has a
+   "Download all" ZIP; post-plan forms add "Download chosen". Audit entry
+   `photo_viewed` per full-size view and `media_downloaded` per download.
+   Each view is served through the media port: staging copy if present, else
+   the durable file. Videos play from the Dropbox temporary link after the
+   audited route redirects to it.
+4. Job status for this story is shown as a warning when any of its jobs is
+   dead, with "Try again", which retries all of them (`job_retried` per job).
+   The page then says it is trying again only when a job was retried; when
+   none was still dead (retried from Operations or another tab), it simply
+   reloads.
+5. Consent shows the exact text version accepted and when. Activity closes
+   the page: this submission's audit entries, newest 50.
+6. Audit entry `submission_viewed` on open.
+
+## Main flow: staff photos
+
+Adding staff photos is available on post-plan forms whose current version
+covers checklist item 10 (`form-definition.md`, "Consent text"). On a form
+whose post-plan setting is off, photos the team already added stay shown and
+removable; adding and choosing photos are hidden.
+
+1. The owner uploads up to 10 photos or videos per upload, at most 30 per
+   story, chooses "from where" (WhatsApp, Instagram, Email, Other) and must
+   tick "The sender sent these for this story".
+2. The files pass the public file rules and are stored as media of the story
+   under a key that never collides with the sender's files
+   (`system/media-storage.md`).
+3. They are shown apart ("Added by the team") with who added them, when and
+   from where. They count toward no field limit and are never answers.
+4. A staff photo can be removed. The sender's photos cannot be removed one by
+   one.
+5. Audit entries `staff_photos_added` (count, source, `senderConfirmed`) and
+   `staff_photo_removed`.
 
 ## Main flow: export
 
-1. The reviewer picks a version or all versions and a date range.
-2. The export is a CSV, UTF-8 with BOM, one row per submission, one column
-   per field key in the union of selected versions, labeled with the latest
-   label in the reviewer's language, plus reference, status, received
-   time, version, locale, and media paths. For text fields the reviewer
-   chooses original, curated, or both columns. File answers export as the
-   Dropbox path, not a URL.
-3. Generated by streaming; no job for exports under the size limit in
-   `ui-ux/manager.md`. Audit entry `submissions_exported` with the filter
-   and row count.
+1. The dialog offers the versions (as filtered, or all), the text answers
+   (original, corrected, or both) and "Include file paths". The list's other
+   filters, its date range (`from`, `to`) included, carry over as they stand.
+2. The export is a CSV, UTF-8 with BOM, one row per submission. Columns:
+   reference, status, received (UTC), version, language, planned date
+   (post-plan forms), post link, one column per field key in the union of the
+   selected versions, then with paths "File paths" and "Added photos" (team photos not
+   removed).
+   Headers and labels use Spanish when the form has Spanish, else English.
+   With "Corrected", a correctable text column holds the correction where
+   there is one and the original elsewhere; with "Both columns", it is
+   followed by "<label> (corrected)", blank where there is no correction.
+3. A cell that begins with `=`, `+`, `-`, `@`, a tab or a carriage return is
+   prefixed with `'` so a spreadsheet reads it as text.
+4. Above 10,000 rows the export is refused. Otherwise it is generated by
+   streaming, with no job. The request is a POST with the CSRF token. The file
+   name is `<slug>-<YYYYMMDD-HHmm>.csv` (UTC). Audit entry
+   `submissions_exported` with the filter and row count.
 
 ## Main flow: delete
 
 1. The reviewer deletes one submission with a confirmation that states it is
-   permanent.
-2. The submission row is deleted in a transaction that also enqueues
-   `media.delete` for each media row. Audit entry `submission_deleted`.
+   permanent and asks for the reference to be typed.
+2. One transaction deletes the submission (its story state, staff photo
+   records and edit history cascade) and enqueues `media.delete` for every
+   media row, staff photos included. Audit entry `submission_deleted`.
 
 ## Alternate flows and errors
 
-- **Dropbox link fetch fails.** The thumbnail shows a retry; the rest of the
-  submission is unaffected.
+- **Dropbox link fetch fails.** The thumbnail does not load, and the tile
+  keeps its caption, "View full size" and "Download"; reloading the page asks
+  again. The rest of the submission is unaffected.
 - **A field key in the export union has no label in the chosen language.**
   Fall back to the other language, then to the key.
 - **Bulk delete.** Not in the first release. Retention handles volume.
@@ -70,7 +118,7 @@ notification email.
 
 - Every view of personal data is audited. The list view counts as one entry
   per page load, not per row.
-- Exports contain personal data; the download page says so and the file name
+- Exports contain personal data; the export dialog says so and the file name
   carries the form slug and timestamp, never answers.
 - Deleted means deleted. No trash, no undo.
 - Review never mutates received answers. Curation, in
@@ -80,7 +128,10 @@ notification email.
 ## Audit entries
 
 `submissions_listed`, `submission_viewed`, `photo_viewed`,
-`media_downloaded`, `submissions_exported`, `submission_deleted`.
+`media_downloaded`, `submissions_exported`, `submission_deleted`,
+`staff_photos_added`, `staff_photo_removed`, `photo_choice_changed`,
+`story_check_changed`, `story_planned`, `post_plan_viewed`. Details are listed
+in `system/security.md`, "Audit log".
 
 ## Success criteria
 

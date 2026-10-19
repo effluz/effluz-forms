@@ -6,6 +6,7 @@ import { pageAnswers, publishBilingualForm, publishReferenceForm } from "../e2e/
 import { syntheticJpegWithGps } from "../fakes/media-files";
 import { bilingualFormDraft } from "../fixtures/bilingual-form";
 import { BROWSER_E2E_BASE_URL } from "../support/app-server";
+import { browserDatabaseUrl } from "../support/held-database";
 
 // The reference form on a phone with script enabled, in Chromium (ADR 0024). Synthetic data
 // only. The script-disabled run and the budgets live in tests/e2e/. Copy comes from
@@ -21,7 +22,7 @@ const SUBMIT_FAILED = "Tus respuestas no se enviaron. Revisa tu conexi√≥n e int√
 const UPLOADS_PENDING = "Espera a que terminen las subidas para continuar";
 
 function newPool(): pg.Pool {
-  return new pg.Pool({ connectionString: process.env["E2E_DATABASE_URL"], max: 2 });
+  return new pg.Pool({ connectionString: browserDatabaseUrl(), max: 2 });
 }
 
 /** Checks the radio or checkbox with that value when one exists, else fills the control. */

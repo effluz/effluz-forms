@@ -9,6 +9,7 @@ export const longText = defineFieldType({
   id: "long_text",
   isInput: true,
   collectsPersonalData: false,
+  reviewTraits: { curatable: true },
   settingsSchema: z.object({
     placeholder: localizedTextSchema.optional(),
     rows: z.number().int().min(2).max(12).default(4),

@@ -48,12 +48,100 @@ describe("DropboxStorage against a fake Dropbox", () => {
   it("caches temporary links for less than their four hours", async () => {
     await storage.put(new Uint8Array([1]), key, "image/jpeg");
     const first = await storage.viewUrl(`/${key}`, 3600);
-    expect(first).toBe(`https://dl.example.com/${key}`);
+    expect(first).toBe(`${fake.url}/dl/${key}`);
     await storage.viewUrl(`/${key}`, 3600);
     expect(fake.calls.filter((c) => c === "/2/files/get_temporary_link")).toHaveLength(1);
     clock += 3600 * 1000;
     await storage.viewUrl(`/${key}`, 3600);
     expect(fake.calls.filter((c) => c === "/2/files/get_temporary_link")).toHaveLength(2);
+  });
+
+  it("streams a file through its temporary link", async () => {
+    await storage.put(new Uint8Array([7, 8, 9]), key, "image/jpeg");
+    const stream = await storage.openRead(`/${key}`);
+    expect(new Uint8Array(await new Response(stream).arrayBuffer())).toEqual(
+      new Uint8Array([7, 8, 9]),
+    );
+    expect(fake.calls).toContain("/2/files/get_temporary_link");
+    await expect(storage.openRead("/forms/missing.jpg")).rejects.toThrow(
+      "dropbox files/get_temporary_link failed with 409",
+    );
+  });
+
+  it("rejects a download that fails, naming only the status", async () => {
+    const link = new DropboxStorage({
+      appKey: "app-key",
+      appSecret: "app-secret",
+      refreshToken: "refresh-token",
+      apiUrl: fake.url,
+      contentUrl: fake.url,
+      fetch: (input, init) =>
+        typeof input === "string" && input.includes("/dl/")
+          ? Promise.resolve(new Response(null, { status: 404 }))
+          : fetch(input, init),
+    });
+    await link.put(new Uint8Array([1]), key, "image/jpeg");
+    await expect(link.openRead(`/${key}`)).rejects.toThrow("dropbox download failed with 404");
+  });
+
+  it("asks for a fresh temporary link after a download through the cached one fails", async () => {
+    let failed = false;
+    const link = new DropboxStorage({
+      appKey: "app-key",
+      appSecret: "app-secret",
+      refreshToken: "refresh-token",
+      apiUrl: fake.url,
+      contentUrl: fake.url,
+      fetch: (input, init) => {
+        if (!failed && typeof input === "string" && input.includes("/dl/")) {
+          failed = true;
+          return Promise.resolve(new Response(null, { status: 410 }));
+        }
+        return fetch(input, init);
+      },
+    });
+    await link.put(new Uint8Array([4, 5]), key, "image/jpeg");
+    await expect(link.openRead(`/${key}`)).rejects.toThrow("dropbox download failed with 410");
+
+    const stream = await link.openRead(`/${key}`);
+    expect(new Uint8Array(await new Response(stream).arrayBuffer())).toEqual(
+      new Uint8Array([4, 5]),
+    );
+    expect(fake.calls.filter((c) => c === "/2/files/get_temporary_link")).toHaveLength(2);
+  });
+
+  it("stops the download timer once the headers arrive, so a slow body can drain", async () => {
+    const slow = new DropboxStorage({
+      appKey: "app-key",
+      appSecret: "app-secret",
+      refreshToken: "refresh-token",
+      apiUrl: fake.url,
+      contentUrl: fake.url,
+      requestTimeoutMs: 30,
+      fetch: (input, init) => {
+        if (typeof input !== "string" || !input.includes("/dl/")) return fetch(input, init);
+        // Like fetch: an abort of the request's signal errors a body still being read.
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            let aborted = false;
+            init?.signal?.addEventListener("abort", () => {
+              aborted = true;
+              controller.error(new Error("aborted"));
+            });
+            setTimeout(() => {
+              if (aborted) return;
+              controller.enqueue(new Uint8Array([6]));
+              controller.close();
+            }, 90);
+          },
+        });
+        return Promise.resolve(new Response(body, { status: 200 }));
+      },
+    });
+    await slow.put(new Uint8Array([6]), key, "image/jpeg");
+
+    const stream = await slow.openRead(`/${key}`);
+    expect(new Uint8Array(await new Response(stream).arrayBuffer())).toEqual(new Uint8Array([6]));
   });
 
   it("throws a retryable error naming only the endpoint and status on 429 and 5xx", async () => {

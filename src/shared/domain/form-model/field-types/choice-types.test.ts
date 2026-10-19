@@ -46,7 +46,9 @@ describe("single_choice", () => {
   });
   it("asks publish to check every option label and has no other publish checks", () => {
     expect(singleChoice.localizedSettingsTexts?.(s)).toEqual(labelTexts);
-    expect(singleChoice.publishChecks?.({ required: false, validation: [] }, s)).toEqual([]);
+    expect(
+      singleChoice.publishChecks?.({ required: false, validation: [] }, s, { postPlan: false }),
+    ).toEqual([]);
   });
 });
 
@@ -85,23 +87,33 @@ describe("multiple_choice", () => {
       required: false,
       validation,
     });
-    expect(multipleChoice.publishChecks?.(field([{ rule: "min_selected", value: 3 }]), s)).toEqual([
+    expect(
+      multipleChoice.publishChecks?.(field([{ rule: "min_selected", value: 3 }]), s, {
+        postPlan: false,
+      }),
+    ).toEqual([
       {
         code: "over_maximum",
         path: "validation",
         params: { detail: "min_selected 3 > 2 options" },
       },
     ]);
-    expect(multipleChoice.publishChecks?.(field([{ rule: "max_selected", value: 4 }]), s)).toEqual([
+    expect(
+      multipleChoice.publishChecks?.(field([{ rule: "max_selected", value: 4 }]), s, {
+        postPlan: false,
+      }),
+    ).toEqual([
       {
         code: "over_maximum",
         path: "validation",
         params: { detail: "max_selected 4 > 2 options" },
       },
     ]);
-    expect(multipleChoice.publishChecks?.(field([{ rule: "max_selected", value: 2 }]), s)).toEqual(
-      [],
-    );
+    expect(
+      multipleChoice.publishChecks?.(field([{ rule: "max_selected", value: 2 }]), s, {
+        postPlan: false,
+      }),
+    ).toEqual([]);
   });
 });
 

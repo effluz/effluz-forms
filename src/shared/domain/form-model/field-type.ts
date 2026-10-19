@@ -58,6 +58,12 @@ export interface UploadLimits {
   maxSizeMb: number;
 }
 
+/** What a form's publish context tells a type's own publish checks. */
+export interface PublishChecksContext {
+  /** The form uses the post plan (ADR 0029). */
+  postPlan: boolean;
+}
+
 export interface FieldTypeFixtures<S, A> {
   settings: S[];
   validAnswers: A[];
@@ -97,7 +103,16 @@ export interface FieldTypeDefinition<S = unknown, A = unknown> {
   publishChecks?(
     field: { required: boolean; validation: readonly Rule[] },
     settings: S,
+    ctx: PublishChecksContext,
   ): PublishIssueDraft[];
+  /** The consent checklist items the settings cover; only consent types declare it. */
+  consentCoverage?(settings: S): readonly string[];
+  /**
+   * How review treats the answer: `curatable` (staff keep a corrected copy), `searchable` (the
+   * list's search reads it), `label` (the first such answer names the story in lists). Each
+   * implies a string answer.
+   */
+  reviewTraits?: { curatable?: true; searchable?: true; label?: true };
   /** Form-wide exclusivity: each returned role may appear at most once per form. */
   exclusiveRoles?(settings: S): ExclusiveRole[];
   /** The answer is demanded even when the field is not marked required. */

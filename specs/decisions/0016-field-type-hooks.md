@@ -7,6 +7,7 @@ Amended 2026-10-10: a required `defaultSettings(ids)` hook gives the smallest
 settings a newly added field parses with; the conformance suite checks it
 Amended 2026-10-11: an optional `uploadLimits(settings)` hook names the fields
 that take files; the conformance suite checks it
+Amended 2026-10-18: `publishChecks` receives the publish context; optional `consentCoverage(settings)` and `reviewTraits` hooks
 
 ## Context
 
@@ -55,3 +56,9 @@ upload limits are well formed where a type declares them.
 - `evaluateVisibility` takes an optional registry to honor `isInput` and
   `neverHidden`; without one it keeps its earlier behavior.
 - ADR 0014 is superseded.
+- Review's type-dependent rules (only text answers are editable, search over
+  `short_text` and `email`, the first `short_text` answer as a story's label)
+  are one hook, `reviewTraits`, so `review` never tests a type id: `short_text`
+  declares `curatable`, `searchable` and `label`, `long_text` `curatable`,
+  `email` `searchable`. Consent item 10 (`later_photos`) reuses
+  `consent_checklist`, required when the publish context has `postPlan`.

@@ -32,6 +32,7 @@ const envSchema = z.object({
   MAILPIT_URL: z.url().default("http://127.0.0.1:8025"),
   EMAIL_FROM: z.string().min(3).default("Effluz Forms <forms@forms.effluz.com>"),
   EMAIL_REPLY_TO: z.email().optional(),
+  ALERT_EMAIL: z.email().optional(),
 });
 
 /** Variables `.env.example` ships blank; a blank or whitespace-only value means unset. */
@@ -41,6 +42,7 @@ const BLANK_MEANS_UNSET = [
   "DROPBOX_REFRESH_TOKEN",
   "SMTP2GO_API_KEY",
   "EMAIL_REPLY_TO",
+  "ALERT_EMAIL",
 ] as const;
 
 /** URLs production refuses unless they are https. */
@@ -86,6 +88,8 @@ export interface AppConfig {
         apiUrl: string;
         contentUrl: string;
       };
+  /** Where dead-job alerts go (ADR 0029); null outside production when unset. */
+  alertEmail: string | null;
   /** How email leaves the system; `from` and `replyTo` apply to every message. */
   email:
     | { provider: "mailpit"; url: string; from: string; replyTo: string }
@@ -130,6 +134,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     throw new Error("Invalid configuration: MEDIA_PROVIDER must be dropbox in production");
   if (e.NODE_ENV === "production" && e.EMAIL_PROVIDER === "mailpit")
     throw new Error("Invalid configuration: EMAIL_PROVIDER must be smtp2go in production");
+  if (e.NODE_ENV === "production" && e.ALERT_EMAIL === undefined)
+    throw new Error("Invalid configuration: ALERT_EMAIL is required in production");
   const media = mediaConfig(e);
   const email = emailConfig(e);
   return {
@@ -161,6 +167,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     notificationAllowedDomains,
     media,
     email,
+    alertEmail: e.ALERT_EMAIL ?? null,
   };
 }
 

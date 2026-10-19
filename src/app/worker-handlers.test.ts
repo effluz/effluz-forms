@@ -45,6 +45,7 @@ describe("workerHandlers", () => {
       submissions: makeSubmissionsDeps(),
     });
     expect(Object.keys(handlers).sort()).toEqual([
+      "email.job_alert",
       "email.staff_notification",
       "email.submitter_confirmation",
       "identity.cleanup",
@@ -55,6 +56,33 @@ describe("workerHandlers", () => {
     expect(RECURRING).toEqual([
       { type: "jobs.cleanup", period: "daily" },
       { type: "identity.cleanup", period: "daily" },
+    ]);
+  });
+
+  it("registers email.job_alert", async () => {
+    const notifications = makeNotificationsDeps();
+    notifications.alerts.next = {
+      to: ["alerts@example.com"],
+      data: {
+        jobType: "media.upload",
+        count: 1,
+        references: ["ST-0001"],
+        moreCount: 0,
+        link: "https://forms.example.com/admin/operations",
+      },
+    };
+    const handlers = workerHandlers({
+      store,
+      pool: {} as Pool,
+      media: makeMediaDeps(),
+      notifications,
+      submissions: makeSubmissionsDeps(),
+    });
+    const alert = handlers[EMAIL_JOB_TYPES.jobAlert];
+    if (!alert) throw new Error("email.job_alert is not registered");
+    await alert({ jobType: "media.upload" }, handlerContext());
+    expect(notifications.sender.sent.map((m) => [m.to, m.subject])).toEqual([
+      [["alerts@example.com"], "Alert media.upload 1"],
     ]);
   });
 

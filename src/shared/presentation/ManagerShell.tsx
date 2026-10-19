@@ -3,7 +3,7 @@ import { Bilingual } from "./Bilingual";
 import { bothLanguages, copy, type CopyKey } from "./copy";
 import { cx, styles } from "./styles";
 
-export type ManagerSection = "forms" | "operations" | "audit";
+export type ManagerSection = "forms" | "plan" | "operations" | "audit";
 
 /** The sign-out route handler; see specs/use-cases/sign-in.md. */
 const SIGN_OUT_PATH = "/admin/auth/signout";
@@ -16,9 +16,10 @@ const SECTIONS: readonly {
   ready: boolean;
 }[] = [
   { section: "forms", label: "nav.forms", href: "/admin/forms", ready: true },
-  // Operations and Audit render as disabled placeholders (aria-disabled, no href) until
-  // their pages exist; set `ready` when each page ships.
-  { section: "operations", label: "nav.operations", href: "/admin/operations", ready: false },
+  { section: "plan", label: "nav.plan", href: "/admin/plan", ready: true },
+  { section: "operations", label: "nav.operations", href: "/admin/operations", ready: true },
+  // Audit renders as a disabled placeholder (aria-disabled, no href) until its page exists;
+  // set `ready` when it ships.
   { section: "audit", label: "nav.audit", href: "/admin/audit", ready: false },
 ];
 

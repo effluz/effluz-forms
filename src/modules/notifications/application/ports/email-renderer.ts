@@ -25,8 +25,19 @@ export interface StaffNotificationData {
   link: string;
 }
 
+export interface JobAlertData {
+  jobType: string;
+  count: number;
+  /** Story references, sorted, at most 20. */
+  references: string[];
+  /** Affected stories beyond the 20 shown. */
+  moreCount: number;
+  link: string;
+}
+
 /** Turns message data into subject, text and HTML. See specs/system/email.md, "Templates". */
 export interface EmailRenderer {
   submitterConfirmation(data: SubmitterConfirmationData): RenderedEmail;
   staffNotification(data: StaffNotificationData): RenderedEmail;
+  jobAlert(data: JobAlertData): RenderedEmail;
 }

@@ -9,6 +9,7 @@ export const MAX_INPUT_PIXELS = 50_000_000;
 export const HEIC_DECODE_TIMEOUT_MS = 10_000;
 
 const QUALITY = 85;
+const THUMBNAIL_QUALITY = 70;
 
 /**
  * Decodes and re-encodes an image. sharp writes no metadata unless asked, so
@@ -39,6 +40,23 @@ export class SharpImageEncoder implements ImageEncoder {
         default:
           return null;
       }
+    } catch {
+      return null;
+    }
+  }
+
+  // The content type is part of the port; sharp reads the format from the bytes.
+  async thumbnail(
+    bytes: Uint8Array,
+    _contentType: string,
+    maxSide: number,
+  ): Promise<Uint8Array | null> {
+    try {
+      return await toBytes(
+        open(bytes)
+          .resize({ width: maxSide, height: maxSide, fit: "inside", withoutEnlargement: true })
+          .webp({ quality: THUMBNAIL_QUALITY }),
+      );
     } catch {
       return null;
     }

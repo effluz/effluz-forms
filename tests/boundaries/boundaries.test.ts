@@ -204,7 +204,7 @@ describe("layer boundaries", () => {
   it("forbids submissions importing review's application layer", async () => {
     const rules = await lintVirtual(
       "src/modules/submissions/application/boundary-probe.ts",
-      `import { y } from "@/modules/review/application/boundary-probe-target";\nexport const z = y;\n`,
+      `import { listStories } from "@/modules/review/application";\nexport const l = listStories;\n`,
     );
     expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });
@@ -213,6 +213,22 @@ describe("layer boundaries", () => {
     const rules = await lintVirtual(
       "src/modules/definitions/application/boundary-probe-subs.ts",
       `import { viewForm } from "@/modules/submissions/application";\nexport const v = viewForm;\n`,
+    );
+    expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
+  });
+
+  it("allows review to import notifications' public entry point", async () => {
+    const rules = await lintVirtual(
+      "src/modules/review/application/boundary-probe-notifications.ts",
+      `import { EMAIL_JOB_TYPES } from "@/modules/notifications/application";\nexport const t = EMAIL_JOB_TYPES;\n`,
+    );
+    expect(rules).toEqual([]);
+  });
+
+  it("forbids notifications importing review", async () => {
+    const rules = await lintVirtual(
+      "src/modules/notifications/application/boundary-probe-review.ts",
+      `import { listStories } from "@/modules/review/application";\nexport const l = listStories;\n`,
     );
     expect(rules.map((m) => m.ruleId)).toContain("boundaries/dependencies");
   });

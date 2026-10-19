@@ -36,6 +36,16 @@ The editor opens a form's Settings tab in the manager.
    - **Allow another response**: on or off, default off. When on, the
      confirmation screen offers a link to start the form again, for forms
      that invite one submission per child or per item.
+   - **Use submissions in the post plan**: on or off, default off. When on,
+     the form's submissions get photo choice, readiness checks, staff photos
+     and a planned date, and appear on the Post plan page. Turning it off
+     hides those parts and the form's stories from the plan; dates and ticks
+     are kept and come back when it is turned on again. Photos the team
+     already added stay shown and removable on the story page; adding and
+     choosing photos are hidden. When it is on and the
+     current published version's consent field does not cover checklist item
+     10 (`form-definition.md`, "Consent text"), the tab shows a notice that
+     adding photos stays off until a version that covers it is published.
    - **Slug**: editable while the form has never been published; read-only
      afterwards with an explanation. Same rules as at creation: 3 to 64
      lowercase letters, digits and hyphens, not reserved, unique.
@@ -96,7 +106,7 @@ The editor opens a form's Settings tab in the manager.
 ## Audit entries
 
 `form_settings_changed` with a list of setting keys (`slug` included when the
-link name changed), `retention_shortened` with the old and new months and the
+link name changed, `usePostPlan` when the post plan setting changed), `retention_shortened` with the old and new months and the
 affected count. Details are listed in `system/security.md`, "Audit log".
 
 ## Success criteria

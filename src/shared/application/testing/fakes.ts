@@ -18,6 +18,10 @@
  *   makes the nth enqueue (0-based) throw. `opts` is recorded as passed (no
  *   `runAt` or `maxAttempts` defaults are applied), and a unique key is never
  *   released, unlike the real queue, which frees it once the job finishes.
+ * - `InMemoryJobAdmin`: `jobs` with a `status` and `discardReason`; `add` records a
+ *   dead job (id generated when absent, `finishedAt` defaults to a fixed time);
+ *   listings order by `finishedAt`, newest first, and `heartbeatAge` is returned
+ *   as is. Mirrors `PgJobAdmin`, except the adapter's UUID checks.
  * - `RecordingLogger`: `lines` as `{ level, msg, fields }`; children share them.
  * - `handlerContext(over)`: a `JobHandlerContext` built from the fakes above.
  *
@@ -25,6 +29,7 @@
  */
 import type { Clock } from "../ports/clock";
 import type { IdGenerator } from "../ports/id-generator";
+import type { DeadJob, JobAdmin } from "../ports/job-admin";
 import type { EnqueueOptions, JobHandlerContext, JobPayload, JobQueue } from "../ports/job-queue";
 import type { LogFields, Logger, LogLevel } from "../ports/logger";
 import type { UnitOfWork, UnitOfWorkFactory } from "../ports/unit-of-work";
@@ -230,6 +235,106 @@ export class InMemoryJobQueue implements JobQueue {
 
   ofType(type: string): EnqueuedJob[] {
     return this.enqueued.filter((j) => j.type === type);
+  }
+}
+
+export type FakeJobStatus = "dead" | "pending" | "discarded";
+
+export class InMemoryJobAdmin implements JobAdmin {
+  readonly jobs: (DeadJob & { status: FakeJobStatus; discardReason: string | null })[] = [];
+  /** Returned by `heartbeatAgeSeconds` as is. */
+  heartbeatAge: number | null = null;
+  private counter = 0;
+
+  /** Adds a dead job, filling what is not given. */
+  add(job: Partial<DeadJob> & { type: string }): void {
+    this.counter += 1;
+    this.jobs.push({
+      id: `dead-job-${String(this.counter)}`,
+      payload: {},
+      attempts: 8,
+      lastError: null,
+      createdAt: new Date("2026-10-18T09:00:00Z"),
+      finishedAt: new Date("2026-10-18T10:00:00Z"),
+      ...job,
+      status: "dead",
+      discardReason: null,
+    });
+  }
+
+  private dead(): DeadJob[] {
+    return this.jobs
+      .filter((j) => j.status === "dead")
+      .sort(
+        (a, b) => (b.finishedAt?.getTime() ?? -Infinity) - (a.finishedAt?.getTime() ?? -Infinity),
+      )
+      .map(({ id, type, payload, attempts, lastError, createdAt, finishedAt }) => ({
+        id,
+        type,
+        payload,
+        attempts,
+        lastError,
+        createdAt,
+        finishedAt,
+      }));
+  }
+
+  listDead(limit: number): Promise<DeadJob[]> {
+    return Promise.resolve(this.dead().slice(0, limit));
+  }
+
+  deadFor(ref: { submissionId: string; mediaIds: readonly string[] }): Promise<DeadJob[]> {
+    return Promise.resolve(
+      this.dead().filter((j) => {
+        const mediaId = j.payload["mediaId"];
+        return (
+          j.payload["submissionId"] === ref.submissionId ||
+          (typeof mediaId === "string" && ref.mediaIds.includes(mediaId))
+        );
+      }),
+    );
+  }
+
+  deadOfType(type: string, limit: number): Promise<{ count: number; jobs: DeadJob[] }> {
+    const ofType = this.dead().filter((j) => j.type === type);
+    return Promise.resolve({ count: ofType.length, jobs: ofType.slice(0, limit) });
+  }
+
+  retry(_uow: UnitOfWork, id: string): Promise<string | null> {
+    const job = this.jobs.find((j) => j.id === id && j.status === "dead");
+    if (!job) return Promise.resolve(null);
+    this.reset(job);
+    return Promise.resolve(job.type);
+  }
+
+  discard(_uow: UnitOfWork, id: string, reason: string, now: Date): Promise<string | null> {
+    const job = this.jobs.find((j) => j.id === id && j.status === "dead");
+    if (!job) return Promise.resolve(null);
+    job.status = "discarded";
+    job.discardReason = reason;
+    job.finishedAt = now;
+    return Promise.resolve(job.type);
+  }
+
+  retryAllOfType(_uow: UnitOfWork, type: string): Promise<string[]> {
+    const ids: string[] = [];
+    for (const job of this.jobs) {
+      if (job.status === "dead" && job.type === type) {
+        this.reset(job);
+        ids.push(job.id);
+      }
+    }
+    return Promise.resolve(ids);
+  }
+
+  heartbeatAgeSeconds(): Promise<number | null> {
+    return Promise.resolve(this.heartbeatAge);
+  }
+
+  private reset(job: { status: FakeJobStatus; attempts: number; finishedAt: Date | null }): void {
+    job.status = "pending";
+    job.attempts = 0;
+    job.finishedAt = null;
   }
 }
 

@@ -56,7 +56,9 @@ the worker, sets nothing. A copied `NODE_ENV=development` would drop `Secure`
 from every cookie and accept the local adapters. In production the
 configuration refuses `MEDIA_PROVIDER=local`, `EMAIL_PROVIDER=mailpit`, and a
 `PUBLIC_BASE_URL`, `GOOGLE_ISSUER`, `SMTP2GO_API_URL`, `DROPBOX_API_URL` or
-`DROPBOX_CONTENT_URL` that is not `https`.
+`DROPBOX_CONTENT_URL` that is not `https`. `ALERT_EMAIL` is required in
+production: it is the address dead-job alerts go to (`use-cases/operate-jobs.md`,
+"Alerts").
 
 ### Reverse proxy
 
@@ -68,6 +70,7 @@ global):
 |---|---|
 | `/f/<slug>` (the page post) | At least 101 MB plus multipart overhead: 102 MB |
 | `/f/<slug>/files` (one early upload) | At least 10 MB + 64 KB: 11 MB |
+| `/admin/forms/<id>/submissions/<reference>/photos` (staff photos, up to 10 files of 10 MB) | 102 MB |
 | Everything else, `/admin` included | 1 MB |
 
 Headers:

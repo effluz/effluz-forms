@@ -68,6 +68,17 @@ export async function startFakeDropbox(): Promise<FakeDropbox> {
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
     calls.push(path);
+    // Temporary links point back at this server and serve the uploaded bytes.
+    if (req.method === "GET" && path.startsWith("/dl/")) {
+      const stored = files.get(decodeURIComponent(path.slice("/dl".length)));
+      if (stored === undefined) {
+        reply(res, 404, { error_summary: "not_found/" });
+      } else {
+        res.writeHead(200, { "Content-Type": "application/octet-stream" });
+        res.end(stored);
+      }
+      return;
+    }
     if (req.method !== "POST") {
       reply(res, 405, { error_summary: "method_not_allowed/" });
       return;
@@ -134,7 +145,7 @@ export async function startFakeDropbox(): Promise<FakeDropbox> {
       } else if (path === "/2/files/get_metadata") {
         reply(res, 200, { ".tag": "file", path_lower: target.toLowerCase() });
       } else {
-        reply(res, 200, { link: `https://dl.example.com${target}` });
+        reply(res, 200, { link: `http://127.0.0.1:${String(port)}/dl${encodeURI(target)}` });
       }
       return;
     }

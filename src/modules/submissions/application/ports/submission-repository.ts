@@ -1,5 +1,5 @@
 import type { UnitOfWork } from "@/shared/application/ports/unit-of-work";
-import type { Submission } from "../../domain/submission";
+import type { Curation, StoredSubmission, Submission } from "../../domain/submission";
 
 /** Where received submissions live. See specs/form-definition.md, "Submissions". */
 export interface SubmissionRepository {
@@ -11,4 +11,13 @@ export interface SubmissionRepository {
    */
   findBySubmitToken(token: string, uow?: UnitOfWork): Promise<Submission | null>;
   findById(id: string): Promise<Submission | null>;
+  findStored(id: string): Promise<StoredSubmission | null>;
+  /** Null for a malformed form id. */
+  findByReference(formId: string, reference: string): Promise<StoredSubmission | null>;
+  /** Reads the row `for update` on the unit of work's connection. */
+  lockForUpdate(uow: UnitOfWork, id: string): Promise<StoredSubmission | null>;
+  /** Writes the curation columns only; `answers` is never part of the statement. */
+  writeCuration(uow: UnitOfWork, id: string, curation: Curation): Promise<void>;
+  /** True when a row was deleted. */
+  delete(uow: UnitOfWork, id: string): Promise<boolean>;
 }

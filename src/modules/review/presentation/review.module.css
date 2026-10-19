@@ -1,0 +1,757 @@
+/*
+ * The review surfaces: answers, photo tiles, readiness checks and the week day row. Every
+ * value is a token from design-system/tokens.json (staff surfaces), named in a comment; the
+ * standards are in design-system/components.md. The shell's custom properties (`--text`,
+ * `--border`, ...) come from `.shell` in shared/presentation/manager.module.css.
+ */
+
+/* An answer's text: kept line breaks and long words wrapped; font.size.staff.body. */
+.answerText {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A list of chosen options: space.1 between items, indented by space.5. */
+.answerList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 24px;
+}
+
+/*
+ * Secondary text beside an answer, such as the consent text version: color.text.muted (6.2:1),
+ * font.size.staff.small.
+ */
+.answerMeta {
+  display: block;
+  color: #774c60;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* The answer to a field that was left empty: color.text.muted. */
+.noAnswer {
+  margin: 0;
+  color: #774c60;
+}
+
+/*
+ * A section field's title inside the answers: font.size.staff.heading, font.weight.semibold,
+ * font.lineHeight.heading.
+ */
+.answerHeading {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/*
+ * Photo tile (staff): size.photoTile square, radius.md, 1 px border.default; the image covers
+ * the tile (thumbnails are generated at 2x).
+ */
+.photoTile {
+  display: flex;
+  flex-direction: column;
+  /* space.1 */
+  gap: 4px;
+  /* size.photoTile */
+  width: 160px;
+}
+
+.photoFrame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* size.photoTile */
+  width: 160px;
+  height: 160px;
+  overflow: hidden;
+  /* radius.md, border.width.default, color.border.default */
+  border: 1px solid #eff0f5;
+  border-radius: 12px;
+  /* color.surface.subtle, with color.text.muted (at least 3:1) for a video's film icon */
+  background: #eff0f5;
+  color: #774c60;
+}
+
+.photoFrame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A chosen tile: border.width.focus in color.action.primary.bg, plus the words and a check. */
+.photoChosen .photoFrame {
+  border: 2px solid #372549;
+}
+
+/*
+ * Readiness checks: a list of three rows, an icon, the check's name, then Done or Missing;
+ * space.2 between rows and inside a row.
+ */
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The icon: size.iconSmall (20 px). */
+.checkIcon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+/* On surface.card: color.text.success (6.2:1) and color.text.warning (6.8:1). */
+.checkDone {
+  color: #1f6b4a;
+}
+
+.checkMissing {
+  color: #7a4b00;
+}
+
+/*
+ * The check's name and its Done or Missing words, which carry the state with the icon:
+ * font.weight.medium.
+ */
+.checkWords {
+  font-weight: 500;
+}
+
+/* Week day row: a list item per day, the day on the left, its content on the right. */
+.weekRow {
+  display: flex;
+  flex-direction: column;
+  /* space.2 stacked, space.4 once side by side */
+  gap: 8px;
+  /* space.3 and space.4 */
+  padding: 12px 16px;
+  /* color.border.default */
+  border-bottom: 1px solid #eff0f5;
+}
+
+@media (min-width: 768px) {
+  /* breakpoint.md */
+  .weekRow {
+    flex-direction: row;
+    gap: 16px;
+  }
+}
+
+/* Today's row: surface.selected, with the word "Today" and every text in color.text.default. */
+.weekToday {
+  /* color.surface.selected */
+  background: #eacdc2;
+  /* color.text.default (12.1:1 on surface.selected) */
+  color: #1a1423;
+}
+
+/*
+ * Inside today's row the readiness words and names use color.text.default: color.text.success
+ * on surface.selected is only 4.30:1, below AA for text. The icon keeps its state colour (at
+ * least 3:1) and the icon and words still carry the state.
+ */
+.weekToday .checkDone .checkWords,
+.weekToday .checkMissing .checkWords {
+  color: #1a1423;
+}
+
+/*
+ * Focus and hover on today's row: the shared focus ring (color.focus.ring, #b75d69) and link
+ * hover (#b75d69) are 2.93:1 on surface.selected, below the 3:1 (ring) and 4.5:1 (text) AA
+ * floors. Both use color.text.default here (12.1:1). The shell's own rule (`.shell a:focus-visible`
+ * in manager.module.css, a class, a pseudo-class and an element) is a different CSS module, so
+ * this one names the row twice over (`.weekRow.weekToday`: two classes) to win whatever the
+ * stylesheet order is.
+ */
+.weekRow.weekToday a:focus-visible,
+.weekRow.weekToday button:focus-visible {
+  /* color.text.default */
+  outline-color: #1a1423;
+}
+
+/* dayLink marks the row's text links (the shared link class is not visible to this module). */
+.weekRow.weekToday .dayLink:hover {
+  /* color.text.default */
+  color: #1a1423;
+}
+
+/*
+ * The day's date is a level 2 heading for screen-reader navigation and looks like the row's
+ * other text (it inherits the font, so it takes font.size.staff.body and the row's weight).
+ */
+.weekDate {
+  margin: 0;
+  font: inherit;
+}
+
+/* The day list and the waiting list: one bordered card of rows; color.surface.card, radius.md. */
+.weekList {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  /* color.border.default, radius.md */
+  border: 1px solid #eff0f5;
+  border-radius: 12px;
+  /* color.surface.card */
+  background: #ffffff;
+  list-style: none;
+}
+
+.weekList > li:last-child {
+  border-bottom: 0;
+}
+
+/*
+ * The day on the left: weekday and date at font.weight.medium, space.1 apart; a fixed share
+ * (a layout width, not a token) once side by side.
+ */
+.weekDay {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 500;
+}
+
+@media (min-width: 768px) {
+  /* breakpoint.md */
+  .weekDay {
+    flex: 0 0 240px;
+  }
+}
+
+/* The word "Today": color.text.default (inherited from the row), font.weight.semibold. */
+.todayMark {
+  font-weight: 600;
+}
+
+/* The day's content on the right: space.3 between its blocks (a layout width, not a token). */
+.weekContent {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* One story in a row: reference and label, the form, the summary, the checks; space.2 gaps. */
+.planStory {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The reference and label: space.1 and space.3 gaps. */
+.storyHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* font.weight.medium */
+.storyRef {
+  font-weight: 500;
+}
+
+/* The form's name: color.text.muted (4.69:1 on surface.selected), font.size.staff.small. */
+.storyForm {
+  margin: 0;
+  color: #774c60;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* "Ready" or "Not ready: n of 3 done" above the checks: font.weight.medium. */
+.checkSummary {
+  margin: 0;
+  font-weight: 500;
+}
+
+/* Published stories of a day: space.2 between them. */
+.publishedList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A published story: space.1 and space.3 gaps. */
+.publishedItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  overflow-wrap: anywhere;
+}
+
+/* The outward icon of an external link: size.iconInline (16 px), space.1 before it (components.md, "Link"). */
+.externalIcon {
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  vertical-align: -2px;
+}
+
+/* A day with nothing: color.text.muted (4.69:1 on surface.selected). */
+.emptyDay {
+  margin: 0;
+  color: #774c60;
+}
+
+/* The week's navigation: the week's name, then three secondary buttons; space.2 and space.4 gaps. */
+.weekNav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 0 0 16px;
+}
+
+/* font.size.staff.heading, font.weight.semibold */
+.weekTitle {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* A section of the page under the week: space.6 above. */
+.planSection {
+  margin: 32px 0 0;
+}
+
+/* A section heading and its count: space.1 and space.4 gaps, space.3 below. */
+.planHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin: 0 0 12px;
+}
+
+/* font.size.staff.heading, font.weight.semibold, font.lineHeight.heading */
+.planHeading h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/*
+ * "Choose a story for <date>": a card on surface.selected with a border, so it stands out;
+ * space.3 below, space.3 and space.4 padding, font.weight.medium.
+ */
+.pickNotice {
+  margin: 0 0 12px;
+  padding: 12px 16px;
+  /* color.action.primary.bg, radius.md, color.surface.selected, color.text.default */
+  border: 1px solid #372549;
+  border-radius: 12px;
+  background: #eacdc2;
+  color: #1a1423;
+  font-weight: 500;
+}
+
+.pickNotice [lang="es"] {
+  color: inherit;
+}
+
+/*
+ * Operations: a card per block; color.surface.card, color.border.default, radius.md, space.4
+ * padding, space.2 gaps, space.5 below.
+ */
+.opsCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 24px;
+  padding: 16px;
+  border: 1px solid #eff0f5;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+/* font.size.staff.heading, font.weight.semibold */
+.opsCard h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/*
+ * The heartbeat's age and its status word: the words carry the state beside the badge colour;
+ * space.2 and space.3 gaps.
+ */
+.heartbeatLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * One dead job's controls: Retry, then Discard with its reason; space.3 gap, and a layout
+ * minimum width (not a token) so the reason field stays usable.
+ */
+.rowActions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 220px;
+}
+
+/* space.2 */
+.rowForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+/*
+ * A refused discard's message under its input: color.text.error (6.6:1 on cards),
+ * font.weight.medium; the words carry it.
+ */
+.fieldError {
+  margin: 0;
+  color: #9b1c1c;
+  font-weight: 500;
+}
+
+.fieldError [lang="es"] {
+  color: inherit;
+}
+
+/* "Retry all of type" buttons above the table: space.3 gap, space.4 below. */
+.bulkActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.bulkActions form {
+  margin: 0;
+}
+
+/* The last error: the scrubbed text, long words wrapped. */
+.errorText {
+  overflow-wrap: anywhere;
+}
+
+/* Submissions list: the tab body, space.5 between its blocks. */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Heading, total and the Export button on one row; space.2 and space.4 gaps. */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+/*
+ * The tab's <h2>: font.size.staff.heading, font.weight.semibold, font.lineHeight.heading; it
+ * takes the free width.
+ */
+.heading {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* The total: color.text.muted, tabular numbers. */
+.total {
+  margin: 0;
+  color: #774c60;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A chip group: its label, then the chips; space.2 and space.3 gaps. */
+.chipGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+/* font.size.staff.label, font.weight.medium */
+.chipGroupLabel {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* space.2 between chips */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * Chip (filter): at least size.pointerTargetMin (32 px) tall (a bilingual label stacks to two
+ * lines), radius.sm, color.surface.subtle, border.width.default, space.1 and space.3 padding,
+ * space.2 gap, font.size.staff.label, font.weight.medium, font.lineHeight.heading.
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 12px;
+  /* color.surface.subtle */
+  border: 1px solid #eff0f5;
+  border-radius: 8px;
+  background: #eff0f5;
+  /* color.text.default (12.1:1) */
+  color: #1a1423;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.chip:hover {
+  /* color.border.input */
+  border-color: #774c60;
+}
+
+/* Active: color.surface.selected with a color.action.primary.bg border, plus a check mark. */
+.chipActive {
+  border: 1px solid #372549;
+  background: #eacdc2;
+}
+
+/* font.weight.semibold */
+.chipCheck {
+  flex: none;
+  font-weight: 600;
+}
+
+/* The count: color.text.muted (4.69:1 on surface.selected), tabular numbers. */
+.chipCount {
+  color: #774c60;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Filters: controls above their labels, wrapping; space.2 and space.3 gaps. */
+.filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin: 0;
+}
+
+/* space.2 between a label and its control; the widths are layout, not tokens. */
+.filterField {
+  display: flex;
+  flex: 1 1 160px;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 320px;
+}
+
+/* The two date fields under one label: space.2 and space.3 gaps; the width is layout. */
+.dates {
+  display: flex;
+  flex: 2 1 340px;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dateRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+/* A group of choices (export dialog): no browser border, space.5 below; the legend styled as a field label. */
+.fieldset {
+  min-width: 0;
+  margin: 0 0 24px;
+  padding: 0;
+  border: 0;
+}
+
+/* space.2 below, font.size.staff.label, font.weight.medium, font.lineHeight.label */
+.legend {
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* One radio or checkbox and its label: a size.touchTarget (44 px) row, space.2 gap, a size.iconDefault (24 px) control. */
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.choice input {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  /* color.action.primary.bg */
+  accent-color: #372549;
+}
+
+/* "Include file paths" sits apart from the two groups above it: space.2 below. */
+.exportPaths {
+  margin: 0 0 8px;
+}
+
+/* The personal-data notice: color.text.default at font.size.staff.small, font.lineHeight.small, space.5 below. */
+.notice {
+  margin: 0 0 24px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* The refusal to export: color.text.error (6.6:1 on cards), font.weight.medium, space.5 below; the words carry it. */
+.refusal {
+  margin: 0 0 24px;
+  color: #9b1c1c;
+  font-weight: 500;
+}
+
+.refusal [lang="es"] {
+  color: inherit;
+}
+
+/* The status cell: badge or planned date, then the attention badge; space.2 gaps. */
+.statusCell {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* "Planned · date": plain words in color.text.default, font.weight.medium; no badge. */
+.planned {
+  font-weight: 500;
+}
+
+/* The received time in the form's zone, UTC beneath it in color.text.muted; tabular numbers (font.features.tabularNumbers). */
+.received {
+  font-variant-numeric: tabular-nums;
+}
+
+/* color.text.muted, font.size.staff.small, font.lineHeight.small */
+.utc {
+  display: block;
+  color: #774c60;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* A cell with no value to show: color.text.muted. */
+.muted {
+  color: #774c60;
+}
+
+/* The files cell: the size.iconSmall (20 px) camera icon, then the count; space.1 gap. */
+.files {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* size.iconSmall */
+.fileIcon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+/* The empty states: color.surface.card, color.border.default, radius.md, space.5 padding. */
+.empty {
+  padding: 24px;
+  border: 1px solid #eff0f5;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.empty > p {
+  margin: 0 0 16px;
+}
+
+.empty > :last-child {
+  margin: 0;
+}
+
+/* space.2 and space.4 gaps */
+.emptyLinks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  overflow-wrap: anywhere;
+}
+
+/* The pager: "Page n of total", then Newer and Older as secondary buttons; space.2 and space.4 gaps. */
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.pageStatus {
+  margin: 0;
+  color: #774c60;
+  font-variant-numeric: tabular-nums;
+}
+
+/* space.3 between the buttons */
+.pagerLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photoTile * {
+    transition: none;
+    animation: none;
+  }
+}

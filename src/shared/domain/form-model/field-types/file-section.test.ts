@@ -42,13 +42,19 @@ describe("file_upload", () => {
       required: false,
       validation,
     });
-    expect(fileUpload.publishChecks?.(field([{ rule: "min_files", value: 4 }]), s)).toEqual([
+    expect(
+      fileUpload.publishChecks?.(field([{ rule: "min_files", value: 4 }]), s, { postPlan: false }),
+    ).toEqual([
       { code: "over_maximum", path: "validation", params: { detail: "min_files 4 > 3 files" } },
     ]);
-    expect(fileUpload.publishChecks?.(field([{ rule: "max_files", value: 5 }]), s)).toEqual([
+    expect(
+      fileUpload.publishChecks?.(field([{ rule: "max_files", value: 5 }]), s, { postPlan: false }),
+    ).toEqual([
       { code: "over_maximum", path: "validation", params: { detail: "max_files 5 > 3 files" } },
     ]);
-    expect(fileUpload.publishChecks?.(field([{ rule: "max_files", value: 3 }]), s)).toEqual([]);
+    expect(
+      fileUpload.publishChecks?.(field([{ rule: "max_files", value: 3 }]), s, { postPlan: false }),
+    ).toEqual([]);
   });
 });
 

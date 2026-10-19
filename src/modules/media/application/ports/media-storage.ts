@@ -5,6 +5,8 @@ export interface MediaStorage {
   /** The reference `put` returns for `key`, for a file whose reference was never recorded. */
   refForKey(key: string): string;
   viewUrl(ref: string, ttlSeconds: number): Promise<string>;
+  /** The stored bytes as a stream; rejects when the file is missing. Dropbox reads its temporary link server-side. */
+  openRead(ref: string): Promise<ReadableStream<Uint8Array>>;
   /** Succeeds when the file is already gone. */
   delete(ref: string): Promise<void>;
   exists(ref: string): Promise<boolean>;

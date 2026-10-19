@@ -2,6 +2,7 @@
 
 Status: accepted
 Date: 2026-10-09
+Amended 2026-10-18: the review module ships manual correction only; DeepL Write suggestions are deferred and nothing calls the `TextCorrector` port yet (design 2026-10-18-review-module-design.md).
 
 ## Context
 

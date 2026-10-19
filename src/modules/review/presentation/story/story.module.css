@@ -1,0 +1,651 @@
+/*
+ * The story page: header, cards, the correction editor, the compare view and the in-page
+ * confirmations. Every value is a token from design-system/tokens.json (staff surfaces),
+ * named in a comment; the standards are in design-system/components.md. The shell's custom
+ * properties (`--text`, `--border`, `--focus`, ...) come from `.shell` in
+ * shared/presentation/manager.module.css.
+ */
+
+/* Read by assistive technology, not shown: the words "Added" and "Removed" in the compare view. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The reference and its status badge on one row: space.3 gap. */
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.titleRow h1 {
+  margin: 0;
+}
+
+/* Received, version and language: font.size.staff.small in color.text.muted, space.4 gaps. */
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 8px 0 16px;
+  padding: 0;
+  list-style: none;
+  color: #774c60;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Newer, Older and Back at a fixed place under the title: space.3 gap, space.5 below. */
+.storyNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 24px;
+  padding: 0;
+  list-style: none;
+}
+
+/* The cards in the page's order: space.5 apart. */
+.cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+}
+
+/* Card (staff): surface.card, 1 px border.default, radius.md, space.4 padding, no shadow. */
+.card {
+  min-width: 0;
+  padding: 16px;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+/* A card's heading: font.size.staff.heading, font.weight.semibold, font.lineHeight.heading. */
+.cardTitle {
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* A page title inside the answers: font.size.staff.label, font.weight.semibold, space.5 above. */
+.pageTitle {
+  margin: 24px 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.pageTitle:first-of-type {
+  margin-top: 0;
+}
+
+/* The answers of one page, label above value; rows divided by border.default, space.3 padding. */
+.answers {
+  margin: 0;
+}
+
+.answer {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.answer:first-child {
+  border-top: 0;
+}
+
+/* An answer's label: font.weight.medium, font.size.staff.label, space.1 below. */
+.answerLabel {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.answerValue {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+/* Tag (inline marker): 20 px tall, space.2 padding, radius.sm, text.small, font.weight.medium,
+ * color.surface.warning with color.text.warning (the words carry it). */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: #fff4d6;
+  color: #7a4b00;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.tag [lang="es"] {
+  display: inline;
+  margin-left: 4px;
+  color: inherit;
+}
+
+/* "Edited" and who corrected it, on one wrapping row: space.2 gap, text.muted at text.small. */
+.edited {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  color: #774c60;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* An answer's actions: tertiary links, each at least size.touchTarget tall; space.3 gap. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Tertiary button: color.action.tertiary.fg, underlined, a size.touchTarget row. */
+.tertiary {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 44px;
+  color: #372549;
+  font-weight: 500;
+  text-decoration: underline;
+}
+
+.tertiary:hover {
+  /* color.action.tertiary.hoverFg */
+  color: #6c344e;
+}
+
+/* The editor and the compare view: one column, two from breakpoint.md; space.4 gap. */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin: 0 0 16px;
+}
+
+@media (min-width: 768px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* A column's label: font.size.staff.label, font.weight.medium. */
+.columnLabel {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* Help under the heading: color.text.muted at font.size.staff.small. */
+.hint {
+  margin: 0 0 12px;
+  color: #774c60;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Read-only text: surface.subtle, radius.md, space.3 padding, no border change. */
+.readOnly {
+  min-height: 144px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-subtle);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Textarea: size.textareaMin tall, space.3 padding, radius.md, color.border.input (7.0:1),
+ * vertical resize only; invalid uses color.border.error. */
+.textarea {
+  min-height: 144px;
+  padding: 12px;
+  border: 1px solid #774c60;
+  border-radius: 12px;
+  background: var(--surface-card);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+
+.textarea:focus-visible {
+  /* color.border.inputFocus */
+  border-color: #372549;
+}
+
+.textarea[aria-invalid="true"] {
+  /* color.border.error */
+  border-color: #9b1c1c;
+}
+
+/* An error under its control: color.text.error, font.weight.medium; the words carry it. */
+.fieldError {
+  margin: 0;
+  color: #9b1c1c;
+  font-weight: 500;
+}
+
+.fieldError [lang="es"] {
+  color: inherit;
+}
+
+/* The compare view's change count, a polite status: font.weight.medium. */
+.changeCount {
+  margin: 0 0 12px;
+  font-weight: 500;
+}
+
+/*
+ * A change: underline (added) or strike-through (removed) besides the colour, so colour is
+ * never the only signal; color.surface.success and color.surface.error behind
+ * color.text.default; radius.sm. Each is reachable with Tab and shows the focus ring.
+ */
+.readOnly ins,
+.readOnly del {
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.readOnly ins {
+  background: #e6f2ec;
+  text-decoration: underline;
+}
+
+.readOnly del {
+  background: #fbecec;
+  text-decoration: line-through;
+}
+
+.readOnly ins:focus-visible,
+.readOnly del:focus-visible {
+  /* color.focus.ring at border.width.focus, 2 px offset */
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* One line of a flash; a second line continues the first. */
+.flashLine {
+  margin: 0;
+}
+
+/* The dead-jobs warning: the banner's look with a heading, a list and Try again. */
+.jobWarning {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.jobTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.jobList {
+  margin: 0;
+  padding-left: 20px;
+  font-weight: 400;
+}
+
+.jobForm {
+  margin: 0;
+}
+
+/* The consent card: a disclosure whose summary is a size.touchTarget row in font.weight.semibold. */
+.consent summary {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.consent p {
+  margin: 12px 0 0;
+}
+
+/* The activity list: one entry per row, divided by border.default, space.2 padding. */
+.activity {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activity li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.activity li:first-child {
+  border-top: 0;
+}
+
+/* The time of an entry: font.features.tabularNumbers, color.text.muted. */
+.activityTime {
+  color: #774c60;
+  font-variant-numeric: tabular-nums;
+}
+
+.activityAction {
+  font-weight: 500;
+}
+
+/* The reference to type, under the field when it did not match: space.2 gap. */
+.typedField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 24px;
+}
+
+/* The ZIP links above the photo grid: secondary buttons in one wrapping row, space.3 gap. */
+.zipLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+/* A group's heading in a card: font.size.staff.label, font.weight.semibold, space.5 above. */
+.groupTitle {
+  margin: 24px 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.zipLinks + .groupTitle,
+.cardTitle + .groupTitle {
+  margin-top: 0;
+}
+
+/* The photo grid: size.photoTile tiles, wrapping, space.4 apart. */
+.photoGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A video's film icon in its tile: size.controlHeight; color.text.muted from the frame. */
+.filmIcon {
+  width: 48px;
+  height: 48px;
+}
+
+/* A tile's caption: font.weight.medium, font.lineHeight.label. */
+.tileCaption {
+  margin: 0;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* "Chosen for the post" with its check: color.action.primary.bg, font.weight.medium, space.1 gap. */
+.chosenMark {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  color: #372549;
+  font-weight: 500;
+}
+
+.chosenMark [lang="es"] {
+  color: inherit;
+}
+
+/* Who added a team photo and from where: color.text.muted at font.size.staff.small. */
+.tileMeta {
+  margin: 0;
+  color: #774c60;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* A file kept only on the server: color.text.warning at font.size.staff.small; the words carry it. */
+.tileWarning {
+  margin: 0;
+  color: #7a4b00;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.tileWarning [lang="es"] {
+  color: inherit;
+}
+
+/* The tile's actions: tertiary buttons stacked, each a size.touchTarget row. */
+.tileActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.tileForm {
+  margin: 0;
+}
+
+/* A tertiary button that is a <button>: the tertiary link's look, no box. */
+.tertiaryButton {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  /* color.action.tertiary.fg */
+  color: #372549;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tertiaryButton:hover {
+  /* color.action.tertiary.hoverFg */
+  color: #6c344e;
+}
+
+.tertiaryButton:focus-visible {
+  /* color.focus.ring at border.width.focus, 2 px offset */
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Add photos: space.5 above, its fields one column. */
+.addPhotos {
+  margin-top: 24px;
+}
+
+.uploadForm {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+/* File upload dropzone: a dashed 2 px color.border.input box, radius.md, space.5 padding. */
+.dropzone {
+  padding: 24px;
+  border: 2px dashed #774c60;
+  border-radius: 12px;
+}
+
+.dropzone input {
+  max-width: 100%;
+  /* size.touchTarget */
+  min-height: 44px;
+  font: inherit;
+}
+
+.dropzone:focus-within {
+  /* color.border.inputFocus */
+  border-color: #372549;
+}
+
+/* The sender's confirmation: space.2 gap, space.5 below. */
+.confirmField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 24px;
+}
+
+/* The viewer: the card's look (surface.card, border.default, radius.md, space.4), space.5 below. */
+.viewer {
+  margin: 0 0 24px;
+  padding: 16px;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+/* The image at most 100% wide, or the native video player; surface.subtle behind it, radius.md. */
+.viewerMedia {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 12px;
+  border-radius: 12px;
+  background: var(--surface-subtle);
+}
+
+.viewerFile {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  max-height: 80vh;
+}
+
+/* Where the file is kept: long paths wrap; space.1 below. */
+.viewerFacts {
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+
+/* Previous, Next, Download and Back: secondary buttons in one wrapping row, space.3 gap. */
+.viewerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* "Ready" or "Not ready: n of 3 done": space.3 below. */
+.checkSummary {
+  margin-bottom: 12px;
+}
+
+/* A check's ticks and notes: a full row under the check's words, in color.text.default. */
+.checkExtra {
+  display: flex;
+  flex-basis: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  /* the 20 px icon plus the space.2 gap, so the notes line up with the words */
+  padding-left: 28px;
+  color: var(--text);
+  font-weight: 400;
+}
+
+/* Who ticked a check, or why it was cleared: color.text.muted at font.size.staff.small. */
+.checkNote {
+  margin: 0;
+  color: #774c60;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.inlineForm {
+  margin: 0;
+}
+
+/* The planned date: space.5 above, divided from the checks by border.default; space.3 gaps. */
+.planBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.planForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.planForm .hint {
+  margin: 0;
+}
+
+/* The date field and Plan on one wrapping row: space.3 gap. */
+.planRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+/* A line of the publishing card: space.3 below, the last one none. */
+.publishLine {
+  margin: 0 0 12px;
+}
+
+.publishLine:last-child {
+  margin: 0;
+}
+
+/* The post link's field takes the dialog's width. */
+.urlInput {
+  width: 100%;
+}

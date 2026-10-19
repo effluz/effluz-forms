@@ -80,9 +80,10 @@ export class PgMediaRepository implements MediaRepository {
     return row ? toMedia(row) : null;
   }
 
-  async listBySubmission(submissionId: string): Promise<MediaRecord[]> {
+  async listBySubmission(submissionId: string, uow?: UnitOfWork): Promise<MediaRecord[]> {
     if (!isUuid(submissionId)) return [];
-    const { rows } = await this.pool.query<MediaRow>(
+    const db = uow === undefined ? this.pool : txOf(uow).client;
+    const { rows } = await db.query<MediaRow>(
       `select ${COLUMNS} from media where submission_id = $1 order by field_key, position`,
       [submissionId],
     );

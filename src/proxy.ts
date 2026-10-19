@@ -3,6 +3,7 @@ import { getContainer } from "@/app/container";
 import { currentSession } from "@/modules/identity/application";
 import { clientIp, ERROR_PATH, signInPath } from "@/modules/identity/presentation/http";
 import { rendererCsp } from "@/modules/submissions/presentation/csp";
+import { SECTION_HEADER, sectionOf } from "@/shared/presentation/sections";
 import type { Logger } from "@/shared/application/ports/logger";
 import { createLogger } from "@/shared/infrastructure/logging/logger";
 
@@ -33,7 +34,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       sessionId,
       meta: { ip: clientIp(request.headers) },
     });
-    if (current.state === "active") return NextResponse.next();
+    if (current.state === "active") return withSection(request, pathname);
     return NextResponse.redirect(
       new URL(signInPath(returnPath(method, pathname, search)), container.config.publicBaseUrl),
       302,
@@ -47,6 +48,17 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.redirect(new URL(ERROR_PATH, publicBaseUrl ?? request.url), 302);
   }
+}
+
+/**
+ * Lets an admin request through with the manager section of its path on the forwarded
+ * request, which the gated layout reads to mark the current navigation item (a layout cannot
+ * see its path). Set, not appended, so a value the client sent never survives.
+ */
+function withSection(request: NextRequest, pathname: string): NextResponse {
+  const headers = new Headers(request.headers);
+  headers.set(SECTION_HEADER, sectionOf(pathname));
+  return NextResponse.next({ request: { headers } });
 }
 
 /**
@@ -67,14 +79,26 @@ function withRendererCsp(request: NextRequest): NextResponse {
  * Where sign-in returns to, which it does with a GET. A GET or HEAD request returns to
  * itself, query included. Any other method hit a route that only answers POST, so it
  * returns to the page that posted: the New form page for `create`, the form's overview
- * for `lifecycle` and `delete`, and for a server action its own page; never a query,
- * which may carry what was typed. See specs/ui-ux/manager.md, "Routes".
+ * for `lifecycle`, `delete` and `export`, a story's page for its own changes, Operations
+ * for its changes, and for a server action its own page; never a query, which may carry
+ * what was typed. See specs/ui-ux/manager.md, "Routes".
  */
 function returnPath(method: string, pathname: string, search: string): string {
   if (method === "GET" || method === "HEAD") return `${pathname}${withoutRsc(search)}`;
   if (pathname === "/admin/forms/create") return "/admin/forms/new";
+  const story = STORY_POST.exec(pathname)?.[1];
+  if (story !== undefined) return story;
+  const overview = EXPORT_POST.exec(pathname)?.[1];
+  if (overview !== undefined) return overview;
+  if (OPERATIONS_POST.test(pathname)) return "/admin/operations";
   return pathname.replace(/\/(lifecycle|delete)$/, "");
 }
+
+/** The POST routes beside a story page, the export route and the Operations routes. */
+const STORY_POST =
+  /^(\/admin\/forms\/[^/]+\/submissions\/[^/]+)\/(correction|revert|status|photos|photos\/remove|choice|check|plan|retry|delete)$/;
+const EXPORT_POST = /^(\/admin\/forms\/[^/]+)\/export$/;
+const OPERATIONS_POST = /^\/admin\/operations\/(retry|discard|retry-type)$/;
 
 /**
  * The query string as sent, minus Next's internal `_rsc` cache-busting parameter.

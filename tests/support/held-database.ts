@@ -2,6 +2,18 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { settlesWithin } from "./app-server";
 
+/**
+ * The throwaway database tests/browser/global-setup.ts holds for the browser run, from
+ * `E2E_DATABASE_URL`. Throws when it is unset or blank: pg would fall back to the PG*
+ * environment, which may name a database that is not disposable.
+ */
+export function browserDatabaseUrl(): string {
+  const url = process.env["E2E_DATABASE_URL"];
+  if (url === undefined || url === "")
+    throw new Error("E2E_DATABASE_URL is unset: run the browser suite through its global setup");
+  return url;
+}
+
 /** How long `drop()` waits for the holder to drop the database and exit. */
 const DROP_TIMEOUT_MS = 30_000;
 

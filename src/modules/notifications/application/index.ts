@@ -4,15 +4,19 @@ export type { EmailSender, OutgoingEmail } from "./ports/email-sender";
 export { EmailSendError } from "./ports/email-sender";
 export type {
   EmailRenderer,
+  JobAlertData,
   RenderedEmail,
   StaffNotificationData,
   SubmitterConfirmationData,
 } from "./ports/email-renderer";
+export type { AlertSource } from "./ports/alert-source";
 export type { MessageSource } from "./ports/message-source";
 export type { DeliveryLog } from "./ports/delivery-log";
 
 export {
+  EMAIL_JOB_MAX_ATTEMPTS,
   EMAIL_JOB_TYPES,
+  createJobAlertHandler,
   createStaffNotificationHandler,
   createSubmitterConfirmationHandler,
 } from "./jobs";

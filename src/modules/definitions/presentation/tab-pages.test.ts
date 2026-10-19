@@ -1,6 +1,7 @@
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { copy } from "@/shared/presentation/copy";
 import type { FormOverview as Overview } from "../application";
 import { ActivityList } from "./ActivityList";
 import { FormOverview, type OverviewTab } from "./FormOverview";
@@ -27,6 +28,7 @@ const overview: Overview = {
       closesAt: "2026-10-13T04:59:00.000Z",
       botChallenge: false,
       allowAnotherResponse: false,
+      usePostPlan: false,
     },
     currentVersionId: "00000009-0000-4000-8000-000000000009",
     currentVersionNumber: 2,
@@ -40,6 +42,7 @@ const overview: Overview = {
   closingInDays: null,
   canDelete: false,
   allowedActions: ["close", "archive"],
+  laterPhotosCovered: false,
 };
 
 /** What each tab page puts inside the overview, as the `settings`, `share` and `activity` pages do. */
@@ -51,6 +54,7 @@ const BODIES: Record<Exclude<OverviewTab, "submissions">, () => ReactNode> = {
       hasSubmissions: false,
       timezones: ["America/Panama"],
       action: `/admin/forms/${ID}/settings`,
+      laterPhotosCovered: overview.laterPhotosCovered,
     }),
   share: () =>
     createElement(SharePanel, {
@@ -102,3 +106,53 @@ describe.each(["settings", "share", "activity"] as const)(
     });
   },
 );
+
+describe("the post-plan toggle on the Settings tab", () => {
+  const render = (usePostPlan: boolean, laterPhotosCovered: boolean): string =>
+    renderToStaticMarkup(
+      createElement(SettingsForm, {
+        form: { ...overview.form, settings: { ...overview.form.settings, usePostPlan } },
+        csrfToken: "csrf-token-1",
+        hasSubmissions: false,
+        timezones: ["America/Panama"],
+        action: `/admin/forms/${ID}/settings`,
+        laterPhotosCovered,
+      }),
+    );
+  const texts = (key: "set.post_plan" | "set.post_plan_hint" | "set.post_plan_notice") => [
+    copy[key].en,
+    copy[key].es,
+  ];
+
+  it("shows the post-plan toggle with its hint, and the notice when on without item 10", () => {
+    const html = render(true, false);
+    for (const text of [
+      ...texts("set.post_plan"),
+      ...texts("set.post_plan_hint"),
+      ...texts("set.post_plan_notice"),
+    ]) {
+      expect(html).toContain(text);
+    }
+    // The checkbox sits inside the label that names it, and is checked.
+    expect(html).toMatch(
+      /<label [^>]*><input [^>]*name="usePostPlan"[^>]*checked=""[^>]*\/><span>Use submissions in the post plan/,
+    );
+    const box = (html.match(/<input [^>]*>/g) ?? []).find((tag) =>
+      tag.includes('name="usePostPlan"'),
+    );
+    expect(box).toContain('aria-describedby="settings-post_plan-hint settings-post_plan-notice"');
+  });
+
+  it("shows no notice when the current version covers photos sent later", () => {
+    const html = render(true, true);
+    expect(html).toContain(copy["set.post_plan_hint"].en);
+    expect(html).not.toContain(copy["set.post_plan_notice"].en);
+  });
+
+  it("shows no notice when the setting is off, and the box is unchecked", () => {
+    const html = render(false, false);
+    expect(html).toContain(copy["set.post_plan"].en);
+    expect(html).not.toContain(copy["set.post_plan_notice"].en);
+    expect(html).not.toMatch(/<input [^>]*name="usePostPlan"[^>]*checked/);
+  });
+});

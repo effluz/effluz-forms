@@ -1,7 +1,8 @@
 # System Architecture
 
 Status: first pass, revised 2026-10-10 for the definitions module and the
-manager's forms pages (ADRs 0016, 0021, 0022).
+manager's forms pages (ADRs 0016, 0021, 0022), revised 2026-10-18 for the
+review module as built (ADRs 0028, 0029; DeepL Write suggestions deferred).
 Core decisions are accepted and recorded in `decisions/`. Two tooling choices
 remain proposed; see Open items.
 
@@ -63,7 +64,7 @@ imports the application layer directly and never loads Next.js.
 |---|---|---|---|
 | **Renderer** | The public | `/f/<slug>` | `submissions` |
 | **Builder** | Staff | `/admin/forms/<id>/edit` | `definitions` |
-| **Manager** | Staff | `/admin/...` | `definitions` (lifecycle, settings), `review` (submissions) |
+| **Manager** | Staff | `/admin/...` | `definitions` (lifecycle, settings), `review` (submissions, `/admin/plan`, `/admin/operations`) |
 
 The manager's routes, their guards and which of them are built are listed in
 `ui-ux/manager.md`, "Routes". The builder route is a placeholder page until
@@ -82,7 +83,7 @@ this table and go through each module's public application API.
 | `notifications` | Email rendering and sending ports, delivery receipts, job handlers for email; templates live in `src/shared/presentation/email/` | `shared` |
 | `definitions` | Forms, drafts, versions, lifecycle, operational settings, QR codes, translation suggestions | `identity` |
 | `submissions` | Public rendering of a published version, server validation, intake transaction, enqueuing jobs | `definitions`, `media`, `notifications` |
-| `review` | Listing, viewing, exporting, downloading and deleting submissions; curation status and text edits; dead job retry | `definitions`, `submissions`, `media`, `identity` |
+| `review` | Story page, list, export, download and delete; curation status and text edits; staff photos, readiness and the post plan; Operations and dead-job alerts | `definitions`, `submissions`, `media`, `identity`, `notifications` |
 
 `shared/` holds the kernel: `LocalizedText`, ids, `Clock`, `UnitOfWork`,
 `JobQueue`, logging, and nothing that belongs to one module.
@@ -104,10 +105,14 @@ or a module's public API:
 | Port | Responsibility | First adapter | Spec |
 |---|---|---|---|
 | `UnitOfWork` | Transaction boundary; lets a use case persist state and enqueue jobs atomically | Postgres | `system/database.md` |
-| `MediaStorage` | Store a file, return a reference, produce a time-limited view URL, delete; staging adds read, prefix delete and prefix listing | Local disk (staging), Dropbox (durable) | `system/media-storage.md` |
+| `MediaStorage` | Store a file, return a reference, produce a time-limited view URL, read as a stream, delete; staging adds read, prefix delete and prefix listing | Local disk (staging), Dropbox (durable) | `system/media-storage.md` |
 | `JobQueue` | Enqueue typed jobs with retry and scheduling semantics | Postgres outbox table | `system/jobs.md` |
+| `JobAdmin` | List dead jobs, retry, discard, and read the worker heartbeat. Shared | Postgres (`job`, `worker_heartbeat`) | `system/jobs.md`, "The `JobAdmin` port" |
+| `AlertSource` | The data a dead-job alert email needs, looked up at run time from a job type. Owned by `notifications`, implemented by `review` | Postgres (`review`) | `system/email.md` |
+| `ReviewQueries` | The read model of ADR 0028: list, plan and export in one query each. Owned by `review` | Postgres (`PgReviewQueries`) | `decisions/0028` |
+| `ZipWriter` | Write a stored (uncompressed) ZIP stream of a story's files. Owned by `review` | Stored ZIP writer (`zlib.crc32`) | `system/media-storage.md` |
 | `EmailSender` | Send one rendered transactional message | SMTP2GO (Mailpit locally) | `system/email.md` |
-| `EmailRenderer` | Render the two messages from their data; the implementation is the template module in `src/shared/presentation/email` | Templates, wired at the composition root | `system/email.md` |
+| `EmailRenderer` | Render the three messages (confirmation, staff notification, job alert) from their data; the implementation is the template module in `src/shared/presentation/email` | Templates, wired at the composition root | `system/email.md` |
 | `MessageSource` | The data an email job needs, looked up at run time from a submission id. Owned by `notifications`, implemented by `submissions` | Postgres (`submissions`) | `system/email.md` |
 | `AdminIdentity` | Start a staff sign-in and complete it into verified claims or a refusal reason; the admission policy is identity's own domain rule | Google OpenID Connect | `system/security.md` |
 | `AuditLog` | Append one entry to the audit log inside the current unit of work. Owned by `identity`, which exports it and the audit action list for other modules | Postgres (`audit_log`, append-only by trigger) | `system/security.md` |
@@ -116,7 +121,7 @@ or a module's public API:
 | `Clock`, `IdGenerator`, `Logger` | Determinism in tests; structured logging with defensive redaction | System clock, random UUIDs, pino | `system/observability.md` (`Logger`) |
 | `FieldTypeRegistry` | Look up a field type's validator, normalizer, exporter | In-code registry in `shared/domain/form-model` | `form-definition.md` |
 | `Translator` | Suggest a translation of staff-authored text; available to `definitions` only | DeepL API | `decisions/0010` |
-| `TextCorrector` | Suggest spelling and grammar corrections for one text answer; available to `review` only | DeepL Write | `decisions/0011` |
+| `TextCorrector` | Suggest spelling and grammar corrections for one text answer; available to `review` only; deferred, nothing calls it yet | DeepL Write | `decisions/0011` |
 
 Repositories belong to the module that owns the aggregate (`definitions` owns
 forms and versions, `submissions` owns submissions) and are defined as ports
@@ -200,13 +205,14 @@ page's `<html lang>` follows the submitter; `src/app/global-not-found.tsx`
    its provider reference, and delete the staging copy. Email jobs call the
    provider.
 6. The manager lists submissions per form and renders each answer through
-   its field type's review display, using the pinned version for labels. For
-   each photo it serves the staging copy if still present, otherwise a
-   short-lived Dropbox link.
+   its field type's review display, using the pinned version for labels.
+   Photos stream through the audited media route by `openRead`, from the
+   staging copy while it is present, otherwise from durable storage; a stored
+   video redirects to its temporary view link, a short-lived Dropbox link in
+   production (`system/media-storage.md`).
 
-The staff notification links to the form's page in the manager until the
-review plan adds the submission page, and carries no answers or photos. Email
-is the least controlled channel we have.
+The staff notification links to the story page in the manager and carries no
+answers or photos. Email is the least controlled channel we have.
 
 ## Environments
 
@@ -230,6 +236,7 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 - No configuration value is ever logged.
 - `PRIVACY_CONTACT_EMAIL` is the one configuration value shown to the
   public, in the renderer's privacy footer and consent template.
+- `ALERT_EMAIL` is the one address dead-job alerts go to (ADR 0029).
 - `PUBLIC_BASE_URL` is the public origin (no path); public links and QR codes
   are built on it. `NOTIFICATION_ALLOWED_DOMAINS` is an optional,
   comma-separated list of partner domains that form notification recipients
@@ -250,7 +257,7 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 | Application | Next.js and React, framework confined to presentation and composition root | accepted | `decisions/0008` |
 | Product shape | Staff-authored, versioned form definitions; modules by capability | accepted | `decisions/0009` |
 | Translation suggestions | DeepL behind a `Translator` port, staff text only | accepted | `decisions/0010` |
-| Submission curation | Immutable original, curated copy, DeepL Write suggestions | accepted | `decisions/0011` |
+| Submission curation | Immutable original, curated copy, DeepL Write suggestions (deferred: correction is by hand for now) | accepted | `decisions/0011` |
 | Postgres access | `pg` (node-postgres) with hand-written SQL and plain `.sql` migrations; no ORM | accepted | `decisions/0017` |
 | OpenID Connect client | `openid-client` v6 behind the `AdminIdentity` port; sessions and sign-in attempts in our own tables | accepted | `decisions/0018` |
 | Logging | `pino` behind the `Logger` port, JSON to stdout with redaction | accepted | `decisions/0019` |
@@ -268,7 +275,7 @@ stack being the same Compose definition minus TLS. See `system/deployment.md`.
 | Dropbox | The Effluz Dropbox account (identity in `private/`, outside version control) | App folder for durable media and encrypted backups |
 | SMTP2GO | Effluz account, sender domain `forms.effluz.com` | Transactional email |
 | InterServer | Effluz account | The VPS, United States region |
-| DeepL | Effluz account, API key | Translation suggestions in the builder; DeepL Write corrections in the manager |
+| DeepL | Effluz account, API key | Translation suggestions in the builder; DeepL Write corrections in the manager, deferred |
 | GitHub | `effluz/effluz-forms` | Code, CI/CD, container registry |
 
 Credentials for all of these live in the team password manager, never in the

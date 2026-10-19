@@ -24,6 +24,16 @@ describe("LocalDiskStorage", () => {
     expect(await storage.exists(ref)).toBe(false);
   });
 
+  it("streams a stored file and rejects a missing one", async () => {
+    await storage.put(new Uint8Array([4, 5, 6]), "forms/s/HP-0001/01-x.jpg", "image/jpeg");
+    const stream = await storage.openRead("forms/s/HP-0001/01-x.jpg");
+    expect(new Uint8Array(await new Response(stream).arrayBuffer())).toEqual(
+      new Uint8Array([4, 5, 6]),
+    );
+    await expect(storage.openRead("forms/s/HP-0001/missing.jpg")).rejects.toThrow();
+    await expect(storage.openRead("../outside.jpg")).rejects.toThrow(/escapes/);
+  });
+
   it("overwrites the same key and leaves no temporary files", async () => {
     await storage.put(new Uint8Array([1]), "in-progress/rec/a.jpg", "image/jpeg");
     await storage.put(new Uint8Array([2]), "in-progress/rec/a.jpg", "image/jpeg");

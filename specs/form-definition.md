@@ -16,7 +16,9 @@ Decision record: `decisions/0009-form-builder-versioned-definitions.md`.
 
 **Operational settings** live on the form and change without a new version:
 notification recipients, retention period, open and close dates, bot
-challenge on or off, allow another response on or off. **Anything the submitter sees** lives in the version.
+challenge on or off, allow another response on or off, and `usePostPlan`
+(whether the form's submissions join the post plan, off by default,
+`use-cases/manage-form-settings.md`). **Anything the submitter sees** lives in the version.
 
 ## Text and languages
 
@@ -90,6 +92,11 @@ builder editor for its settings, the renderer component, the server validator,
 the storage normalizer, the export formatter, the review display, and the
 starting settings a newly added field gets (the `defaultSettings` hook, ADR
 0016). A type missing any of these fails the conformance suite.
+
+In review, `short_text` and `long_text` are curatable (staff can correct
+them, `use-cases/curate-submission.md`), `short_text` and `email` are
+searchable, and `short_text` names a story in lists (the `reviewTraits` hook,
+ADR 0016 amendment).
 
 Adding a type: see `CLAUDE.md`, "Adding a capability". Removing a type is not
 supported while any version uses it.
@@ -245,6 +252,10 @@ Submission
   publishedPostUrl?: https URL
 ```
 
+Review state (the planned date, the readiness ticks, chosen photos, staff
+photos and the edit history) lives in the `review` module's tables, never in
+`answers`.
+
 `reference` is a short human identifier, `<prefix>-<sequence>`, where the
 prefix is a form setting (default: uppercase initials of the slug) and the
 sequence is per form, zero-padded to four digits. It names the Dropbox
@@ -272,10 +283,15 @@ enforces by requiring the editor to tick each item as covered:
    authority to share it.
 9. That text answers may be checked for spelling and grammar by an
    automated correction service (DeepL), and that the original is kept.
+10. That photos the submitter sends later for this submission (for example on
+    WhatsApp, Instagram or email) are kept and used the same way.
 
-The builder offers a starting template in both languages that already
-covers 1, 2 and 4 to 9, leaving the purpose to the editor. The renderer adds
-nothing to the consent text; it must stand on its own.
+Item 10 is required at publish only when the form's `usePostPlan` setting is
+on; publish reports a missing one as `consent_checklist`.
+
+The builder offers a starting template in both languages that already covers
+1, 2 and 4 to 9, leaving the purpose to the editor; the template stays as it is
+and does not cover item 10. The renderer adds nothing to the consent text; it must stand on its own.
 
 ## Privacy rules enforced by the model
 

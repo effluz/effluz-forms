@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { mkdir, readFile, readdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
 import type { ListedPrefix, StagingStorage } from "../application/ports/media-storage";
 
 const ESCAPE_MESSAGE = "media ref escapes the storage root";
@@ -47,6 +49,13 @@ export class LocalDiskStorage implements StagingStorage {
 
   async read(ref: string): Promise<Uint8Array> {
     return new Uint8Array(await readFile(this.resolve(ref)));
+  }
+
+  async openRead(ref: string): Promise<ReadableStream<Uint8Array>> {
+    const file = this.resolve(ref);
+    // Rejects for a missing file, before a stream exists to fail later.
+    if (!(await stat(file)).isFile()) throw new Error("media file is missing");
+    return Readable.toWeb(createReadStream(file)) as ReadableStream<Uint8Array>;
   }
 
   // A local view path does not expire; the admin route checks the session.

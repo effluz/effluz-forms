@@ -4,16 +4,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const request = vi.hoisted(() => ({
   cookies: new Map<string, string>(),
   headers: new Headers(),
+  calls: [] as string[],
 }));
 
+vi.mock("next/server", () => ({
+  connection: () => {
+    request.calls.push("connection");
+    return Promise.resolve();
+  },
+}));
 vi.mock("next/headers", () => ({
-  cookies: () =>
-    Promise.resolve({
+  cookies: () => {
+    request.calls.push("cookies");
+    return Promise.resolve({
       get: (name: string) => {
         const value = request.cookies.get(name);
         return value === undefined ? undefined : { name, value };
       },
-    }),
+    });
+  },
   headers: () => Promise.resolve(request.headers),
 }));
 vi.mock("next/navigation", () => ({
@@ -47,6 +56,7 @@ let deps: FakeIdentityDeps;
 
 beforeEach(() => {
   request.cookies.clear();
+  request.calls.length = 0;
   request.headers = new Headers({ "x-forwarded-for": "203.0.113.7" });
   deps = makeDeps();
   vi.mocked(getContainer).mockReturnValue(
@@ -55,6 +65,12 @@ beforeEach(() => {
 });
 
 describe("pageSession", () => {
+  it("opts into request-time rendering before it reads the request", async () => {
+    await expect(pageSession("/admin/forms")).rejects.toThrow("REDIRECT");
+    expect(request.calls[0]).toBe("connection");
+    expect(request.calls).toContain("cookies");
+  });
+
   it("redirects to sign-in, returning to the page, without a session", async () => {
     await expect(pageSession("/admin/forms/new")).rejects.toThrow(
       "REDIRECT /admin/auth/signin?returnTo=%2Fadmin%2Fforms%2Fnew",

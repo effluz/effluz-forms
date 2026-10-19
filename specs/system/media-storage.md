@@ -16,6 +16,7 @@ Each tier is an adapter of the same port.
 | `put(bytes, key, contentType)` | Store the bytes (files are capped at 10 MB, so no stream is needed). Returns a provider reference. Idempotent for the same key: Dropbox writes with `mode: overwrite`. |
 | `refForKey(key)` | The reference `put` returns for a key, without a call to the provider. `media.delete` uses it for a row whose upload never recorded a reference. |
 | `viewUrl(ref, ttl)` | A URL that serves the file for at most `ttl`. |
+| `openRead(ref)` | The bytes as a stream. Dropbox fetches the temporary link server-side. Used for thumbnails, full photo views, downloads and ZIPs. |
 | `delete(ref)` | Remove the file. Succeeds if it is already gone. |
 | `exists(ref)` | Existence check; uploads rely on `put` overwriting by key. |
 | `read(ref)` | Staging only: the bytes, for the upload job. |
@@ -27,6 +28,7 @@ no personal data:
 
 ```
 forms/<form slug>/<submission reference>/<nn>-<field slug>.<ext>
+forms/<form slug>/<submission reference>/staff-<nn>-<8 hex>.<ext>
 forms/<form slug>/assets/header-<draft or version id>.webp
 backups/<YYYY-MM-DD>-db.dump.enc
 ```
@@ -39,6 +41,14 @@ the second and later fields with the same slug get `-2`, `-3`, and a suffix is
 raised until the slug is free (a label that is itself `Photos 2` cannot collide
 with the suffixed `Photos`). The base is trimmed first so the suffixed slug
 still fits 40 characters.
+
+Photos staff add to a story (`use-cases/review-submissions.md`, "Main flow:
+staff photos") use the `staff-` key: `nn` is one more than the highest
+position among the story's `staff-photos` media rows, rows awaiting
+`media.delete` included, and the hex is the first eight characters of the media
+id, so a removed photo's pending delete never reaches a newer file. They are
+media rows under the reserved field key `staff-photos`
+(`decisions/0028`).
 
 Staged files are named `in-progress/<record id>/<file id>.<ext>`: random ids
 only, so expiring a record removes its files with one prefix delete. Both ids
@@ -62,7 +72,8 @@ folder, so the token can reach nothing else in that account. Uses the refresh-to
 flow; the refresh token is an environment variable, access tokens are renewed
 in memory. `viewUrl` wraps the temporary-link API and the result is cached in
 process for slightly less than its validity window so the admin page does not
-hit the API on every render. Respects rate-limit responses by retrying through
+hit the API on every render; a failed download drops the cached link, so the
+next read asks for a fresh one. Respects rate-limit responses by retrying through
 the job system, never inline.
 
 `MEDIA_PROVIDER=dropbox` with `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET` and
@@ -73,7 +84,8 @@ the job system, never inline.
 local fake. A 401 renews the access token once. Any other non-2xx answer (429, 5xx, and
 also 4xx such as a refused path) fails the job, which the job system retries
 until it is dead; there is no permanent class for Dropbox answers. Every call
-stops waiting after 60 seconds, which counts as a failed attempt.
+stops waiting after 60 seconds (for a download, until its headers arrive),
+which counts as a failed attempt.
 
 Any further provider (S3-compatible, Supabase Storage, Google Drive) is a new
 adapter and an ADR. No other code changes.
@@ -117,11 +129,14 @@ it.
 
 ## Downloads
 
-The manager offers a per-file download and a per-submission ZIP named
-`<form slug>-<reference>.zip` with the same paths inside. Both stream
-through the app from the staging copy or the Dropbox temporary link, and
-both write an audit entry. Files are also directly in the Dropbox folder
-above for staff who prefer to work there.
+The manager offers a per-file download and two ZIPs per story: all files,
+named `<form slug>-<reference>.zip`, and, on post-plan forms, the chosen
+photos, named `<form slug>-<reference>-chosen.zip`. Entries are named
+`<reference>/<file name>` and stored without compression, since photos are
+compressed already. All stream through the app from the staging copy or the
+durable file (`openRead`), and all write an audit entry. Thumbnails are 320 px
+WebP, made on request and not audited. Files are also directly in the Dropbox
+folder above for staff who prefer to work there.
 
 ## Lifecycle
 
@@ -129,6 +144,9 @@ above for staff who prefer to work there.
 received  -->  staged (local disk, DB row)  -->  stored (Dropbox, staging deleted)
                                               \->  failed (job dead, staging kept, alert)
 ```
+
+Staff photos are deleted with the story and by the retention purge, through
+their media rows like every other file of the story.
 
 Deletion for retention removes the Dropbox file, the staging copy if any, and
 the media row, in that order, through a job so a provider outage cannot leave
@@ -148,8 +166,12 @@ failed delete after a silent accept or a Submit). The recurring step
 
 `viewUrl` on local disk returns `/admin/media/local/<ref>`, the admin route
 that streams the file, and ignores the `ttl` (the route checks the session on
-every request). That route does not exist yet; it arrives with the review
-plan.
+every request). The route exists now. It requires a session, answers 404
+unless `MEDIA_PROVIDER=local`, serves only the durable key of a stored video
+media row of an existing submission (any other key under `forms/`, and
+`assets/`, is a 404), and records the view as `photo_viewed` like the media
+route does. It is reached only by a video redirect from the audited media
+route; photos and staging copies stream through that audited route instead.
 
 ## Dropbox-specific risks to monitor
 

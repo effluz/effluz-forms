@@ -4,8 +4,12 @@ import type { PublishCode } from "../issues";
 import { checkbox } from "./checkbox";
 import { conformanceChecks } from "./conformance-checks";
 import { consent } from "./consent";
+import { email } from "./email";
+import { longText } from "./long-text";
+import { buildDefaultRegistry } from "./index";
 import { fileUpload } from "./file-upload";
 import { multipleChoice } from "./multiple-choice";
+import { numberType } from "./number";
 import { shortText } from "./short-text";
 
 const failing = (def: Parameters<typeof conformanceChecks>[0]) =>
@@ -116,6 +120,33 @@ describe("conformanceChecks", () => {
     const check = conformanceChecks(broken).find((c) => c.name === "classifies empty answers");
     expect(check?.ok).toBe(false);
     expect(check?.detail).toContain("boom");
+  });
+  it("a type with review traits has string answers", () => {
+    const probe = defineFieldType({
+      ...checkbox,
+      reviewTraits: { curatable: true },
+    });
+    expect(failing(probe)).toEqual(["review traits need string answers"]);
+    const number = defineFieldType({
+      ...numberType,
+      reviewTraits: { curatable: true },
+    });
+    expect(failing(number)).toEqual(["review traits need string answers"]);
+    expect(failing(shortText)).toEqual([]);
+  });
+  it("registers review traits on exactly the text types", () => {
+    const traits = Object.fromEntries(
+      buildDefaultRegistry()
+        .list()
+        .filter((d) => d.reviewTraits !== undefined)
+        .map((d) => [d.id, d.reviewTraits]),
+    );
+    expect(traits).toEqual({
+      short_text: { curatable: true, searchable: true, label: true },
+      long_text: { curatable: true },
+      email: { searchable: true },
+    });
+    expect([shortText, longText, email].map((d) => failing(d))).toEqual([[], [], []]);
   });
   it("passes file_upload's upload limits", () => {
     expect(failing(fileUpload)).toEqual([]);

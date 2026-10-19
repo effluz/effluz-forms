@@ -112,4 +112,20 @@ describe("admin session gate", () => {
     expect(html).toMatch(/<a [^>]*href="\/admin\/forms"[^>]*aria-current="page"[^>]*>Forms/);
     expect(html).toMatch(/<main [^>]*>page content<\/main>/);
   });
+
+  it("marks the section from the proxy's header", async () => {
+    seedSession();
+    request.cookies.set(COOKIE, SESSION_ID);
+    const current = (html: string) =>
+      [...html.matchAll(/<a [^>]*aria-current="page"[^>]*>([^<]*)</g)].map((m) => m[1]);
+
+    request.headers = new Headers({ "x-effluz-section": "plan" });
+    expect(current(await render())).toEqual(["Post plan", "Post plan"]);
+    request.headers = new Headers({ "x-effluz-section": "operations" });
+    expect(current(await render())).toEqual(["Operations", "Operations"]);
+    request.headers = new Headers();
+    expect(current(await render())).toEqual(["Forms", "Forms"]);
+    request.headers = new Headers({ "x-effluz-section": "settings" });
+    expect(current(await render())).toEqual(["Forms", "Forms"]);
+  });
 });

@@ -7,6 +7,7 @@ export type {
   ExclusiveRole,
   FieldTypeDefinition,
   FieldTypeId,
+  PublishChecksContext,
   PublishIssueDraft,
   SettingsText,
   UploadLimits,
@@ -30,12 +31,22 @@ export { evaluateVisibility, visiblePages } from "./visibility";
 export type { Visibility } from "./visibility";
 export { validateSubmission, validatePage, isAbsent } from "./submission";
 export type { SubmissionContext, SubmissionResult, PageValidation } from "./submission";
-export { checkDefinition, validateForPublish, parseVersion, collectsPersonalData } from "./publish";
+export {
+  checkDefinition,
+  validateForPublish,
+  parseVersion,
+  collectsPersonalData,
+  versionCoversConsentItem,
+} from "./publish";
 export type { PublishContext } from "./publish";
 export { exportColumns, exportRow } from "./export";
 export type { ExportColumn } from "./export";
 export { consentTextVersion } from "./consent-text";
-export { consentItems, isConsentChecklistComplete } from "./field-types/consent";
+export {
+  consentItems,
+  conditionalConsentItems,
+  isConsentChecklistComplete,
+} from "./field-types/consent";
 export type { ConsentItem } from "./field-types/consent";
 export { EMAIL_MAX_LENGTH } from "./field-types/email";
 export { effectiveDisplay, DROPDOWN_MIN_OPTIONS } from "./field-types/single-choice";

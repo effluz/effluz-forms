@@ -1,19 +1,48 @@
 import { describe, expect, it } from "vitest";
 import { consentTextVersion } from "../consent-text";
-import { consent, consentItems, isConsentChecklistComplete } from "./consent";
+import {
+  conditionalConsentItems,
+  consent,
+  consentItems,
+  isConsentChecklistComplete,
+} from "./consent";
 
 const text = { en: "I am an adult and agree.", es: "Soy mayor de edad y acepto." };
 const full = { text, coveredItems: [...consentItems] };
+const noPlan = { postPlan: false };
+const plan = { postPlan: true };
 
 describe("consent", () => {
   it("has exactly nine checklist items", () => {
     expect(consentItems).toHaveLength(9);
   });
   it("checklist completeness requires all nine", () => {
-    expect(isConsentChecklistComplete(full)).toBe(true);
-    expect(isConsentChecklistComplete({ text, coveredItems: consentItems.slice(0, 8) })).toBe(
-      false,
-    );
+    expect(isConsentChecklistComplete(full, noPlan)).toBe(true);
+    expect(
+      isConsentChecklistComplete({ text, coveredItems: consentItems.slice(0, 8) }, noPlan),
+    ).toBe(false);
+  });
+  it("accepts later_photos as a covered item", () => {
+    expect(conditionalConsentItems).toEqual(["later_photos"]);
+    const parsed = consent.settingsSchema.parse({
+      text: { en: "x" },
+      coveredItems: ["later_photos"],
+    });
+    expect(parsed.coveredItems).toEqual(["later_photos"]);
+  });
+  it("requires later_photos only in the post-plan context", () => {
+    const field = { required: false, validation: [] };
+    expect(consent.publishChecks?.(field, full, noPlan)).toEqual([]);
+    expect(consent.publishChecks?.(field, full, plan)).toEqual([
+      { code: "consent_checklist", path: "settings/coveredItems" },
+    ]);
+    const all = { text, coveredItems: [...consentItems, ...conditionalConsentItems] };
+    expect(consent.publishChecks?.(field, all, noPlan)).toEqual([]);
+    expect(consent.publishChecks?.(field, all, plan)).toEqual([]);
+  });
+  it("declares the items it covers", () => {
+    const all = { text, coveredItems: [...consentItems, ...conditionalConsentItems] };
+    expect(consent.consentCoverage?.(all)).toEqual(all.coveredItems);
   });
   it("accepts only accepted:true with the matching text version", () => {
     const v = consentTextVersion(text);
@@ -38,10 +67,10 @@ describe("consent", () => {
   });
   it("reports an incomplete checklist at settings/coveredItems", () => {
     const field = { required: false, validation: [] };
-    expect(consent.publishChecks?.(field, full)).toEqual([]);
-    expect(consent.publishChecks?.(field, { text, coveredItems: consentItems.slice(1) })).toEqual([
-      { code: "consent_checklist", path: "settings/coveredItems" },
-    ]);
+    expect(consent.publishChecks?.(field, full, noPlan)).toEqual([]);
+    expect(
+      consent.publishChecks?.(field, { text, coveredItems: consentItems.slice(1) }, noPlan),
+    ).toEqual([{ code: "consent_checklist", path: "settings/coveredItems" }]);
   });
   it("allows one consent field per form", () => {
     expect(consent.exclusiveRoles?.(full)).toEqual([

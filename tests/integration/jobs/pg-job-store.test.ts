@@ -237,6 +237,190 @@ describe("PgJobStore", () => {
     });
   });
 
+  describe("dead alerts", () => {
+    const ALERT = "email.job_alert";
+    const alertStore = new PgJobStore(pool, clock, {
+      leaseSeconds: LEASE,
+      deadAlert: { type: ALERT, maxAttempts: 36 },
+    });
+
+    async function alerts() {
+      const res = await pool.query<{
+        status: string;
+        payload: unknown;
+        max_attempts: number;
+        run_at: Date;
+        unique_key: string | null;
+      }>(
+        `select status, payload, max_attempts, run_at, unique_key from job
+          where type = $1 order by run_at, unique_key`,
+        [ALERT],
+      );
+      return res.rows;
+    }
+
+    /** Claims every due job at once, so later deaths cannot pick up an alert row. */
+    async function claimAll(): Promise<ClaimedJob[]> {
+      return alertStore.claim("w1", 10);
+    }
+
+    function only(jobs: ClaimedJob[]): ClaimedJob {
+      const [job] = jobs;
+      if (!job || jobs.length !== 1) throw new Error("expected one claimed job");
+      return job;
+    }
+
+    it("enqueues one alert when a job goes dead", async () => {
+      await seed({ type: "media.upload", attempts: 35, maxAttempts: 36 });
+      const job = only(await claimAll());
+      expect(await alertStore.fail(job, "w1", "boom")).toBe("dead");
+      expect(await alerts()).toEqual([
+        {
+          status: "pending",
+          payload: { jobType: "media.upload" },
+          max_attempts: 36,
+          run_at: NOW,
+          unique_key: "email.job_alert:media.upload:2026-10-10T12",
+        },
+      ]);
+    });
+
+    it("markDead raises the alert too", async () => {
+      await seed({ type: "media.upload" });
+      const job = only(await claimAll());
+      expect(await alertStore.markDead(job, "w1", "gave up")).toBe("dead");
+      expect(await alerts()).toEqual([
+        {
+          status: "pending",
+          payload: { jobType: "media.upload" },
+          max_attempts: 36,
+          run_at: NOW,
+          unique_key: "email.job_alert:media.upload:2026-10-10T12",
+        },
+      ]);
+    });
+
+    it("coalesces deaths of one type within the hour and schedules the next hour once", async () => {
+      for (let i = 0; i < 3; i++) await seed({ type: "media.upload", maxAttempts: 1 });
+      const [a, b, c] = await claimAll();
+      if (!a || !b || !c) throw new Error("expected three claimed jobs");
+      expect(await alertStore.fail(a, "w1", "boom")).toBe("dead");
+      await pool.query("update job set status = 'succeeded', finished_at = $2 where type = $1", [
+        ALERT,
+        NOW,
+      ]);
+      clock.set(new Date("2026-10-10T12:10:00Z"));
+      expect(await alertStore.fail(b, "w1", "boom")).toBe("dead");
+      clock.set(new Date("2026-10-10T12:20:00Z"));
+      expect(await alertStore.fail(c, "w1", "boom")).toBe("dead");
+      const rows = await alerts();
+      expect(rows.map((r) => ({ status: r.status, key: r.unique_key, runAt: r.run_at }))).toEqual([
+        {
+          status: "succeeded",
+          key: "email.job_alert:media.upload:2026-10-10T12",
+          runAt: NOW,
+        },
+        {
+          status: "pending",
+          key: "email.job_alert:media.upload:2026-10-10T13",
+          runAt: new Date("2026-10-10T13:00:00Z"),
+        },
+      ]);
+    });
+
+    it("a death while the hour's alert is still waiting adds nothing", async () => {
+      await seed({ type: "media.upload", maxAttempts: 1 });
+      await seed({ type: "media.upload", maxAttempts: 1 });
+      const [a, b] = await claimAll();
+      if (!a || !b) throw new Error("expected two claimed jobs");
+      expect(await alertStore.fail(a, "w1", "boom")).toBe("dead");
+      clock.set(new Date("2026-10-10T12:05:00Z"));
+      expect(await alertStore.fail(b, "w1", "boom")).toBe("dead");
+      const rows = await alerts();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.status).toBe("pending");
+    });
+
+    it("a death while the hour's alert awaits a retry adds nothing", async () => {
+      await seed({ type: "media.upload", maxAttempts: 1 });
+      await seed({ type: "media.upload", maxAttempts: 1 });
+      const [a, b] = await claimAll();
+      if (!a || !b) throw new Error("expected two claimed jobs");
+      expect(await alertStore.fail(a, "w1", "boom")).toBe("dead");
+      await pool.query("update job set status = 'failed', attempts = 1 where type = $1", [ALERT]);
+      clock.set(new Date("2026-10-10T12:05:00Z"));
+      expect(await alertStore.fail(b, "w1", "boom")).toBe("dead");
+      expect((await alerts()).map((r) => r.status)).toEqual(["failed"]);
+    });
+
+    it("a death while the hour's alert is running schedules the next hour", async () => {
+      await seed({ type: "media.upload", maxAttempts: 1 });
+      await seed({ type: "media.upload", maxAttempts: 1 });
+      const [a, b] = await claimAll();
+      if (!a || !b) throw new Error("expected two claimed jobs");
+      expect(await alertStore.fail(a, "w1", "boom")).toBe("dead");
+      // The alert has already read its count, so this death needs the next hour's alert.
+      await pool.query("update job set status = 'running', locked_at = $2 where type = $1", [
+        ALERT,
+        NOW,
+      ]);
+      clock.set(new Date("2026-10-10T12:05:00Z"));
+      expect(await alertStore.fail(b, "w1", "boom")).toBe("dead");
+      expect((await alerts()).map((r) => ({ status: r.status, key: r.unique_key }))).toEqual([
+        { status: "running", key: "email.job_alert:media.upload:2026-10-10T12" },
+        { status: "pending", key: "email.job_alert:media.upload:2026-10-10T13" },
+      ]);
+    });
+
+    it("keeps types apart", async () => {
+      await seed({ type: "media.upload", maxAttempts: 1 });
+      await seed({ type: "email.staff_notification", maxAttempts: 1 });
+      const claimed = await claimAll();
+      expect(claimed).toHaveLength(2);
+      for (const job of claimed) expect(await alertStore.fail(job, "w1", "boom")).toBe("dead");
+      expect((await alerts()).map((r) => r.unique_key)).toEqual([
+        "email.job_alert:email.staff_notification:2026-10-10T12",
+        "email.job_alert:media.upload:2026-10-10T12",
+      ]);
+    });
+
+    it("an alert job going dead raises no alert", async () => {
+      const id = await seed({ type: ALERT, attempts: 35, maxAttempts: 36 });
+      const job = only(await claimAll());
+      expect(await alertStore.fail(job, "w1", "smtp down")).toBe("dead");
+      expect((await row(id)).status).toBe("dead");
+      expect(await alerts()).toHaveLength(1);
+    });
+
+    it("a lost outcome raises nothing", async () => {
+      await seed({ type: "media.upload", maxAttempts: 1 });
+      const first = only(await claimAll());
+      clock.set(new Date(NOW.getTime() + (LEASE + 1) * 1000));
+      expect(await alertStore.claim("w2", 1)).toHaveLength(1);
+      expect(await alertStore.fail(first, "w1", "late")).toBe("lost");
+      expect(await alerts()).toEqual([]);
+    });
+
+    it("without deadAlert no alert is written", async () => {
+      await seed({ type: "media.upload", maxAttempts: 1 });
+      const [job] = await store.claim("w1", 1);
+      expect(await store.fail(job as ClaimedJob, "w1", "boom")).toBe("dead");
+      expect(await alerts()).toEqual([]);
+    });
+
+    it("rolls back the dead write when the alert insert fails", async () => {
+      const broken = new PgJobStore(pool, clock, {
+        leaseSeconds: LEASE,
+        deadAlert: { type: ALERT, maxAttempts: Number.NaN },
+      });
+      const id = await seed({ type: "media.upload", maxAttempts: 1 });
+      const [job] = await broken.claim("w1", 1);
+      await expect(broken.fail(job as ClaimedJob, "w1", "boom")).rejects.toThrow();
+      expect((await row(id)).status).toBe("running");
+      expect(await alerts()).toEqual([]);
+    });
+  });
+
   describe("heartbeat", () => {
     it("upserts one row per worker and reports the age against the clock", async () => {
       expect(await store.heartbeatAgeSeconds()).toBeNull();

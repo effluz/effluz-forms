@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Submission } from "@/modules/submissions/domain/submission";
+import type { Curation, Submission } from "@/modules/submissions/domain/submission";
 import { PgSubmissionRepository } from "@/modules/submissions/infrastructure/pg-submission-repository";
 import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
-import { testPool, truncateAll } from "../db";
+import { testPool, truncateAll, waitForLockWaiters } from "../db";
 import { seedPublishedForm } from "./factories";
 
 describe("PgSubmissionRepository", () => {
@@ -79,5 +79,108 @@ describe("PgSubmissionRepository", () => {
     );
     expect(rows[0]?.status).toBe("viewed");
     expect(await repo.findById(submission.id)).toEqual(submission);
+  });
+
+  it("reads and writes curation columns, and the trigger still guards answers", async () => {
+    const submission = await sample();
+    await uow.run((u) => repo.insert(u, submission));
+    const curation: Curation = {
+      status: "edited",
+      curatedAnswers: { f_name: "Ana" },
+      publishedPostUrl: null,
+      statusChangedBy: "editor@example.com",
+      statusChangedAt: new Date("2026-10-11T08:00:00.000Z"),
+    };
+    await uow.run((u) => repo.writeCuration(u, submission.id, curation));
+
+    await expect(
+      pool.query("update submission set answers = '{}' where id = $1", [submission.id]),
+    ).rejects.toThrow(/submission answers are immutable/);
+    const found = await repo.findByReference(submission.formId, submission.reference);
+    expect(found).toEqual({ ...submission, curation });
+    expect(await repo.findStored(submission.id)).toEqual({ ...submission, curation });
+  });
+
+  it("refuses to write the curation of a submission that does not exist", async () => {
+    const curation: Curation = {
+      status: "viewed",
+      curatedAnswers: {},
+      publishedPostUrl: null,
+      statusChangedBy: "editor@example.com",
+      statusChangedAt: new Date("2026-10-11T08:00:00.000Z"),
+    };
+    const missing = randomUUID();
+    await expect(uow.run((u) => repo.writeCuration(u, missing, curation))).rejects.toThrow(
+      `submission ${missing} does not exist`,
+    );
+    await expect(uow.run((u) => repo.writeCuration(u, "nope", curation))).rejects.toThrow(
+      "submission nope does not exist",
+    );
+  });
+
+  it("starts every stored submission as new with no corrections", async () => {
+    const submission = await sample();
+    await uow.run((u) => repo.insert(u, submission));
+    expect((await repo.findStored(submission.id))?.curation).toEqual({
+      status: "new",
+      curatedAnswers: {},
+      publishedPostUrl: null,
+      statusChangedBy: null,
+      statusChangedAt: null,
+    });
+    expect(await repo.findStored("nope")).toBeNull();
+  });
+
+  it("locks the row for the unit of work", async () => {
+    const submission = await sample();
+    await uow.run((u) => repo.insert(u, submission));
+    const first = await uow.begin();
+    try {
+      expect((await repo.lockForUpdate(first, submission.id))?.id).toBe(submission.id);
+
+      let secondRead = false;
+      const second = uow.run(async (u) => {
+        const found = await repo.lockForUpdate(u, submission.id);
+        secondRead = true;
+        return found;
+      });
+      await waitForLockWaiters(pool);
+      expect(secondRead).toBe(false);
+
+      await repo.writeCuration(first, submission.id, {
+        status: "viewed",
+        curatedAnswers: {},
+        publishedPostUrl: null,
+        statusChangedBy: "editor@example.com",
+        statusChangedAt: new Date("2026-10-11T08:00:00.000Z"),
+      });
+      await first.commit();
+      expect((await second)?.curation.status).toBe("viewed");
+    } finally {
+      // A failed assertion must not leave the lock (and the next truncate) waiting.
+      await first.rollback().catch(() => undefined);
+    }
+    expect(await uow.run((u) => repo.lockForUpdate(u, randomUUID()))).toBeNull();
+    expect(await uow.run((u) => repo.lockForUpdate(u, "nope"))).toBeNull();
+  });
+
+  it("finds by reference within the form only", async () => {
+    const submission = await sample();
+    await uow.run((u) => repo.insert(u, submission));
+    const other = await sample({ id: randomUUID(), submitToken: randomUUID() });
+    await uow.run((u) => repo.insert(u, other));
+    expect((await repo.findByReference(submission.formId, "ST-0001"))?.id).toBe(submission.id);
+    expect((await repo.findByReference(other.formId, "ST-0001"))?.id).toBe(other.id);
+    expect(await repo.findByReference(submission.formId, "ST-0002")).toBeNull();
+    expect(await repo.findByReference("not-a-uuid", "ST-0001")).toBeNull();
+  });
+
+  it("deletes a submission and reports whether a row went", async () => {
+    const submission = await sample();
+    await uow.run((u) => repo.insert(u, submission));
+    expect(await uow.run((u) => repo.delete(u, submission.id))).toBe(true);
+    expect(await repo.findById(submission.id)).toBeNull();
+    expect(await uow.run((u) => repo.delete(u, submission.id))).toBe(false);
+    expect(await uow.run((u) => repo.delete(u, "nope"))).toBe(false);
   });
 });

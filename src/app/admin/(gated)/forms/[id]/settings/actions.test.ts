@@ -13,6 +13,7 @@ const request = vi.hoisted(() => ({
   writes: [] as CookieWrite[],
 }));
 
+vi.mock("next/server", () => ({ connection: () => Promise.resolve() }));
 vi.mock("next/headers", () => ({
   cookies: () =>
     Promise.resolve({

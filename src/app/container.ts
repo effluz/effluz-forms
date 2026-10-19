@@ -7,6 +7,7 @@ import { PgAuditLogReader } from "@/modules/identity/infrastructure/pg-audit-log
 import { PgSessionRepository } from "@/modules/identity/infrastructure/pg-session-repository";
 import { PgSignInAttemptStore } from "@/modules/identity/infrastructure/pg-sign-in-attempt-store";
 import type { MediaDeps } from "@/modules/media/application";
+import type { ReviewDeps } from "@/modules/review/application";
 import type { SubmissionsDeps } from "@/modules/submissions/application";
 import type { JobQueue } from "@/shared/application/ports/job-queue";
 import type { Logger } from "@/shared/application/ports/logger";
@@ -19,7 +20,7 @@ import { createLogger } from "@/shared/infrastructure/logging/logger";
 import { createPool } from "@/shared/infrastructure/postgres/pool";
 import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
 import { loadConfig, type AppConfig } from "./config";
-import { buildDefinitions, buildMedia, buildSubmissions } from "./modules";
+import { buildDefinitions, buildMedia, buildReview, buildSubmissions } from "./modules";
 
 export interface Container {
   config: AppConfig;
@@ -32,6 +33,7 @@ export interface Container {
   definitions: DefinitionsDeps;
   media: MediaDeps;
   submissions: SubmissionsDeps;
+  review: ReviewDeps;
   auditReader: AuditLogReader;
 }
 
@@ -77,6 +79,17 @@ export function buildContainer(
   const media = overrides.media ?? buildMedia(config, pool, uow, queue);
   const submissions =
     overrides.submissions ?? buildSubmissions({ pool, uow, queue, definitions, media, logger });
+  const review =
+    overrides.review ??
+    buildReview({
+      pool,
+      uow,
+      definitions,
+      submissions,
+      media,
+      audit: identity.audit,
+      auditReader,
+    });
   return {
     config,
     logger,
@@ -90,6 +103,7 @@ export function buildContainer(
     definitions,
     media,
     submissions,
+    review,
     auditReader,
   };
 }

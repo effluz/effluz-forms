@@ -1,7 +1,7 @@
 /**
- * Fixed parts of the two emails. The specs own the text and `copy.test.ts` keeps this file equal
+ * Fixed parts of the three emails. The specs own the text and `copy.test.ts` keeps this file equal
  * to them: specs/ui-ux/renderer.md, "Confirmation email, fixed parts" (both languages) and
- * specs/system/email.md, "Staff notification, fixed parts" (English only).
+ * specs/system/email.md, "Staff notification, fixed parts" and "Job alert, fixed parts" (English only).
  */
 
 export const confirmationParts = {
@@ -26,6 +26,16 @@ export const staffParts = {
   Reference: "Reference: {ref}",
   Received: "Received: {date}",
   Link: "Open it in the manager: {link}",
+  Footer: "This email carries no answers or files. Sign in to the manager to see them.",
+} as const;
+
+export const alertParts = {
+  Subject: "Jobs need attention: {job type} ({count})",
+  Preheader: "{count} {job type} jobs stopped retrying",
+  Intro: "{count} background jobs of type {job type} stopped retrying and need attention.",
+  References: "Stories affected: {refs}",
+  More: "and {n} more",
+  Link: "Open Operations in the manager: {link}",
   Footer: "This email carries no answers or files. Sign in to the manager to see them.",
 } as const;
 

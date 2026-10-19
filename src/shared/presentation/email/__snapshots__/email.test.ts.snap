@@ -1,5 +1,62 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`renderJobAlert > renders the alert with references and more 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jobs need attention: media.upload (3)</title>
+</head>
+<body style="margin:0;padding:0;background:#FFF3EF">
+<span style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">3 media.upload jobs stopped retrying</span>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFF3EF"><tr><td align="center" style="padding:24px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;background:#FFFFFF;border:1px solid #EFF0F5;border-radius:12px"><tr><td style="padding:32px 24px">
+<p style="margin:0 0 16px;font:17px/1.6 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#1A1423">3 background jobs of type media.upload stopped retrying and need attention.</p><p style="margin:0 0 16px;font:17px/1.6 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#1A1423">Stories affected: HP-0001, HP-0002, HP-0003, HP-0004, HP-0005, HP-0006, HP-0007, HP-0008, HP-0009, HP-0010, HP-0011, HP-0012, HP-0013, HP-0014, HP-0015, HP-0016, HP-0017, HP-0018, HP-0019, HP-0020 and 4 more</p><p style="margin:0 0 16px;font:17px/1.6 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#1A1423">Open Operations in the manager: <a href="https://forms.example.com/admin/operations" style="color:#372549;text-decoration:underline">https://forms.example.com/admin/operations</a></p>
+<div style="margin-top:24px;padding-top:16px;border-top:1px solid #EFF0F5"><p style="margin:0 0 8px;font:15px/1.5 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#774C60">This email carries no answers or files. Sign in to the manager to see them.</p></div>
+</td></tr></table>
+</td></tr></table>
+</body>
+</html>",
+  "subject": "Jobs need attention: media.upload (3)",
+  "text": "3 background jobs of type media.upload stopped retrying and need attention.
+Stories affected: HP-0001, HP-0002, HP-0003, HP-0004, HP-0005, HP-0006, HP-0007, HP-0008, HP-0009, HP-0010, HP-0011, HP-0012, HP-0013, HP-0014, HP-0015, HP-0016, HP-0017, HP-0018, HP-0019, HP-0020 and 4 more
+Open Operations in the manager: https://forms.example.com/admin/operations
+
+--
+This email carries no answers or files. Sign in to the manager to see them.",
+}
+`;
+
+exports[`renderJobAlert > renders the alert without references 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jobs need attention: media.upload (3)</title>
+</head>
+<body style="margin:0;padding:0;background:#FFF3EF">
+<span style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">3 media.upload jobs stopped retrying</span>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFF3EF"><tr><td align="center" style="padding:24px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;background:#FFFFFF;border:1px solid #EFF0F5;border-radius:12px"><tr><td style="padding:32px 24px">
+<p style="margin:0 0 16px;font:17px/1.6 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#1A1423">3 background jobs of type media.upload stopped retrying and need attention.</p><p style="margin:0 0 16px;font:17px/1.6 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#1A1423">Open Operations in the manager: <a href="https://forms.example.com/admin/operations" style="color:#372549;text-decoration:underline">https://forms.example.com/admin/operations</a></p>
+<div style="margin-top:24px;padding-top:16px;border-top:1px solid #EFF0F5"><p style="margin:0 0 8px;font:15px/1.5 Poppins, &#39;Segoe UI&#39;, Roboto, &#39;Helvetica Neue&#39;, Arial, sans-serif;color:#774C60">This email carries no answers or files. Sign in to the manager to see them.</p></div>
+</td></tr></table>
+</td></tr></table>
+</body>
+</html>",
+  "subject": "Jobs need attention: media.upload (3)",
+  "text": "3 background jobs of type media.upload stopped retrying and need attention.
+Open Operations in the manager: https://forms.example.com/admin/operations
+
+--
+This email carries no answers or files. Sign in to the manager to see them.",
+}
+`;
+
 exports[`renderStaffNotification > renders the English notification with no answers 1`] = `
 {
   "html": "<!doctype html>

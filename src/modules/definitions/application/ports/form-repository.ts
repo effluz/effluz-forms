@@ -31,6 +31,8 @@ export interface FormRepository {
    */
   list(tab: FormTab, search?: string): Promise<Form[]>;
   counts(): Promise<Record<FormTab, number>>;
+  /** Forms whose settings use the post plan, any status, ordered by title (English, then Spanish) and slug. */
+  listUsingPostPlan(): Promise<Form[]>;
   /** Records that the person opened the form at `at`; the later call wins. */
   markOpened(uow: UnitOfWork, formId: string, email: string, at: Date): Promise<void>;
   lastOpened(email: string, formIds: string[]): Promise<Map<string, Date>>;

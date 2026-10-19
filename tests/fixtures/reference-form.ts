@@ -1,4 +1,8 @@
-import { consentItems, consentTextVersion } from "@/shared/domain/form-model";
+import {
+  conditionalConsentItems,
+  consentItems,
+  consentTextVersion,
+} from "@/shared/domain/form-model";
 
 // Encodes specs/use-cases/reference-form-preemie-stories.md as a draft input object.
 // Spanish single-language, like the original. All names and values are synthetic.
@@ -13,7 +17,8 @@ const consentText = es(
     "durante 12 meses, que las personas del equipo de Effluz con acceso a esa cuenta pueden " +
     "verlos, que Effluz puede revisar la ortografía y gramática de mis textos con un servicio " +
     "automático de corrección (DeepL) conservando el original, y que puedo pedir que se " +
-    "eliminen antes escribiendo a {privacy contact}.",
+    "eliminen antes escribiendo a {privacy contact}.\n\n" +
+    "Las fotos que nos envíes después para esta historia se guardan y usan de la misma forma.",
 );
 
 const required = { required: true } as const;
@@ -212,7 +217,10 @@ export const referenceFormDraft = {
           type: "consent",
           label: es("Consentimiento"),
           ...required,
-          settings: { text: consentText, coveredItems: [...consentItems] },
+          settings: {
+            text: consentText,
+            coveredItems: [...consentItems, ...conditionalConsentItems],
+          },
         },
       ],
     },

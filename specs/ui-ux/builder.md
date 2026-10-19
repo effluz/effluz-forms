@@ -186,13 +186,14 @@ literally; the preview makes that obvious.
 
 ### Consent field
 
-Beside the text pair, the nine-item checklist from `form-definition.md`,
-each a checkbox labeled with the requirement and a short example. "Insert
+Beside the text pair, the checklist from `form-definition.md` (nine items,
+and a tenth that shows only when the form's post-plan setting is on), each a
+checkbox labeled with the requirement and a short example. "Insert
 template" fills both languages with the bilingual template, pre-ticks the
 items the template covers, and places the cursor at the purpose sentence.
 The retention item shows the form's current retention setting and warns
-when the text mentions a different number. All nine ticked is a publish
-requirement.
+when the text mentions a different number. All the items shown ticked is a
+publish requirement: nine, or ten on a form in the post plan.
 
 ### Confirmation
 
@@ -501,6 +502,7 @@ builder owns; strings staff type are not here.
 | consent.item.7 | How to request deletion | Cómo pedir que se eliminen |
 | consent.item.8 | That the person is an adult with authority over a minor's data | Que la persona es mayor de edad y tiene autoridad sobre los datos del menor |
 | consent.item.9 | That texts may be checked by an automated correction service (DeepL), keeping the original | Que los textos pueden revisarse con un servicio automático de corrección (DeepL), conservando el original |
+| consent.item.10 | That photos sent later for a submission are kept and used the same way (forms in the post plan) | Que las fotos enviadas después para una respuesta se guardan y usan de la misma forma (formularios en el plan de publicaciones) |
 | confirm.screen | Confirmation screen | Pantalla de confirmación |
 | confirm.send_email | Send a confirmation email | Enviar correo de confirmación |
 | confirm.needs_email_field | Mark an email field as the submitter's address first | Primero marca un campo de correo como el de quien responde |

@@ -5,21 +5,25 @@ Decision record: `decisions/0006-transactional-email-provider.md`.
 
 ## Role
 
-Two messages exist in the first release, both sent as jobs after a submission
-is committed:
+These messages exist in the first release. The submitter confirmation and the
+staff notification are sent as jobs after a submission is committed; the job
+alert is sent as a job when a job goes dead (`use-cases/operate-jobs.md`,
+"Alerts"); the staff daily digest is a scheduled job:
 
 | Message | To | Language | Content |
 |---|---|---|---|
 | Submitter confirmation | The field marked as submitter address, if the form has one and the version defines a confirmation email | Submitter's locale | Staff-authored subject and body from the version, inside a fixed template that adds how to request deletion |
 | Staff notification | Recipients in the form's settings, when cadence is per submission | English | Form name, reference, time, link to the manager |
+| Job alert | `ALERT_EMAIL` | English | Job type, count, story references, link to Operations, no content |
 | Staff daily digest | Recipients in the form's settings, when cadence is daily | English | Form name, count of new submissions since the last digest, list of references with links. Not sent when the count is zero |
 
 The staff notification deliberately carries no story text and no photos.
 
 ## Ports
 
-`EmailRenderer.submitterConfirmation(data)` and
-`EmailRenderer.staffNotification(data)` return `{ subject, text, html }`.
+`EmailRenderer.submitterConfirmation(data)`,
+`EmailRenderer.staffNotification(data)` and `EmailRenderer.jobAlert(data)`
+return `{ subject, text, html }`.
 The implementation is the template module in
 `src/shared/presentation/email/`, wired at the composition root, since
 infrastructure may not import presentation.
@@ -32,23 +36,30 @@ failure is an `EmailSendError` marked retryable or permanent.
 
 The job handler looks the data up at run time, renders, sends, and records
 the provider id in the `email_delivery` table (owned by `notifications`)
-under the key `<job type>:<submission id>` before the job succeeds. A retry
+under the key `<job type>:<submission id>` (`email.job_alert:<job id>` for a
+job alert) before the job succeeds. A retry
 that finds the key sends nothing. A submission that no longer exists, or no
 longer has an address, ends the job without sending. The data comes through
 the `MessageSource` port, owned by `notifications` and implemented by
-`submissions`, which returns what an email needs from a submission id.
+`submissions`, which returns what an email needs from a submission id. The
+job alert gets its data through the `AlertSource` port, also owned by
+`notifications` and implemented by `review`: `AlertSource.jobAlert(jobType)`
+returns the count of dead jobs of that type and the story references among
+them (`decisions/0029`). When `ALERT_EMAIL` is unset, or no job of the type is
+dead any more when the alert runs (retried or discarded meanwhile), it returns
+nothing and the job ends without sending.
 
 ## Templates
 
 - Live in `src/shared/presentation/email/`: `copy.ts` (the fixed parts),
   `layout.ts` (the shared document), and one module per template,
-  `confirmation.ts` and `staff-notification.ts`. Each template renders English
-  and Spanish (the staff notification is English only), each with a plain-text
-  and an HTML body.
-- The fixed parts of both templates are specified in `ui-ux/renderer.md`
-  (confirmation) and this file (notification). The variable parts of the
-  confirmation come from the published version and are escaped and
-  sanitized like all staff-authored text.
+  `confirmation.ts`, `staff-notification.ts` and `job-alert.ts`. The
+  confirmation renders English and Spanish; the staff notification and the
+  job alert are English only. Each has a plain-text and an HTML body.
+- The fixed parts of the templates are specified in `ui-ux/renderer.md`
+  (confirmation) and this file (notification and job alert). The variable
+  parts of the confirmation come from the published version and are escaped
+  and sanitized like all staff-authored text.
 - HTML is table-based and inline-styled, uses design-system colors, and reads
   correctly with images blocked. Plain text is not generated from HTML; it is
   written.
@@ -57,8 +68,7 @@ the `MessageSource` port, owned by `notifications` and implemented by
 ### Staff notification, fixed parts
 
 English only. `{date}` is the received time in the form's time zone,
-followed by UTC. `{link}` is the form's page in the manager until the
-review plan adds the submission page.
+followed by UTC. `{link}` is the story page in the manager.
 
 | Part | English |
 |---|---|
@@ -69,6 +79,23 @@ review plan adds the submission page.
 | Received | Received: {date} |
 | Link | Open it in the manager: {link} |
 | Footer | This email carries no answers or files. Sign in to the manager to see them. |
+
+### Job alert, fixed parts
+
+English only. `{link}` is the Operations page in the manager.
+
+| Part | English |
+|---|---|
+| Subject | Jobs need attention: {job type} ({count}) |
+| Preheader | {count} {job type} jobs stopped retrying |
+| Intro | {count} background jobs of type {job type} stopped retrying and need attention. |
+| References | Stories affected: {refs} |
+| More | and {n} more |
+| Link | Open Operations in the manager: {link} |
+| Footer | This email carries no answers or files. Sign in to the manager to see them. |
+
+The References line is left out when no story is affected; More follows the
+references when there are more than 20.
 
 ## Sending domain
 

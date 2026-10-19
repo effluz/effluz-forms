@@ -5,7 +5,7 @@ import type { FormListRow } from "../application";
 import { FormsList } from "./FormsList";
 import { NewFormDialog } from "./NewFormDialog";
 import { carriedValues, refusedCreateLocation, type NewFormValues } from "./new-form-values";
-import { formatDate, formHref, statusTone, titleText } from "./view-models";
+import { formHref, statusTone, titleText } from "./view-models";
 
 const ID_1 = "00000001-0000-4000-8000-000000000001";
 const ID_2 = "00000002-0000-4000-8000-000000000002";
@@ -66,17 +66,6 @@ describe("view models", () => {
     expect(statusTone("published")).toBe("success");
     expect(statusTone("closed")).toBe("warning");
     expect(statusTone("archived")).toBe("neutral");
-  });
-
-  it("formats a date in the time zone, labelled with it, and in UTC", () => {
-    expect(formatDate("2026-10-09T14:30:00Z", "America/Panama")).toEqual({
-      local: "2026-10-09 09:30 America/Panama",
-      utc: "2026-10-09 14:30 UTC",
-    });
-    expect(formatDate(new Date("2026-01-01T00:05:00Z"), "UTC")).toEqual({
-      local: "2026-01-01 00:05 UTC",
-      utc: "2026-01-01 00:05 UTC",
-    });
   });
 
   it("builds the form's links", () => {
