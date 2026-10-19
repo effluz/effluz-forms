@@ -124,12 +124,7 @@ function PublishedStory({ item }: { item: PlanItem }): ReactElement {
       </a>
       {item.label === null ? null : <span>{item.label}</span>}
       {item.postUrl === null ? null : (
-        <a
-          className={cx(ui.link, styles.dayLink)}
-          href={item.postUrl}
-          target="_blank"
-          rel="noopener"
-        >
+        <a className={cx(ui.link, styles.dayLink)} href={item.postUrl} rel="noopener">
           <T k="st.open_post" />
           <OutwardIcon />
         </a>
@@ -149,11 +144,11 @@ function DayRow({ day, monday }: { day: DayView; monday: IsoDate }): ReactElemen
       {...(day.isToday ? { "aria-current": "date" as const } : {})}
     >
       <div className={styles.weekDay}>
-        <h3 className={styles.weekDate}>
+        <h2 className={styles.weekDate}>
           <time id={dateId} dateTime={day.date}>
             <BilingualText text={dayText(day.date)} />
           </time>
-        </h3>
+        </h2>
         {day.isToday ? (
           <span className={styles.todayMark}>
             <T k="plan.today" />

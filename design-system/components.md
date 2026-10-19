@@ -225,9 +225,9 @@ with a 2 px offset.
 - On today's row the focus ring of its links and buttons and the hover colour
   of its links use `color.text.default`: `color.border.focus` and the link
   hover colour are only 2.93:1 on `surface.selected`.
-- The date is a level 3 heading so screen-reader users can move from day to
-  day; its `<time>` carries the id that the day's "Pick a story" link is
-  described by.
+- The date is a level 2 heading (under the page's level 1 title, like the
+  waiting list's heading) so screen-reader users can move from day to day; its
+  `<time>` carries the id that the day's "Pick a story" link is described by.
 
 ## Viewer (staff, no JavaScript)
 

@@ -230,15 +230,19 @@ describe("PostPlanPage", () => {
     const post = tags(monday, "a", 'href="https://example.com/p/1"');
     expect(post).toHaveLength(1);
     expect(post[0]).toContain('rel="noopener"');
-    expect(post[0]).toContain('target="_blank"');
+    // The link opens in the same tab, like every link of the manager.
+    expect(post[0]).not.toContain("target=");
     expect(words).not.toContain("Nothing planned");
     expect(words).not.toContain("Pick a story");
   });
 
   it("gives each day a heading holding its date, so day-to-day navigation works", () => {
-    const days = rows(render(week()));
+    const html = render(week());
+    // The outline is h1, then one h2 per day, then the h2 of the waiting list.
+    expect(html).not.toContain("<h3");
+    const days = rows(html);
     days.forEach((row, i) => {
-      const heading = /<h3\b[^>]*>(.*?)<\/h3>/s.exec(row)?.[1] ?? "";
+      const heading = /<h2\b[^>]*>(.*?)<\/h2>/s.exec(row)?.[1] ?? "";
       expect(heading).toMatch(new RegExp(`<time\\b[^>]*dateTime="${DATES[i] ?? ""}"`));
     });
   });
