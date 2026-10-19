@@ -37,7 +37,13 @@ export function PhotoViewer(props: {
       </h2>
       <div className={story.viewerMedia}>
         {photo.kind === "video" ? (
-          <video className={story.viewerFile} controls preload="none" src={full} />
+          <video
+            className={story.viewerFile}
+            controls
+            preload="none"
+            src={full}
+            aria-labelledby={captionId}
+          />
         ) : (
           <img className={story.viewerFile} src={full} alt={both(k, vars)} />
         )}

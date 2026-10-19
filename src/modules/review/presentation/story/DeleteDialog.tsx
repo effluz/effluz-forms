@@ -5,7 +5,7 @@ import { bothLanguages } from "@/shared/presentation/copy";
 import { styles as ui } from "@/shared/presentation/styles";
 import type { StoryView } from "../../application";
 import { reviewCopy, T } from "../copy";
-import { storyActionPath, storyPath, type StoryParams } from "../story-params";
+import { STORY_DIALOG_ID, storyActionPath, storyPath, type StoryParams } from "../story-params";
 import { StoryDialog, StoryFields } from "./parts";
 import { story } from "./styles";
 
@@ -22,9 +22,13 @@ export function DeleteLink(props: { view: StoryView; params: StoryParams }): Rea
     <p>
       <a
         className={ui.button}
-        href={storyPath(view.ctx.form.id, view.reference, props.params.query, {
-          action: "delete",
-        })}
+        href={storyPath(
+          view.ctx.form.id,
+          view.reference,
+          props.params.query,
+          { action: "delete" },
+          STORY_DIALOG_ID,
+        )}
       >
         <T k="st.delete" />
       </a>

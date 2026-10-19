@@ -3,7 +3,7 @@ import { Bilingual } from "@/shared/presentation/Bilingual";
 import { formatDate } from "@/shared/presentation/format-date";
 import { cx, styles as ui } from "@/shared/presentation/styles";
 import type { PhotoView, StaffPhotoSource, StoryView } from "../../application";
-import { both, T, type ReviewCopyKey } from "../copy";
+import { T, type ReviewCopyKey } from "../copy";
 import { storyActionPath, storyPath, type StoryParams } from "../story-params";
 import { styles } from "../styles";
 import type { CopyLine } from "./Flash";
@@ -65,10 +65,11 @@ function Tile(props: StoryProps & { photo: PhotoView; index: number }): ReactEle
     <li className={cx(styles.photoTile, chosen && styles.photoChosen)}>
       <div className={styles.photoFrame}>
         {photo.kind === "image" ? (
-          // Thumbnails stream after the text (Doherty Threshold): lazy, at the tile's size.
+          // Thumbnails stream after the text (Doherty Threshold): lazy, at the tile's size. The
+          // caption below names the file, so the image is decorative (empty alt).
           <img
             src={mediaUrl(form.id, view.reference, photo.mediaId, "thumb")}
-            alt={both(k, vars)}
+            alt=""
             loading="lazy"
             width={160}
             height={160}

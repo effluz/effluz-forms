@@ -5,6 +5,7 @@ import { BilingualText } from "@/shared/presentation/Bilingual";
 import { fill, type Text } from "@/shared/presentation/copy";
 import { listQueryString, type ListQuery } from "../../application";
 import { reviewCopy, type ReviewCopyKey } from "../copy";
+import { STORY_DIALOG_ID } from "../story-params";
 
 /**
  * Staff-authored text in both languages as the form resolves it, so a single-language form
@@ -38,7 +39,8 @@ export function TPer(props: {
  * heading and described by its body, holding a plain POST form, so it works without
  * JavaScript, as the shared `ConfirmForm` does for copy without per-story placeholders. A
  * dialog whose form explains itself (Mark as published) has no body, and then no
- * description. See design-system/components.md, "Dialog".
+ * description. A link to it ends in its id, and `tabIndex={-1}` lets that land focus on it. See
+ * design-system/components.md, "Dialog".
  */
 export function StoryDialog(props: {
   title: ReactNode;
@@ -55,6 +57,8 @@ export function StoryDialog(props: {
       aria-labelledby={titleId}
       {...(hasBody ? { "aria-describedby": bodyId } : {})}
       className={ui.dialog}
+      id={STORY_DIALOG_ID}
+      tabIndex={-1}
     >
       <h2 id={titleId} className={ui.dialogTitle}>
         {props.title}

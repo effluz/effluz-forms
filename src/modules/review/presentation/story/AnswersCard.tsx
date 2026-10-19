@@ -3,7 +3,7 @@ import { formatDate } from "@/shared/presentation/format-date";
 import type { AnswerView, StoryView } from "../../application";
 import { reviewDisplays } from "../answers";
 import { T } from "../copy";
-import { storyPath, type StoryParams } from "../story-params";
+import { answerAnchor, storyPath, type StoryParams } from "../story-params";
 import { CompareView } from "./CompareView";
 import { CorrectionEditor } from "./CorrectionEditor";
 import { Localized } from "./parts";
@@ -46,11 +46,13 @@ function Answer(props: {
   const editing = answer.curatable && params.edit === key;
   const comparing = !editing && corrected !== null && params.compare === key;
   const Display = reviewDisplays[answer.field.type].Component;
+  const labelId = useId();
+  // Edit and Compare return to this answer's block, so the page does not reload at its top.
   const at = (over: Partial<Omit<StoryParams, "query">>) =>
-    storyPath(view.ctx.form.id, view.reference, params.query, over);
+    storyPath(view.ctx.form.id, view.reference, params.query, over, answerAnchor(key));
   return (
-    <div className={story.answer} id={`answer-${key}`}>
-      <dt className={story.answerLabel}>
+    <div className={story.answer} id={answerAnchor(key)}>
+      <dt id={labelId} className={story.answerLabel}>
         <Localized text={answer.field.label} languages={answer.languages} />
       </dt>
       <dd className={story.answerValue}>
@@ -62,7 +64,13 @@ function Answer(props: {
             csrfToken={props.csrfToken}
           />
         ) : comparing ? (
-          <CompareView view={view} answer={answer} corrected={corrected.text} params={params} />
+          <CompareView
+            view={view}
+            answer={answer}
+            corrected={corrected.text}
+            params={params}
+            labelId={labelId}
+          />
         ) : (
           <>
             <Display view={answer} />
@@ -73,13 +81,17 @@ function Answer(props: {
               <ul className={story.actions}>
                 {corrected === null ? null : (
                   <li>
-                    <a className={story.tertiary} href={at({ compare: key })}>
+                    <a
+                      className={story.tertiary}
+                      href={at({ compare: key })}
+                      aria-describedby={labelId}
+                    >
                       <T k="st.compare" />
                     </a>
                   </li>
                 )}
                 <li>
-                  <a className={story.tertiary} href={at({ edit: key })}>
+                  <a className={story.tertiary} href={at({ edit: key })} aria-describedby={labelId}>
                     <T k="st.edit" />
                   </a>
                 </li>
@@ -110,12 +122,12 @@ export function AnswersCard(props: {
       </h2>
       {view.pages.map((page) => (
         <div key={page.key}>
-          <h2 className={story.pageTitle}>
+          <h3 className={story.pageTitle}>
             <Localized
               text={page.title}
               languages={page.answers[0]?.languages ?? view.ctx.form.languages}
             />
-          </h2>
+          </h3>
           <dl className={story.answers}>
             {page.answers.map((answer) => (
               <Answer

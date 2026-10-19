@@ -3,7 +3,7 @@ import { Bilingual } from "@/shared/presentation/Bilingual";
 import { styles as ui } from "@/shared/presentation/styles";
 import type { AnswerView, StoryView } from "../../application";
 import { T } from "../copy";
-import { storyActionPath, storyPath, type StoryParams } from "../story-params";
+import { answerAnchor, storyActionPath, storyPath, type StoryParams } from "../story-params";
 import { refusalLine } from "./Flash";
 import { StoryFields } from "./parts";
 import { story } from "./styles";
@@ -75,7 +75,16 @@ export function CorrectionEditor(props: {
         </div>
       </div>
       <div className={ui.actions}>
-        <a className={ui.button} href={storyPath(view.ctx.form.id, view.reference, params.query)}>
+        <a
+          className={ui.button}
+          href={storyPath(
+            view.ctx.form.id,
+            view.reference,
+            params.query,
+            {},
+            answerAnchor(answer.field.key),
+          )}
+        >
           <Bilingual k="shell.cancel" />
         </a>
         <button className={ui.primary} type="submit">

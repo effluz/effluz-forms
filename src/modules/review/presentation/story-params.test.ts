@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EMPTY_QUERY } from "../application";
-import { parseStoryParams, storyPath } from "./story-params";
+import { STORY_DIALOG_ID, answerAnchor, parseStoryParams, storyPath } from "./story-params";
 
 const ID = "00000001-0000-4000-8000-000000000001";
 
@@ -87,5 +87,16 @@ describe("story params", () => {
       other: "ST-0003",
     });
     expect(storyPath(ID, "ST-0001", EMPTY_QUERY)).toBe(`/admin/forms/${ID}/submissions/ST-0001`);
+  });
+
+  it("ends a path with the fragment it is given, after the query", () => {
+    const query = { ...EMPTY_QUERY, status: "new" as const };
+    expect(storyPath(ID, "ST-0001", query, { edit: "f_name" }, answerAnchor("f_name"))).toBe(
+      `/admin/forms/${ID}/submissions/ST-0001?status=new&edit=f_name#answer-f_name`,
+    );
+    expect(storyPath(ID, "ST-0001", EMPTY_QUERY, {}, STORY_DIALOG_ID)).toBe(
+      `/admin/forms/${ID}/submissions/ST-0001#story-dialog`,
+    );
+    expect(storyPath(ID, "ST-0001", EMPTY_QUERY, {}, "a b")).toMatch(/#a%20b$/);
   });
 });

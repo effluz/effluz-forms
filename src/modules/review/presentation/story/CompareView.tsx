@@ -9,7 +9,13 @@ import {
 import { Bilingual } from "@/shared/presentation/Bilingual";
 import { styles as ui } from "@/shared/presentation/styles";
 import { T } from "../copy";
-import { storyActionPath, storyPath, type StoryParams } from "../story-params";
+import {
+  STORY_DIALOG_ID,
+  answerAnchor,
+  storyActionPath,
+  storyPath,
+  type StoryParams,
+} from "../story-params";
 import { originalText } from "./CorrectionEditor";
 import { localized, StoryDialog, StoryFields, TPer } from "./parts";
 import { story } from "./styles";
@@ -52,20 +58,21 @@ function Column(props: {
 /**
  * The original and the corrected text side by side, read only, with every change marked, the
  * number of changes as a polite status, and Edit, Revert to original and Back to the story.
- * See specs/ui-ux/manager.md, "Edit a text answer".
+ * Edit and Revert are described by the answer's label (`labelId`). See specs/ui-ux/manager.md, "Edit a text answer".
  */
 export function CompareView(props: {
   view: StoryView;
   answer: AnswerView;
   corrected: string;
   params: StoryParams;
+  labelId: string;
 }): ReactElement {
   const { view, answer, params } = props;
   const parts = wordDiff(originalText(answer), props.corrected);
   const count = changeCount(parts);
-  const at = (over: Partial<Omit<StoryParams, "query">>) =>
-    storyPath(view.ctx.form.id, view.reference, params.query, over);
   const key = answer.field.key;
+  const at = (over: Partial<Omit<StoryParams, "query">>, hash: string = answerAnchor(key)) =>
+    storyPath(view.ctx.form.id, view.reference, params.query, over, hash);
   return (
     <div>
       <p role="status" className={story.changeCount}>
@@ -81,12 +88,16 @@ export function CompareView(props: {
       </div>
       <ul className={story.actions}>
         <li>
-          <a className={story.tertiary} href={at({ edit: key })}>
+          <a className={story.tertiary} href={at({ edit: key })} aria-describedby={props.labelId}>
             <T k="st.edit" />
           </a>
         </li>
         <li>
-          <a className={story.tertiary} href={at({ action: "revert", field: key })}>
+          <a
+            className={story.tertiary}
+            href={at({ action: "revert", field: key }, STORY_DIALOG_ID)}
+            aria-describedby={props.labelId}
+          >
             <T k="st.revert" />
           </a>
         </li>
@@ -131,7 +142,13 @@ export function RevertDialog(props: {
           <div className={ui.actions}>
             <a
               className={ui.button}
-              href={storyPath(view.ctx.form.id, view.reference, params.query, { compare: key })}
+              href={storyPath(
+                view.ctx.form.id,
+                view.reference,
+                params.query,
+                { compare: key },
+                answerAnchor(key),
+              )}
             >
               <Bilingual k="shell.cancel" />
             </a>

@@ -176,9 +176,8 @@ describe("StoryPage photos", () => {
       expect(card).toContain(caption);
       const img = tags(card, "img", `src="${mediaUrl(ID, "ST-0001", id, "thumb")}"`);
       expect(img).toHaveLength(1);
-      expect(attr(img[0] ?? "", "alt")).toBe(
-        `Photo ${String(n + 1)} of 3 / Foto ${String(n + 1)} de 3`,
-      );
+      // The caption below the thumbnail says it, so the image adds nothing to read out.
+      expect(attr(img[0] ?? "", "alt")).toBe("");
       expect(img[0]).toContain('loading="lazy"');
       expect(img[0]).toContain('width="160"');
       expect(img[0]).toContain('height="160"');
@@ -295,6 +294,30 @@ describe("StoryPage photos", () => {
     expect(dialog(render(storyView(), { action: "remove_photo", media: P1 }))).toBe("");
   });
 
+  it("keeps a team photo and its Remove link on a form with the post plan off", () => {
+    const marked = PHOTOS.map((p) => (p.mediaId === P2 ? { ...p, chosen: true } : p));
+    const html = render(storyView({ ctx: context(false), photos: marked }));
+    const card = photosCard(html);
+    expect(html).not.toContain("Chosen for the post");
+    const staff = tile(card, "Photo 3 of 3");
+    const remove = storyPath(ID, "ST-0001", EMPTY_QUERY, { action: "remove_photo", media: S1 });
+    expect(tags(staff, "a", `href="${amp(remove)}"`)).toHaveLength(1);
+    expect(textOf(staff)).toContain("Remove this photo Quitar esta foto");
+    expect(textOf(staff)).toContain("Added by owner@example.com");
+    expect(tile(card, "Photo 1 of 3")).not.toContain("Remove this photo");
+    // Choosing, Add photos and the chosen state are post-plan parts and stay hidden.
+    expect(formsTo(html, `${BASE}/choice`)).toHaveLength(0);
+    expect(formTo(html, `${BASE}/photos`)).toBe("");
+    // The link opens its confirmation, which posts to the remove route.
+    const open = dialog(
+      render(storyView({ ctx: context(false), photos: PHOTOS }), {
+        action: "remove_photo",
+        media: S1,
+      }),
+    );
+    expect(tags(formTo(open, `${BASE}/photos/remove`), "input", `value="${S1}"`)).toHaveLength(1);
+  });
+
   it("shows the viewer section for one photo", () => {
     const html = render(storyView(), { photo: P2 });
     const viewer = between(html, "<section", "</section>");
@@ -327,6 +350,10 @@ describe("StoryPage photos", () => {
     const player = tags(video, "video", "controls", 'preload="none"');
     expect(player).toHaveLength(1);
     expect(attr(player[0] ?? "", "src")).toBe(mediaUrl(ID, "ST-0001", P2, "full"));
+    // The player is named by the caption heading above it.
+    const captionId = attr(player[0] ?? "", "aria-labelledby") ?? "";
+    expect(captionId).not.toBe("");
+    expect(textOf(between(video, `id="${captionId}"`, "</h2>"))).toContain("Video 2 of 2");
     expect(video).not.toContain("autoplay");
     expect(video).not.toMatch(/autoPlay/i);
     expect(textOf(video)).toContain("Video 2 of 2 Video 2 de 2");

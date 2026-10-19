@@ -22,8 +22,10 @@ import { listHref } from "./list-view";
 import { StoryNotFound } from "./StoryNotFound";
 import { StoryPage } from "./StoryPage";
 import {
+  STORY_DIALOG_ID,
   STORY_DONE,
   STORY_ERRORS,
+  answerAnchor,
   parseStoryParams,
   storyPath,
   type StoryParams,
@@ -186,6 +188,11 @@ const textOf = (html: string) =>
     .replace(/\s+/g, " ")
     .trim();
 const attr = (tag: string, name: string) => new RegExp(`${name}="([^"]*)"`).exec(tag)?.[1];
+/** The text of the label an action link points at with `aria-describedby`. */
+const describedText = (html: string, link: string) => {
+  const id = attr(link, "aria-describedby") ?? "";
+  return id === "" ? "" : textOf(between(html, `id="${id}"`, "</dt>"));
+};
 const amp = (href: string) => href.replace(/&/g, "&amp;");
 
 /** The form whose action is `action`, from its opening tag to its end. */
@@ -225,7 +232,11 @@ describe("StoryPage", () => {
 
   it("groups answers under page titles through their displays", () => {
     const html = render(storyView());
-    const headings = (html.match(/<h2\b[^>]*>.*?<\/h2>/g) ?? []).map(textOf);
+    const sections = (html.match(/<h2\b[^>]*>.*?<\/h2>/g) ?? []).map(textOf);
+    const headings = (html.match(/<h3\b[^>]*>.*?<\/h3>/g) ?? []).map(textOf);
+    // The page titles sit one level under the Answers card title.
+    expect(sections).toContain("Answers Respuestas");
+    expect(sections).not.toContain("Your story Tu historia");
     expect(headings).toContain("Your story Tu historia");
     expect(headings).toContain("Contact Contacto");
     expect(html).toContain("Nació en el hospital");
@@ -243,12 +254,20 @@ describe("StoryPage", () => {
       /<span class="[^"]*"[^>]*>Edited<span lang="es"[^>]*>Editada<\/span><\/span>/,
     );
     expect(html).toContain("Corrected by owner@example.com on 2026-10-17 10:30 America/Panama");
-    const compare = storyPath(ID, "ST-0001", query, { compare: "f_name" });
-    const editName = storyPath(ID, "ST-0001", query, { edit: "f_name" });
-    const editCity = storyPath(ID, "ST-0001", query, { edit: "f_city" });
+    // Each link returns to its answer's block, so the page does not reload at its top.
+    const compare = storyPath(ID, "ST-0001", query, { compare: "f_name" }, answerAnchor("f_name"));
+    const editName = storyPath(ID, "ST-0001", query, { edit: "f_name" }, answerAnchor("f_name"));
+    const editCity = storyPath(ID, "ST-0001", query, { edit: "f_city" }, answerAnchor("f_city"));
     expect(tags(html, "a", `href="${amp(compare)}"`)).toHaveLength(1);
     expect(tags(html, "a", `href="${amp(editName)}"`)).toHaveLength(1);
     expect(tags(html, "a", `href="${amp(editCity)}"`)).toHaveLength(1);
+    // ...and is named by its answer's label, so two Edit links never read the same.
+    const [compareLink = ""] = tags(html, "a", `href="${amp(compare)}"`);
+    const [editLink = ""] = tags(html, "a", `href="${amp(editName)}"`);
+    const [cityLink = ""] = tags(html, "a", `href="${amp(editCity)}"`);
+    expect(describedText(html, compareLink)).toContain("Your story Tu historia");
+    expect(describedText(html, editLink)).toContain("Your story Tu historia");
+    expect(describedText(html, cityLink)).toContain("City Ciudad");
     expect(html).toContain("Compare with original");
     // The city is curatable but uncorrected: Edit only. The choice has neither.
     expect(html.match(/Compare with original/g)).toHaveLength(1);
@@ -276,8 +295,9 @@ describe("StoryPage", () => {
       1,
     );
     expect(tags(form, "input", 'type="hidden"', 'name="back"')).toHaveLength(1);
-    expect(tags(form, "a", `href="${BASE}"`)).toHaveLength(1);
-    expect(textOf(between(form, `href="${BASE}"`, "</a>"))).toContain("Cancel");
+    const cancel = `${BASE}#${answerAnchor("f_name")}`;
+    expect(tags(form, "a", `href="${cancel}"`)).toHaveLength(1);
+    expect(textOf(between(form, `href="${cancel}"`, "</a>"))).toContain("Cancel");
     // The read-only answer block is replaced, not repeated.
     expect(html.match(/Nació en el hospital/g)).toHaveLength(1);
     expect(tags(html, "a", "compare=f_name")).toHaveLength(0);
@@ -314,11 +334,22 @@ describe("StoryPage", () => {
     expect(status).toContain("1 change");
     expect(status).not.toContain("1 changes");
     expect(status).toContain("1 cambio");
-    expect(
-      tags(html, "a", `href="${amp(storyPath(ID, "ST-0001", EMPTY_QUERY, { edit: "f_name" }))}"`),
-    ).toHaveLength(1);
-    const revert = storyPath(ID, "ST-0001", EMPTY_QUERY, { action: "revert", field: "f_name" });
-    expect(tags(html, "a", `href="${amp(revert)}"`)).toHaveLength(1);
+    const edit = storyPath(ID, "ST-0001", EMPTY_QUERY, { edit: "f_name" }, answerAnchor("f_name"));
+    expect(tags(html, "a", `href="${amp(edit)}"`)).toHaveLength(1);
+    const revert = storyPath(
+      ID,
+      "ST-0001",
+      EMPTY_QUERY,
+      { action: "revert", field: "f_name" },
+      STORY_DIALOG_ID,
+    );
+    const [revertLink = ""] = tags(html, "a", `href="${amp(revert)}"`);
+    expect(revertLink).not.toBe("");
+    expect(describedText(html, revertLink)).toContain("Your story Tu historia");
+    const [editLink = ""] = tags(html, "a", `href="${amp(edit)}"`);
+    expect(describedText(html, editLink)).toContain("Your story Tu historia");
+    const back = storyPath(ID, "ST-0001", EMPTY_QUERY, {}, answerAnchor("f_name"));
+    expect(tags(html, "a", `href="${back}"`)).toHaveLength(1);
 
     const same = render(
       storyView({
@@ -348,6 +379,9 @@ describe("StoryPage", () => {
     const box = dialog(html);
     expect(box).not.toBe("");
     const open = tags(box, "section")[0] ?? "";
+    // A link to the confirmation lands focus on it.
+    expect(attr(open, "id")).toBe(STORY_DIALOG_ID);
+    expect(open).toContain('tabindex="-1"');
     const titleId = attr(open, "aria-labelledby") ?? "";
     const bodyId = attr(open, "aria-describedby") ?? "";
     expect(box).toContain(`id="${titleId}"`);
@@ -358,6 +392,15 @@ describe("StoryPage", () => {
       '¿Quitar la versión corregida de "Tu historia" y volver a mostrar el original?',
     );
     const form = formTo(box, `${BASE}/revert`);
+    // Cancel returns to the comparison, at the answer.
+    const comparison = storyPath(
+      ID,
+      "ST-0001",
+      EMPTY_QUERY,
+      { compare: "f_name" },
+      "answer-f_name",
+    );
+    expect(tags(form, "a", `href="${amp(comparison)}"`)).toHaveLength(1);
     expect(tags(form, "input", 'name="field"', 'value="f_name"')).toHaveLength(1);
     expect(tags(form, "input", 'name="csrf"', 'value="csrf-token"')).toHaveLength(1);
     expect(textOf(between(form, "<button", "</button>"))).toContain("Revert to original");
@@ -481,6 +524,15 @@ describe("StoryPage", () => {
     expect(render(storyView())).toContain("No activity yet.");
   });
 
+  it("opens the delete confirmation from a link that lands on it", () => {
+    const html = render(storyView());
+    const link = storyPath(ID, "ST-0001", EMPTY_QUERY, { action: "delete" }, STORY_DIALOG_ID);
+    expect(tags(html, "a", `href="${link}"`)).toHaveLength(1);
+    expect(
+      attr(tags(dialog(render(storyView(), { action: "delete" })), "section")[0] ?? "", "id"),
+    ).toBe(STORY_DIALOG_ID);
+  });
+
   it("asks for the typed reference before deleting", () => {
     const html = render(storyView(), { action: "delete" });
     const box = dialog(html);
@@ -517,17 +569,35 @@ describe("StoryPage", () => {
         {
           key: "p_evil",
           title: { en: "<i>page</i>", es: "<i>página</i>" },
-          answers: [answer(evil, { answer: "<img src=x>", curatable: true })],
+          answers: [
+            answer(evil, {
+              answer: "<img src=x>",
+              corrected: { text: "<script>y</script>", by: null, at: null },
+              curatable: true,
+            }),
+          ],
         },
       ],
     });
-    for (const over of [{}, { edit: "f_evil" }, { action: "revert" as const, field: "f_evil" }]) {
+    const passes = [
+      {},
+      { edit: "f_evil" },
+      { compare: "f_evil" },
+      { action: "revert" as const, field: "f_evil" },
+    ];
+    for (const over of passes) {
       const html = render(view, over);
       expect(html).not.toContain("<b>x</b>");
       expect(html).not.toContain("<img src=x>");
+      expect(html).not.toContain("<script>");
       expect(html).not.toContain("<i>page</i>");
       expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");
     }
-    expect(render(view)).toContain("&lt;img src=x&gt;");
+    expect(render(view)).toContain("&lt;script&gt;y&lt;/script&gt;");
+    expect(render(view, { compare: "f_evil" })).toContain("&lt;img src=x&gt;");
+    expect(render(view, { compare: "f_evil" })).toContain("&lt;script&gt;y&lt;/script&gt;");
+    expect(dialog(render(view, { action: "revert", field: "f_evil" }))).toContain(
+      "&lt;b&gt;x&lt;/b&gt;",
+    );
   });
 });

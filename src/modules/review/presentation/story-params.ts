@@ -121,12 +121,25 @@ function storyBase(formId: string, reference: string): string {
   return `/admin/forms/${encodeURIComponent(formId)}/submissions/${encodeURIComponent(reference)}`;
 }
 
-/** The story page URL with the list query and the given story params. */
+/** The id of the in-page confirmation (a link with this fragment lands focus on it). */
+export const STORY_DIALOG_ID = "story-dialog";
+
+/** The id of one answer's block; its Edit and Compare links return to this fragment. */
+export function answerAnchor(fieldKey: string): string {
+  return `answer-${fieldKey}`;
+}
+
+/**
+ * The story page URL with the list query and the given story params, and the fragment to land
+ * on when there is one (an answer's block or the confirmation, so the page does not reload at
+ * its top).
+ */
 export function storyPath(
   formId: string,
   reference: string,
   query: ListQuery,
   story: Partial<Omit<StoryParams, "query">> = {},
+  hash?: string,
 ): string {
   const pairs: string[] = [];
   const add = (key: string, value: string | null | undefined): void => {
@@ -150,7 +163,8 @@ export function storyPath(
   const list = listQueryString(query);
   const own = pairs.join("&");
   const search = list === "" ? (own === "" ? "" : `?${own}`) : own === "" ? list : `${list}&${own}`;
-  return `${storyBase(formId, reference)}${search}`;
+  const fragment = hash === undefined ? "" : `#${encodeURIComponent(hash)}`;
+  return `${storyBase(formId, reference)}${search}${fragment}`;
 }
 
 /** Where a story form posts: `/admin/forms/<id>/submissions/<reference>/<route>`. */
