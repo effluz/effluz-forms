@@ -7,6 +7,7 @@ import { publishReferenceForm } from "../e2e/publish";
 import { Staff } from "../e2e/staff";
 import { seedAdminSession } from "../support/admin-session";
 import { BROWSER_E2E_BASE_URL } from "../support/app-server";
+import { browserDatabaseUrl } from "../support/held-database";
 
 // Review by keyboard on a phone, in Chromium (ADR 0024): the story page, the Post plan and
 // Operations. Each story is submitted over HTTP first, then a staff browser with a seeded
@@ -22,7 +23,7 @@ const POST_URL = "https://www.instagram.com/p/prueba-teclado/";
 let pool: pg.Pool;
 
 test.beforeAll(() => {
-  pool = new pg.Pool({ connectionString: process.env["E2E_DATABASE_URL"], max: 2 });
+  pool = new pg.Pool({ connectionString: browserDatabaseUrl(), max: 2 });
 });
 test.afterAll(async () => {
   await pool.end();
