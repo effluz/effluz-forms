@@ -182,9 +182,11 @@ export class PgSubmissionRepository implements SubmissionRepository {
     return row ? toStored(row) : null;
   }
 
+  /** Throws for an unknown id, as the port's callers hold the row's lock and expect it there. */
   async writeCuration(uow: UnitOfWork, id: string, curation: Curation): Promise<void> {
+    if (!isUuid(id)) throw new Error(`submission ${id} does not exist`);
     // The statement names the curation columns only; the trigger guards `answers` regardless.
-    await txOf(uow).client.query(
+    const { rowCount } = await txOf(uow).client.query(
       `update submission
           set status = $2, curated_answers = $3::jsonb, published_post_url = $4,
               status_changed_by = $5, status_changed_at = $6, updated_at = now()
@@ -198,6 +200,7 @@ export class PgSubmissionRepository implements SubmissionRepository {
         curation.statusChangedAt,
       ],
     );
+    if ((rowCount ?? 0) === 0) throw new Error(`submission ${id} does not exist`);
   }
 
   async delete(uow: UnitOfWork, id: string): Promise<boolean> {

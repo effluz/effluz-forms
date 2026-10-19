@@ -101,6 +101,23 @@ describe("PgSubmissionRepository", () => {
     expect(await repo.findStored(submission.id)).toEqual({ ...submission, curation });
   });
 
+  it("refuses to write the curation of a submission that does not exist", async () => {
+    const curation: Curation = {
+      status: "viewed",
+      curatedAnswers: {},
+      publishedPostUrl: null,
+      statusChangedBy: "editor@example.com",
+      statusChangedAt: new Date("2026-10-11T08:00:00.000Z"),
+    };
+    const missing = randomUUID();
+    await expect(uow.run((u) => repo.writeCuration(u, missing, curation))).rejects.toThrow(
+      `submission ${missing} does not exist`,
+    );
+    await expect(uow.run((u) => repo.writeCuration(u, "nope", curation))).rejects.toThrow(
+      "submission nope does not exist",
+    );
+  });
+
   it("starts every stored submission as new with no corrections", async () => {
     const submission = await sample();
     await uow.run((u) => repo.insert(u, submission));
