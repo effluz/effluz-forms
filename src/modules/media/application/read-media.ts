@@ -35,18 +35,24 @@ async function tryOpen(
   }
 }
 
-/** The staging copy when it is still there, else the durable file once stored; null when neither exists. */
+/**
+ * The staging copy when it is still there, else the durable file once stored; null when neither
+ * exists. A record read before its upload finished is read again when its staging copy is gone,
+ * since the upload may have stored it and removed that copy meanwhile.
+ */
 export async function openMedia(
   deps: MediaDeps,
   record: MediaRecord,
 ): Promise<ReadableStream<Uint8Array> | null> {
   const { stagingRef } = record;
+  let current: MediaRecord | null = record;
   if (stagingRef !== null) {
     const staged = await tryOpen(() => deps.staging.openRead(stagingRef));
     if (staged !== null) return staged;
+    if (record.status !== "stored") current = await deps.media.findById(record.id);
   }
-  if (record.status !== "stored") return null;
-  const ref = record.providerRef ?? deps.durable.refForKey(record.durableKey);
+  if (current?.status !== "stored") return null;
+  const ref = current.providerRef ?? deps.durable.refForKey(current.durableKey);
   return tryOpen(() => deps.durable.openRead(ref));
 }
 
@@ -65,12 +71,20 @@ export async function mediaThumbnail(
   return deps.encoder.thumbnail(await collect(stream), record.contentType, THUMBNAIL_MAX_SIDE);
 }
 
-/** The provider's view URL of a stored video with no staging copy left; null otherwise (stream it instead). */
+/**
+ * The provider's view URL of a stored video with no staging copy left; null otherwise, or when
+ * the provider gives none (stream it instead).
+ */
 export async function videoViewUrl(deps: MediaDeps, record: MediaRecord): Promise<string | null> {
   if (record.kind !== "video" || record.status !== "stored" || record.stagingRef !== null)
     return null;
   const ref = record.providerRef ?? deps.durable.refForKey(record.durableKey);
-  return deps.durable.viewUrl(ref, VIEW_URL_TTL_SECONDS);
+  try {
+    return await deps.durable.viewUrl(ref, VIEW_URL_TTL_SECONDS);
+  } catch {
+    // Like `tryOpen`: a provider answer is not for a log or a page.
+    return null;
+  }
 }
 
 /** A durable file by key, for the local view route; null for a key outside `forms/` or a missing file. */

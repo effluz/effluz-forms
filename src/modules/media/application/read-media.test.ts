@@ -59,6 +59,23 @@ describe("openMedia", () => {
     );
     expect(await openMedia(deps, row({ stagingRef: null, status: "failed" }))).toBeNull();
   });
+
+  it("opens the durable file of a record stored after it was read", async () => {
+    const deps = makeMediaDeps();
+    await put(deps.durable, "forms/s/HP-0001/01-photos.jpg", "durable bytes");
+    // Read while staged; the upload job then stored it and removed the staging copy.
+    const stale = row({ status: "staged", providerRef: null });
+    deps.media.rows.set(stale.id, {
+      ...stale,
+      status: "stored",
+      stagingRef: null,
+      providerRef: "forms/s/HP-0001/01-photos.jpg",
+    });
+
+    expect(await drain(await openMedia(deps, stale))).toBe("durable bytes");
+    deps.media.rows.delete(stale.id);
+    expect(await openMedia(deps, stale)).toBeNull();
+  });
 });
 
 describe("mediaThumbnail", () => {
@@ -89,6 +106,13 @@ describe("videoViewUrl", () => {
     expect(await videoViewUrl(deps, video)).toBe("memory://forms/s/HP-0001/01-clips.mp4");
     expect(await videoViewUrl(deps, { ...video, stagingRef: "in-progress/a/1.mp4" })).toBeNull();
     expect(await videoViewUrl(deps, row({ stagingRef: null }))).toBeNull();
+  });
+
+  it("answers null when the provider gives no view URL", async () => {
+    const deps = makeMediaDeps();
+    deps.durable.viewUrl = () => Promise.reject(new Error("provider unavailable"));
+    const video = row({ kind: "video", contentType: "video/mp4", stagingRef: null });
+    expect(await videoViewUrl(deps, video)).toBeNull();
   });
 });
 
