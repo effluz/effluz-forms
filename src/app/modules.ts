@@ -10,13 +10,18 @@ import { FileTypeSniffer } from "@/modules/media/infrastructure/file-type-sniffe
 import { LocalDiskStorage } from "@/modules/media/infrastructure/local-disk-storage";
 import { PgMediaRepository } from "@/modules/media/infrastructure/pg-media-repository";
 import { SharpImageEncoder } from "@/modules/media/infrastructure/sharp-image-encoder";
-import { PLAN_TIME_ZONE, type ReviewDeps } from "@/modules/review/application";
+import { PLAN_TIME_ZONE, ReviewAlertSource, type ReviewDeps } from "@/modules/review/application";
 import { PgEditRepository } from "@/modules/review/infrastructure/pg-edit-repository";
 import { PgReviewQueries } from "@/modules/review/infrastructure/pg-review-queries";
 import { PgStaffPhotoRepository } from "@/modules/review/infrastructure/pg-staff-photo-repository";
 import { PgStoryRepository } from "@/modules/review/infrastructure/pg-story-repository";
 import { StoredZipWriter } from "@/modules/review/infrastructure/stored-zip-writer";
-import type { AlertSource, NotificationsDeps } from "@/modules/notifications/application";
+import {
+  EMAIL_JOB_MAX_ATTEMPTS,
+  EMAIL_JOB_TYPES,
+  type AlertSource,
+  type NotificationsDeps,
+} from "@/modules/notifications/application";
 import { MailpitEmailSender } from "@/modules/notifications/infrastructure/mailpit-email-sender";
 import { PgDeliveryLog } from "@/modules/notifications/infrastructure/pg-delivery-log";
 import { Smtp2goEmailSender } from "@/modules/notifications/infrastructure/smtp2go-email-sender";
@@ -32,6 +37,7 @@ import { buildDefaultRegistry } from "@/shared/domain/form-model";
 import { systemClock } from "@/shared/infrastructure/clock";
 import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
 import { PgJobAdmin } from "@/shared/infrastructure/jobs/pg-job-admin";
+import { PgJobStore } from "@/shared/infrastructure/jobs/pg-job-store";
 import { emailTemplates } from "@/shared/presentation/email";
 import type { AppConfig } from "./config";
 
@@ -149,6 +155,22 @@ export function buildReview(input: {
     registry: input.definitions.registry,
     planTimeZone: PLAN_TIME_ZONE,
   };
+}
+
+/** The worker's job store: a job going dead enqueues its grouped alert in the same transaction (decisions/0029). */
+export function buildJobStore(config: AppConfig, pool: Pool): PgJobStore {
+  return new PgJobStore(pool, systemClock, {
+    leaseSeconds: config.worker.leaseSeconds,
+    deadAlert: { type: EMAIL_JOB_TYPES.jobAlert, maxAttempts: EMAIL_JOB_MAX_ATTEMPTS },
+  });
+}
+
+/** The dead-job alert's content and address: review's stories of the type, sent to `ALERT_EMAIL`. */
+export function buildAlertSource(config: AppConfig, review: ReviewDeps): ReviewAlertSource {
+  return new ReviewAlertSource(review, {
+    to: config.alertEmail,
+    publicBaseUrl: config.publicBaseUrl,
+  });
 }
 
 /** Notifications: the email provider from the config, the shared templates, submissions as the message source, `alerts` for dead-job alerts. */

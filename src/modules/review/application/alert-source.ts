@@ -23,7 +23,8 @@ export class ReviewAlertSource implements AlertSource {
 
   constructor(
     private readonly deps: ReviewDeps,
-    private readonly opts: { to: string | null; publicBaseUrl: string },
+    /** `to`: the one address alerts go to, null for none. */
+    readonly opts: { to: string | null; publicBaseUrl: string },
   ) {
     this.link = `${opts.publicBaseUrl.replace(/\/+$/, "")}/admin/operations`;
   }

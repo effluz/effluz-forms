@@ -1,19 +1,18 @@
 import os from "node:os";
-import { EMAIL_JOB_MAX_ATTEMPTS, EMAIL_JOB_TYPES } from "@/modules/notifications/application";
-import { ReviewAlertSource } from "@/modules/review/application";
 import { PgAuditLog } from "@/modules/identity/infrastructure/pg-audit-log";
 import { PgAuditLogReader } from "@/modules/identity/infrastructure/pg-audit-log-reader";
 import { systemClock } from "@/shared/infrastructure/clock";
 import { systemIdGenerator } from "@/shared/infrastructure/id-generator";
 import { PgJobQueue } from "@/shared/infrastructure/jobs/pg-job-queue";
-import { PgJobStore } from "@/shared/infrastructure/jobs/pg-job-store";
 import { Worker } from "@/shared/infrastructure/jobs/worker";
 import { createLogger } from "@/shared/infrastructure/logging/logger";
 import { createPool } from "@/shared/infrastructure/postgres/pool";
 import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
 import { loadConfig } from "./config";
 import {
+  buildAlertSource,
   buildDefinitions,
+  buildJobStore,
   buildMedia,
   buildNotifications,
   buildReview,
@@ -35,10 +34,7 @@ function main(): void {
     logger,
   });
   // A job going dead enqueues its grouped alert in the same transaction (decisions/0029).
-  const store = new PgJobStore(pool, systemClock, {
-    leaseSeconds: config.worker.leaseSeconds,
-    deadAlert: { type: EMAIL_JOB_TYPES.jobAlert, maxAttempts: EMAIL_JOB_MAX_ATTEMPTS },
-  });
+  const store = buildJobStore(config, pool);
   const uow = new PgUnitOfWorkFactory(pool);
   const queue = new PgJobQueue(systemIdGenerator, systemClock);
   const audit = new PgAuditLog();
@@ -51,7 +47,7 @@ function main(): void {
     config,
     pool,
     submissions,
-    new ReviewAlertSource(review, { to: config.alertEmail, publicBaseUrl: config.publicBaseUrl }),
+    buildAlertSource(config, review),
   );
   const worker = new Worker(
     { store, queue, uow, clock: systemClock, logger },

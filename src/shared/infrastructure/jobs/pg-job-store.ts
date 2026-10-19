@@ -43,7 +43,8 @@ function ageSeconds(now: Date, then: Date): number {
  */
 export class PgJobStore {
   readonly leaseSeconds: number;
-  private readonly deadAlert: DeadAlertOptions | undefined;
+  /** The alert a job going dead enqueues; none without it. */
+  readonly deadAlert: DeadAlertOptions | undefined;
 
   constructor(
     private readonly pool: Pool,
