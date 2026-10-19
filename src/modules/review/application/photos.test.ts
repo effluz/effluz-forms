@@ -401,4 +401,30 @@ describe("choosePhoto", () => {
     expect(deps.stories.rows.get(story.submissionId)?.chosen).toEqual([p1, p2]);
     expect(await readinessOf(deps, story.formId)).toMatchObject({ photosEdited: true });
   });
+
+  it("records photos edited reading as done again when a choice restores the edited set", async () => {
+    const deps = makeReviewDeps();
+    const story = await seedStory(deps);
+    const [p1] = story.photoIds;
+    await choose(deps, story.formId, p1, true);
+    await setCheck(deps, OWNER, {
+      formId: story.formId,
+      reference: "ST-0001",
+      check: "photos_edited",
+      value: true,
+    });
+    const automatic = () =>
+      auditOf(deps, "story_check_changed")
+        .map((e) => e.details)
+        .filter((d) => d.automatic === true);
+
+    await choose(deps, story.formId, p1, false);
+    await choose(deps, story.formId, p1, true);
+
+    expect(automatic()).toEqual([
+      { check: "photos_edited", value: false, automatic: true },
+      { check: "photos_edited", value: true, automatic: true },
+    ]);
+    expect(await readinessOf(deps, story.formId)).toMatchObject({ photosEdited: true });
+  });
 });

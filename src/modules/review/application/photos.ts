@@ -209,7 +209,8 @@ async function photoOrigin(
 
 /**
  * Writes the new chosen set, sorted and unique. When the change makes "Photos edited"
- * stop reading as done, records the automatic clear in the same unit of work.
+ * stop or start again reading as done, records that automatic change in the same unit
+ * of work.
  */
 async function writeChoice(
   deps: ReviewDeps,
@@ -222,7 +223,8 @@ async function writeChoice(
   const next: StoryRow = { ...story, chosen: normalizeIds(chosen) };
   await deps.stories.save(uow, next, now);
   const editedBefore = readiness(story).photosEdited;
-  if (editedBefore && !readiness(next).photosEdited)
+  const editedAfter = readiness(next).photosEdited;
+  if (editedBefore !== editedAfter)
     await deps.audit.record(
       uow,
       {
@@ -230,7 +232,7 @@ async function writeChoice(
         actorEmail: actor.email,
         targetId: story.submissionId,
         ip: actor.ip,
-        details: { check: "photos_edited", value: false, automatic: true },
+        details: { check: "photos_edited", value: editedAfter, automatic: true },
       },
       now,
     );
