@@ -86,7 +86,12 @@ function nameOf(snapshot: string): string {
   return quoted === undefined ? "" : (JSON.parse(quoted) as string);
 }
 
-/** The element that has focus, or null when focus is on the page itself. */
+/**
+ * The element that has focus, or null when focus is on the page itself. On the first visit to an
+ * element, `ring` compares its outline and box shadow with focus and without it (focus moved
+ * away, then back): it holds only when focus changes them to a visible indicator the page draws.
+ * The browser's own `outline: auto` and a box shadow the element always has do not count.
+ */
 async function focused(page: Page): Promise<Stop | null> {
   const info = await page.evaluate(() => {
     const el = document.activeElement;
@@ -94,15 +99,24 @@ async function focused(page: Page): Promise<Stop | null> {
     const seen = el.hasAttribute("data-e2e-stop");
     if (!seen)
       el.setAttribute("data-e2e-stop", String(document.querySelectorAll("[data-e2e-stop]").length));
-    const style = getComputedStyle(el);
-    const outline = style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0;
+    const indicator = () => {
+      const s = getComputedStyle(el);
+      const outline =
+        s.outlineStyle !== "none" && s.outlineStyle !== "auto" && parseFloat(s.outlineWidth) > 0;
+      return {
+        key: [s.outlineStyle, s.outlineWidth, s.outlineColor, s.outlineOffset, s.boxShadow].join(
+          " ",
+        ),
+        visible: outline || s.boxShadow !== "none",
+      };
+    };
     const form = el.closest("form");
-    return {
+    const stop = {
       tag: el.tagName.toLowerCase(),
       type: el.getAttribute("type"),
       href: el.getAttribute("href"),
       text: el.textContent,
-      ring: outline || style.boxShadow !== "none",
+      ring: false,
       day: el.closest("[data-day]")?.getAttribute("data-day") ?? null,
       action: form?.getAttribute("action") ?? null,
       job: form?.querySelector<HTMLInputElement>('input[name="job"]')?.value ?? null,
@@ -119,6 +133,20 @@ async function focused(page: Page): Promise<Stop | null> {
       mark: el.getAttribute("data-e2e-stop") ?? "",
       seen,
     };
+    // Once per element: focusing a date field again sends focus back to its first part. Focus
+    // moves to a probe rather than through blur(), which leaves a date field focused.
+    if (!seen) {
+      const withFocus = indicator();
+      const probe = document.createElement("span");
+      probe.tabIndex = -1;
+      document.body.append(probe);
+      probe.focus({ preventScroll: true });
+      const without = indicator();
+      el.focus({ preventScroll: true });
+      probe.remove();
+      stop.ring = withFocus.visible && withFocus.key !== without.key;
+    }
+    return stop;
   });
   if (info === null) return null;
   // A role-less element (a `<summary>`) has no quoted name in the snapshot: its text names it.
