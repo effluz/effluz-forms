@@ -12,16 +12,19 @@
   overflow-wrap: anywhere;
 }
 
-/* A list of chosen options: space.1 between items. */
+/* A list of chosen options: space.1 between items, indented by space.5. */
 .answerList {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin: 0;
-  padding-left: 20px;
+  padding-left: 24px;
 }
 
-/* Secondary text beside an answer, such as the consent text version: color.text.muted (6.2:1). */
+/*
+ * Secondary text beside an answer, such as the consent text version: color.text.muted (6.2:1),
+ * font.size.staff.small.
+ */
 .answerMeta {
   display: block;
   color: #774c60;
@@ -35,7 +38,10 @@
   color: #774c60;
 }
 
-/* A section field's title inside the answers: font.size.staff.heading, font.weight.semibold. */
+/*
+ * A section field's title inside the answers: font.size.staff.heading, font.weight.semibold,
+ * font.lineHeight.heading.
+ */
 .answerHeading {
   margin: 0;
   font-size: 18px;
@@ -50,6 +56,7 @@
 .photoTile {
   display: flex;
   flex-direction: column;
+  /* space.1 */
   gap: 4px;
   /* size.photoTile */
   width: 160px;
@@ -82,7 +89,10 @@
   border: 2px solid #372549;
 }
 
-/* Readiness checks: a list of three rows, an icon, the check's name, then Done or Missing. */
+/*
+ * Readiness checks: a list of three rows, an icon, the check's name, then Done or Missing;
+ * space.2 between rows and inside a row.
+ */
 .checks {
   display: flex;
   flex-direction: column;
@@ -99,7 +109,7 @@
   gap: 8px;
 }
 
-/* The icon is 20 px. */
+/* The icon: size.iconSmall (20 px). */
 .checkIcon {
   flex: none;
   width: 20px;
@@ -115,7 +125,10 @@
   color: #7a4b00;
 }
 
-/* The check's name and its Done or Missing words, which carry the state with the icon. */
+/*
+ * The check's name and its Done or Missing words, which carry the state with the icon:
+ * font.weight.medium.
+ */
 .checkWords {
   font-weight: 500;
 }
@@ -126,6 +139,7 @@
   flex-direction: column;
   /* space.2 stacked, space.4 once side by side */
   gap: 8px;
+  /* space.3 and space.4 */
   padding: 12px 16px;
   /* color.border.default */
   border-bottom: 1px solid #eff0f5;
@@ -158,23 +172,29 @@
 }
 
 /*
- * Focus and hover on today's row: the shared focus ring (color.border.focus, #b75d69) and link
+ * Focus and hover on today's row: the shared focus ring (color.focus.ring, #b75d69) and link
  * hover (#b75d69) are 2.93:1 on surface.selected, below the 3:1 (ring) and 4.5:1 (text) AA
- * floors. Both use color.text.default here (12.1:1).
+ * floors. Both use color.text.default here (12.1:1). The shell's own rule (`.shell a:focus-visible`
+ * in manager.module.css, a class, a pseudo-class and an element) is a different CSS module, so
+ * this one names the row twice over (`.weekRow.weekToday`: two classes) to win whatever the
+ * stylesheet order is.
  */
-.weekToday a:focus-visible,
-.weekToday button:focus-visible {
+.weekRow.weekToday a:focus-visible,
+.weekRow.weekToday button:focus-visible {
   /* color.text.default */
   outline-color: #1a1423;
 }
 
 /* dayLink marks the row's text links (the shared link class is not visible to this module). */
-.weekToday .dayLink:hover {
+.weekRow.weekToday .dayLink:hover {
   /* color.text.default */
   color: #1a1423;
 }
 
-/* The day's date is a heading for screen-reader navigation and looks like the row's other text. */
+/*
+ * The day's date is a level 2 heading for screen-reader navigation and looks like the row's
+ * other text (it inherits the font, so it takes font.size.staff.body and the row's weight).
+ */
 .weekDate {
   margin: 0;
   font: inherit;
@@ -197,7 +217,10 @@
   border-bottom: 0;
 }
 
-/* The day on the left: weekday and date at font.weight.medium; a fixed share once side by side. */
+/*
+ * The day on the left: weekday and date at font.weight.medium, space.1 apart; a fixed share
+ * (a layout width, not a token) once side by side.
+ */
 .weekDay {
   display: flex;
   flex-direction: column;
@@ -217,7 +240,7 @@
   font-weight: 600;
 }
 
-/* The day's content on the right: space.3 between its blocks. */
+/* The day's content on the right: space.3 between its blocks (a layout width, not a token). */
 .weekContent {
   display: flex;
   flex: 1 1 auto;
@@ -234,6 +257,7 @@
   min-width: 0;
 }
 
+/* The reference and label: space.1 and space.3 gaps. */
 .storyHead {
   display: flex;
   flex-wrap: wrap;
@@ -243,6 +267,7 @@
   overflow-wrap: anywhere;
 }
 
+/* font.weight.medium */
 .storyRef {
   font-weight: 500;
 }
@@ -255,7 +280,7 @@
   overflow-wrap: anywhere;
 }
 
-/* "Ready" or "Not ready: n of 3 done" above the checks. */
+/* "Ready" or "Not ready: n of 3 done" above the checks: font.weight.medium. */
 .checkSummary {
   margin: 0;
   font-weight: 500;
@@ -271,6 +296,7 @@
   list-style: none;
 }
 
+/* A published story: space.1 and space.3 gaps. */
 .publishedItem {
   display: flex;
   flex-wrap: wrap;
@@ -279,7 +305,7 @@
   overflow-wrap: anywhere;
 }
 
-/* The outward icon of an external link, 16 px (components.md, "Link"). */
+/* The outward icon of an external link: size.iconInline (16 px), space.1 before it (components.md, "Link"). */
 .externalIcon {
   width: 16px;
   height: 16px;
@@ -293,7 +319,7 @@
   color: #774c60;
 }
 
-/* The week's navigation: the week's name, then three secondary buttons; space.3 gap. */
+/* The week's navigation: the week's name, then three secondary buttons; space.2 and space.4 gaps. */
 .weekNav {
   display: flex;
   flex-wrap: wrap;
@@ -302,6 +328,7 @@
   margin: 0 0 16px;
 }
 
+/* font.size.staff.heading, font.weight.semibold */
 .weekTitle {
   flex: 1 1 auto;
   margin: 0;
@@ -309,11 +336,12 @@
   font-weight: 600;
 }
 
-/* A section of the page under the week: space.5 above, space.3 below its heading. */
+/* A section of the page under the week: space.6 above. */
 .planSection {
   margin: 32px 0 0;
 }
 
+/* A section heading and its count: space.1 and space.4 gaps, space.3 below. */
 .planHeading {
   display: flex;
   flex-wrap: wrap;
@@ -322,14 +350,18 @@
   margin: 0 0 12px;
 }
 
+/* font.size.staff.heading, font.weight.semibold, font.lineHeight.heading */
 .planHeading h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.3;
 }
 
-/* "Choose a story for <date>": a card on surface.selected with a border, so it stands out. */
+/*
+ * "Choose a story for <date>": a card on surface.selected with a border, so it stands out;
+ * space.3 below, space.3 and space.4 padding, font.weight.medium.
+ */
 .pickNotice {
   margin: 0 0 12px;
   padding: 12px 16px;
@@ -345,7 +377,10 @@
   color: inherit;
 }
 
-/* Operations: a card per block; color.surface.card, color.border.default, radius.md, space.4. */
+/*
+ * Operations: a card per block; color.surface.card, color.border.default, radius.md, space.4
+ * padding, space.2 gaps, space.5 below.
+ */
 .opsCard {
   display: flex;
   flex-direction: column;
@@ -357,13 +392,17 @@
   background: #ffffff;
 }
 
+/* font.size.staff.heading, font.weight.semibold */
 .opsCard h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
 }
 
-/* The heartbeat's age and its status word: the words carry the state beside the badge colour. */
+/*
+ * The heartbeat's age and its status word: the words carry the state beside the badge colour;
+ * space.2 and space.3 gaps.
+ */
 .heartbeatLine {
   display: flex;
   flex-wrap: wrap;
@@ -373,7 +412,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* One dead job's controls: Retry, then Discard with its reason; space.2 gaps. */
+/*
+ * One dead job's controls: Retry, then Discard with its reason; space.3 gap, and a layout
+ * minimum width (not a token) so the reason field stays usable.
+ */
 .rowActions {
   display: flex;
   flex-direction: column;
@@ -381,6 +423,7 @@
   min-width: 220px;
 }
 
+/* space.2 */
 .rowForm {
   display: flex;
   flex-direction: column;
@@ -388,7 +431,10 @@
   margin: 0;
 }
 
-/* A refused discard's message under its input: color.text.error (6.6:1 on cards); the words carry it. */
+/*
+ * A refused discard's message under its input: color.text.error (6.6:1 on cards),
+ * font.weight.medium; the words carry it.
+ */
 .fieldError {
   margin: 0;
   color: #9b1c1c;
@@ -399,7 +445,7 @@
   color: inherit;
 }
 
-/* "Retry all of type" buttons above the table: space.3 gap. */
+/* "Retry all of type" buttons above the table: space.3 gap, space.4 below. */
 .bulkActions {
   display: flex;
   flex-wrap: wrap;
@@ -431,13 +477,16 @@
   gap: 8px 16px;
 }
 
-/* The tab's <h2>: font.size.staff.heading, font.weight.semibold; it takes the free width. */
+/*
+ * The tab's <h2>: font.size.staff.heading, font.weight.semibold, font.lineHeight.heading; it
+ * takes the free width.
+ */
 .heading {
   flex: 1 1 auto;
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.3;
 }
 
 /* The total: color.text.muted, tabular numbers. */
@@ -447,7 +496,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* A chip group: its label, then the chips; space.2 gaps. */
+/* A chip group: its label, then the chips; space.2 and space.3 gaps. */
 .chipGroup {
   display: flex;
   flex-wrap: wrap;
@@ -455,11 +504,13 @@
   gap: 8px 12px;
 }
 
+/* font.size.staff.label, font.weight.medium */
 .chipGroupLabel {
   font-size: 14px;
   font-weight: 500;
 }
 
+/* space.2 between chips */
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -470,8 +521,9 @@
 }
 
 /*
- * Chip (filter): at least 32 px tall (a bilingual label stacks to two lines), radius.sm,
- * color.surface.subtle, 1 px border, space.3 padding, font.weight.medium.
+ * Chip (filter): at least size.pointerTargetMin (32 px) tall (a bilingual label stacks to two
+ * lines), radius.sm, color.surface.subtle, border.width.default, space.1 and space.3 padding,
+ * space.2 gap, font.size.staff.label, font.weight.medium, font.lineHeight.heading.
  */
 .chip {
   display: inline-flex;
@@ -502,6 +554,7 @@
   background: #eacdc2;
 }
 
+/* font.weight.semibold */
 .chipCheck {
   flex: none;
   font-weight: 600;
@@ -522,6 +575,7 @@
   margin: 0;
 }
 
+/* space.2 between a label and its control; the widths are layout, not tokens. */
 .filterField {
   display: flex;
   flex: 1 1 160px;
@@ -530,7 +584,7 @@
   max-width: 320px;
 }
 
-/* The two date fields under one label: space.2 and space.3 gaps. */
+/* The two date fields under one label: space.2 and space.3 gaps; the width is layout. */
 .dates {
   display: flex;
   flex: 2 1 340px;
@@ -544,7 +598,7 @@
   gap: 8px 12px;
 }
 
-/* A group of choices (export dialog): no browser border; the legend styled as a field label. */
+/* A group of choices (export dialog): no browser border, space.5 below; the legend styled as a field label. */
 .fieldset {
   min-width: 0;
   margin: 0 0 24px;
@@ -552,6 +606,7 @@
   border: 0;
 }
 
+/* space.2 below, font.size.staff.label, font.weight.medium, font.lineHeight.label */
 .legend {
   margin: 0 0 8px;
   padding: 0;
@@ -560,7 +615,7 @@
   line-height: 1.4;
 }
 
-/* One radio or checkbox and its label: a size.touchTarget row, space.2 gap, a 24 px control. */
+/* One radio or checkbox and its label: a size.touchTarget (44 px) row, space.2 gap, a size.iconDefault (24 px) control. */
 .choice {
   display: flex;
   align-items: center;
@@ -577,19 +632,19 @@
   accent-color: #372549;
 }
 
-/* "Include file paths" sits apart from the two groups above it: space.2. */
+/* "Include file paths" sits apart from the two groups above it: space.2 below. */
 .exportPaths {
   margin: 0 0 8px;
 }
 
-/* The personal-data notice: color.text.default at font.size.staff.small. */
+/* The personal-data notice: color.text.default at font.size.staff.small, font.lineHeight.small, space.5 below. */
 .notice {
   margin: 0 0 24px;
   font-size: 13px;
   line-height: 1.5;
 }
 
-/* The refusal to export: color.text.error (6.6:1 on cards), font.weight.medium; the words carry it. */
+/* The refusal to export: color.text.error (6.6:1 on cards), font.weight.medium, space.5 below; the words carry it. */
 .refusal {
   margin: 0 0 24px;
   color: #9b1c1c;
@@ -613,11 +668,12 @@
   font-weight: 500;
 }
 
-/* The received time in the form's zone, UTC beneath it in color.text.muted; tabular numbers. */
+/* The received time in the form's zone, UTC beneath it in color.text.muted; tabular numbers (font.features.tabularNumbers). */
 .received {
   font-variant-numeric: tabular-nums;
 }
 
+/* color.text.muted, font.size.staff.small, font.lineHeight.small */
 .utc {
   display: block;
   color: #774c60;
@@ -630,13 +686,14 @@
   color: #774c60;
 }
 
-/* The files cell: the 20 px camera icon, then the count; space.1 gap. */
+/* The files cell: the size.iconSmall (20 px) camera icon, then the count; space.1 gap. */
 .files {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 
+/* size.iconSmall */
 .fileIcon {
   flex: none;
   width: 20px;
@@ -659,6 +716,7 @@
   margin: 0;
 }
 
+/* space.2 and space.4 gaps */
 .emptyLinks {
   display: flex;
   flex-wrap: wrap;
@@ -667,7 +725,7 @@
   overflow-wrap: anywhere;
 }
 
-/* The pager: "Page n of total", then Newer and Older as secondary buttons; space.3 gap. */
+/* The pager: "Page n of total", then Newer and Older as secondary buttons; space.2 and space.4 gaps. */
 .pager {
   display: flex;
   flex-wrap: wrap;
@@ -681,6 +739,7 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* space.3 between the buttons */
 .pagerLinks {
   display: flex;
   flex-wrap: wrap;

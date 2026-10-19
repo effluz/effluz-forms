@@ -14,7 +14,7 @@ with a 2 px offset.
 - Variants: primary, secondary, tertiary, destructive. One primary per view.
 - Height 48 px public, 40 px staff; padding `space.4` horizontal; radius
   `radius.md`; label `font.size.*.button` at weight medium; optional leading
-  icon 20 px.
+  icon `size.iconSmall` (20 px).
 - Full width below `breakpoint.sm` on public. Never full width on staff.
 - Loading: label stays, spinner replaces the icon slot, button is disabled
   and announces "busy".
@@ -37,7 +37,7 @@ with a 2 px offset.
   background `surface.card`; border 1 px `border.input`; focus adds 2 px
   `border.inputFocus` plus the ring.
 - Label above, weight medium, `space.2` gap; help below the label in
-  `text.muted`; error below the control in `text.error` with a 16 px icon.
+  `text.muted`; error below the control in `text.error` with a `size.iconInline` (16 px) icon.
 - Invalid: border `border.error`, `aria-invalid`, message linked by
   `aria-describedby`.
 - Read-only: `surface.subtle` background, no border change, cursor default.
@@ -89,7 +89,7 @@ with a 2 px offset.
 
 - Height 24 px, padding `space.2` horizontal, radius `radius.sm`, weight
   medium, small size. Variants map to functional colors plus neutral
-  (`surface.subtle` with `text.default`). Always text; optional 16 px icon.
+  (`surface.subtle` with `text.default`). Always text; optional `size.iconInline` (16 px) icon.
 - Status badges: New neutral, Viewed neutral, Edited warning, Published
   success, Draft neutral, Published form success, Closed warning, Archived
   neutral.
@@ -102,7 +102,7 @@ with a 2 px offset.
 ## Alert and banner
 
 - Full-width block, radius `radius.md`, padding `space.4`, functional
-  background and foreground, a 20 px icon, a heading in weight medium, body
+  background and foreground, a `size.iconSmall` (20 px) icon, a heading in weight medium, body
   text, optional action as a tertiary button. Banners at the top of a page
   are not dismissible when they report a system problem.
 
@@ -199,7 +199,7 @@ with a 2 px offset.
 
 ## Readiness checks
 
-- A list of three rows, each an icon (check or cross, 20 px), the check's
+- A list of three rows, each an icon (check or cross, `size.iconSmall`, 20 px), the check's
   name, then "Done" or "Missing" in text. On `surface.card` the icon and the
   words are `color.text.success` for done and `color.text.warning` for
   missing (both at least 4.5:1); the words and the icon carry the state, the
