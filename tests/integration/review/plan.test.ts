@@ -13,7 +13,7 @@ import { emptyStory } from "@/modules/review/application/ports/story-repository"
 import { OWNER } from "@/modules/review/application/testing/fixtures";
 import { PgStoryRepository } from "@/modules/review/infrastructure/pg-story-repository";
 import { PgUnitOfWorkFactory } from "@/shared/infrastructure/postgres/unit-of-work";
-import { testPool, truncateAll } from "../db";
+import { testPool, truncateAll, waitForLockWaiters } from "../db";
 import { seedPublishedForm } from "../submissions/factories";
 import { seedStoredStory } from "./factories";
 import { pgReviewDeps } from "./wiring";
@@ -79,20 +79,73 @@ describe("planning in Postgres", () => {
     resolution = "",
   ) => planStory(review, OWNER, { formId, reference, date, resolution });
 
+  /**
+   * Stories whose first day lock holds its unit of work open: `taken` settles once that lock
+   * is held, and the unit of work goes on only after `release`. Later day locks pass through.
+   */
+  function holdingFirstDayLock() {
+    let release = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let signal = () => {};
+    const taken = new Promise<void>((resolve) => {
+      signal = resolve;
+    });
+    let first = true;
+    const repository: StoryRepository = {
+      find: (id) => stories.find(id),
+      lockOrCreate: (uow, id, form) => stories.lockOrCreate(uow, id, form),
+      lockDay: async (uow, date) => {
+        const holder = await stories.lockDay(uow, date);
+        if (first) {
+          first = false;
+          signal();
+          await released;
+        }
+        return holder;
+      },
+      save: (uow, row, at) => stories.save(uow, row, at),
+    };
+    return { repository, taken, release };
+  }
+
+  /**
+   * Runs `first` until it holds its first day lock, starts `second`, waits until `second`
+   * blocks on a lock `first` holds, then lets `first` go on: the two always overlap.
+   */
+  async function race<A, B>(
+    hold: ReturnType<typeof holdingFirstDayLock>,
+    first: () => Promise<A>,
+    second: () => Promise<B>,
+  ): Promise<[A, B]> {
+    const one = first();
+    try {
+      await hold.taken;
+      const two = second();
+      await waitForLockWaiters(pool);
+      hold.release();
+      return await Promise.all([one, two]);
+    } finally {
+      hold.release();
+    }
+  }
+
   it("two planners racing for one day: one wins, one is asked", async () => {
     const { formId, a, b } = await twoStories();
 
-    const results = await Promise.all([
-      plan(deps(), formId, a.reference, DAY),
-      plan(deps(), formId, b.reference, DAY),
-    ]);
+    const hold = holdingFirstDayLock();
 
-    const won = results.filter((r) => r.ok);
-    const asked = results.filter((r) => !r.ok);
-    expect(won).toEqual([{ ok: true, plannedOn: DAY }]);
-    const winner = results[0].ok ? a : b;
-    expect(asked).toEqual([
-      { ok: false, code: "conflict", date: DAY, other: winner.reference, canSwap: false },
+    const results = await race(
+      hold,
+      () => plan({ ...deps(), stories: hold.repository }, formId, a.reference, DAY),
+      () => plan(deps(), formId, b.reference, DAY),
+    );
+
+    // B waited on A's day lock, so it finds A on the day and is asked.
+    expect(results).toEqual([
+      { ok: true, plannedOn: DAY },
+      { ok: false, code: "conflict", date: DAY, other: a.reference, canSwap: false },
     ]);
     const { rows } = await pool.query<{ n: number }>(
       "select count(*)::int as n from story where planned_on = $1::date",
@@ -106,10 +159,13 @@ describe("planning in Postgres", () => {
     await setPlanned(formId, a.submissionId, "2026-10-20");
     await setPlanned(formId, b.submissionId, DAY);
 
-    const results = await Promise.all([
-      plan(deps(), formId, a.reference, DAY, "swap"),
-      plan(deps(), formId, b.reference, "2026-10-20", "swap"),
-    ]);
+    const hold = holdingFirstDayLock();
+
+    const results = await race(
+      hold,
+      () => plan({ ...deps(), stories: hold.repository }, formId, a.reference, DAY, "swap"),
+      () => plan(deps(), formId, b.reference, "2026-10-20", "swap"),
+    );
 
     expect(results).toEqual([
       { ok: true, plannedOn: DAY },
@@ -123,15 +179,20 @@ describe("planning in Postgres", () => {
     const { formId, a, b } = await twoStories();
     await setPlanned(formId, b.submissionId, DAY);
 
-    const [planned, corrected] = await Promise.all([
-      plan(deps(), formId, a.reference, DAY, "move"),
-      saveCorrection(deps(), OWNER, {
-        formId,
-        reference: b.reference,
-        fieldKey: "f_name",
-        text: "Bea Prueba.",
-      }),
-    ]);
+    const hold = holdingFirstDayLock();
+
+    // The curation waits on the holder's story row, which the planner locked with the day.
+    const [planned, corrected] = await race(
+      hold,
+      () => plan({ ...deps(), stories: hold.repository }, formId, a.reference, DAY, "move"),
+      () =>
+        saveCorrection(deps(), OWNER, {
+          formId,
+          reference: b.reference,
+          fieldKey: "f_name",
+          text: "Bea Prueba.",
+        }),
+    );
 
     expect(planned).toEqual({ ok: true, plannedOn: DAY });
     expect(corrected).toEqual({ ok: true, changed: true });
@@ -142,6 +203,36 @@ describe("planning in Postgres", () => {
       [b.submissionId],
     );
     expect(rows[0]?.curated).toEqual({ f_name: "Bea Prueba." });
+  });
+
+  it("planning a story against its own curation both complete", async () => {
+    const { formId, a } = await twoStories();
+    await setPlanned(formId, a.submissionId, "2026-10-20");
+    const hold = holdingFirstDayLock();
+
+    // The planner holds A's own day with A's story row, then wants A's submission row; the
+    // curation holds that submission row and waits on the story row. Postgres breaks the
+    // cycle and the victim runs once more.
+    const [planned, corrected] = await race(
+      hold,
+      () => plan({ ...deps(), stories: hold.repository }, formId, a.reference, DAY),
+      () =>
+        saveCorrection(deps(), OWNER, {
+          formId,
+          reference: a.reference,
+          fieldKey: "f_name",
+          text: "Ana Prueba.",
+        }),
+    );
+
+    expect(planned).toEqual({ ok: true, plannedOn: DAY });
+    expect(corrected).toEqual({ ok: true, changed: true });
+    expect(await plannedOn(a.submissionId)).toBe(DAY);
+    const { rows } = await pool.query<{ curated: Record<string, string> }>(
+      "select curated_answers as curated from submission where id = $1",
+      [a.submissionId],
+    );
+    expect(rows[0]?.curated).toEqual({ f_name: "Ana Prueba." });
   });
 
   it("a swap whose unit of work fails leaves both stories as they were", async () => {
