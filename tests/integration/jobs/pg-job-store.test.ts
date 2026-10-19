@@ -353,6 +353,25 @@ describe("PgJobStore", () => {
       expect((await alerts()).map((r) => r.status)).toEqual(["failed"]);
     });
 
+    it("a death while the hour's alert is running schedules the next hour", async () => {
+      await seed({ type: "media.upload", maxAttempts: 1 });
+      await seed({ type: "media.upload", maxAttempts: 1 });
+      const [a, b] = await claimAll();
+      if (!a || !b) throw new Error("expected two claimed jobs");
+      expect(await alertStore.fail(a, "w1", "boom")).toBe("dead");
+      // The alert has already read its count, so this death needs the next hour's alert.
+      await pool.query("update job set status = 'running', locked_at = $2 where type = $1", [
+        ALERT,
+        NOW,
+      ]);
+      clock.set(new Date("2026-10-10T12:05:00Z"));
+      expect(await alertStore.fail(b, "w1", "boom")).toBe("dead");
+      expect((await alerts()).map((r) => ({ status: r.status, key: r.unique_key }))).toEqual([
+        { status: "running", key: "email.job_alert:media.upload:2026-10-10T12" },
+        { status: "pending", key: "email.job_alert:media.upload:2026-10-10T13" },
+      ]);
+    });
+
     it("keeps types apart", async () => {
       await seed({ type: "media.upload", maxAttempts: 1 });
       await seed({ type: "email.staff_notification", maxAttempts: 1 });

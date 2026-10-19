@@ -52,8 +52,10 @@ async function insertSlot(
 
 /**
  * Enqueues the grouped alert for a job of `jobType` that just went dead, on the
- * caller's transaction. A `failed` alert awaits its retry, so it counts as
- * waiting. Rules: specs/system/jobs.md ("Failure and retry"), decisions/0029.
+ * caller's transaction. A `pending` alert, or a `failed` one awaiting its retry,
+ * counts as waiting; a `running` one has already read its count, so it counts as
+ * finished and the death schedules the next hour. Rules: specs/system/jobs.md
+ * ("Failure and retry"), decisions/0029.
  */
 export async function raiseDeadAlert(
   client: PoolClient,
@@ -64,7 +66,7 @@ export async function raiseDeadAlert(
   const { current, next } = deadAlertSlots(alert.type, jobType, now);
   const res = await client.query<{ total: number; waiting: number }>(
     `select count(*)::int as total,
-            count(*) filter (where status in ('pending','running','failed'))::int as waiting
+            count(*) filter (where status in ('pending','failed'))::int as waiting
        from job where unique_key = $1`,
     [current.key],
   );
