@@ -265,9 +265,11 @@ describe("review without script", () => {
     const asked = await staff.get(conflict.location ?? secondPath);
     expect(textOf(asked.html)).toContain(`HP-0001 ya está planificada para el ${day}.`);
 
+    expect(asked.html).toContain('name="expected" value="HP-0001"');
     const moved = await staff.post(`${secondPath}/plan`, {
       date: day,
       resolution: "move",
+      expected: "HP-0001",
       back: "",
     });
     expect(moved.status).toBe(303);
