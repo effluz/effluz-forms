@@ -233,7 +233,9 @@ describe("review without script", () => {
       back: "",
     });
     expect(refused.status).toBe(303);
-    expect(refused.location).toBe(`${path}?edit=story&error=correction_too_long&n=20000`);
+    expect(refused.location).toBe(
+      `${path}?edit=story&error=correction_too_long&n=20000#answer-story`,
+    );
     expect(
       await count("select count(*)::int as n from submission_edit where submission_id = $1", [
         submissionId,
