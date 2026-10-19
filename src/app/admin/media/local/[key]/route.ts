@@ -34,8 +34,10 @@ export async function GET(
   const { session, container } = guarded;
   if (container.config.media.provider !== "local") return plain(404);
   const storedKey = decoded(key);
-  const type = TYPES[storedKey?.slice(storedKey.lastIndexOf(".") + 1) ?? ""];
-  if (storedKey === null || type === undefined) return plain(404);
+  const extension = storedKey?.slice(storedKey.lastIndexOf(".") + 1) ?? "";
+  if (storedKey === null || !Object.hasOwn(TYPES, extension)) return plain(404);
+  const type = TYPES[extension];
+  if (type === undefined) return plain(404);
 
   const file = await openLocalVideo(container.review, actorOf(session, request), storedKey);
   if (file === null) return plain(404);

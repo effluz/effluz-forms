@@ -16,13 +16,17 @@ export function backQuery(form: FormData): ListQuery {
 /** The story page's own keys a route sends back. */
 export type StoryReturnParams = Partial<Omit<StoryParams, "query">>;
 
-/** The story page path from the route's params and the posted `back` query (parsed with parseListQuery, so nothing else survives). */
+/**
+ * The story page path from the route's params and the posted `back` query (parsed with
+ * parseListQuery, so nothing else survives), ending in `#<hash>` when the page should land
+ * on a part of it.
+ */
 export function storyReturn(
   formId: string,
   reference: string,
   form: FormData,
   story?: StoryReturnParams,
-  hash?: "photos" | "readiness" | "plan",
+  hash?: string,
 ): string {
   const path = storyPath(formId, reference, backQuery(form), story);
   return hash === undefined ? path : `${path}#${hash}`;

@@ -1,6 +1,7 @@
 import { seeOther, text } from "@/app/admin/_lib/request";
 import { deleteStory } from "@/modules/review/application";
 import { listHref } from "@/modules/review/presentation/list-view";
+import { STORY_DIALOG_ID } from "@/modules/review/presentation/story-params";
 import {
   backQuery,
   guardStoryPost,
@@ -37,6 +38,7 @@ export async function POST(request: Request, context: StoryRouteContext): Promis
       reference,
       form,
       result.code === "reference_mismatch" ? { action: "delete", error: result.code } : {},
+      result.code === "reference_mismatch" ? STORY_DIALOG_ID : undefined,
     ),
   );
 }

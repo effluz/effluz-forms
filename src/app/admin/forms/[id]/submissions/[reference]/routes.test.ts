@@ -230,16 +230,18 @@ describe("POST .../correction", () => {
     expect(curation()?.curatedAnswers).toEqual({ f_name: "Ana Corregida" });
   });
 
-  it("correction returns a refusal with edit=<field>&error=<code>", async () => {
+  it("correction returns a refusal with edit=<field>&error=<code>#answer-<field>", async () => {
     const res = await send(correctionPost, "correction", { field: "f_name", text: "   " });
-    expect(location(res)).toBe(storyAt("edit=f_name&error=correction_blank"));
+    expect(location(res)).toBe(storyAt("edit=f_name&error=correction_blank", "answer-f_name"));
     expect(curation()).toBeUndefined();
   });
 
-  it("correction returns a refusal with n=<max> for too long", async () => {
+  it("correction returns a refusal with n=<max>#answer-<field> for too long", async () => {
     await setUp({ nameMaxLength: 5 });
     const res = await send(correctionPost, "correction", { field: "f_name", text: "Ana Larga" });
-    expect(location(res)).toBe(storyAt("edit=f_name&error=correction_too_long&n=5"));
+    expect(location(res)).toBe(
+      storyAt("edit=f_name&error=correction_too_long&n=5", "answer-f_name"),
+    );
   });
 
   it("correction returns a refusal with the story page for a field that is not curatable", async () => {
@@ -503,6 +505,11 @@ describe("POST .../retry", () => {
     expect(review.jobs.jobs[0]?.status).toBe("pending");
   });
 
+  it("retry with nothing left to retry returns to the story without a flash", async () => {
+    const res = await send(retryPost, "retry", {});
+    expect(location(res)).toBe(storyAt());
+  });
+
   it("retry returns a refusal with the story page for a missing story", async () => {
     const res = await send(retryPost, "retry", {}, "ST-0404");
     expect(location(res)).toBe(`/admin/forms/${story.formId}/submissions/ST-0404${BACK}`);
@@ -521,9 +528,9 @@ describe("POST .../delete", () => {
     expect(location(res)).toBe(`/admin/forms/${story.formId}?deleted=${REF}`);
   });
 
-  it("delete returns a refusal with action=delete&error=reference_mismatch", async () => {
+  it("delete returns a refusal with action=delete&error=reference_mismatch#story-dialog", async () => {
     const res = await send(deletePost, "delete", { typed: "ST-0002" });
-    expect(location(res)).toBe(storyAt("action=delete&error=reference_mismatch"));
+    expect(location(res)).toBe(storyAt("action=delete&error=reference_mismatch", "story-dialog"));
     expect(review.submissions.submissions.rows.has(story.submissionId)).toBe(true);
   });
 });
@@ -539,6 +546,8 @@ describe("GET .../media/[mediaId]", () => {
 
   it("media serves a thumbnail, a full photo, a download and a video redirect with the headers above", async () => {
     const [p1, p2] = story.photoIds;
+    // What seeding the story recorded; the list below is exactly what the requests add.
+    const seeded = review.audit.entries.length;
     const thumb = await media(p1, "thumb");
     expect(thumb.status).toBe(200);
     expect(thumb.headers.get("Content-Type")).toBe("image/webp");
@@ -567,9 +576,12 @@ describe("GET .../media/[mediaId]", () => {
       "memory://forms/story-form/ST-0001/03-photos.mp4",
     );
     expect(redirect.headers.get("Cache-Control")).toBe("no-store");
-    expect(auditActions()).toEqual(
-      expect.arrayContaining(["photo_viewed", "media_downloaded", "photo_viewed"]),
-    );
+    // The thumbnail is not audited; the full photo and the video are views, the download a download.
+    expect(auditActions().slice(seeded)).toEqual([
+      "photo_viewed",
+      "media_downloaded",
+      "photo_viewed",
+    ]);
   });
 
   it("media refuses an unknown view with 400 and a missing file with 404", async () => {
