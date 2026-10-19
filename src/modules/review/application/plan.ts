@@ -1,5 +1,6 @@
 import {
   listPostPlanForms,
+  loadVersion,
   type Actor,
   type Form,
   type FormVersion,
@@ -275,10 +276,7 @@ async function toItems(
     const form = byId.get(entry.formId);
     if (!form) continue;
     if (!versions.has(entry.versionId))
-      versions.set(
-        entry.versionId,
-        await deps.submissions.versions.get(deps.definitions, entry.versionId),
-      );
+      versions.set(entry.versionId, await loadVersion(deps.definitions, entry.versionId));
     const version = versions.get(entry.versionId) ?? null;
     items.push({
       formId: entry.formId,
