@@ -110,6 +110,16 @@ describe("review pages", () => {
     expect(listed?.args[0]).toMatchObject({ status: "viewed" });
   });
 
+  it("the overview renders the not-found body in the shell for a missing form, never throwing", async () => {
+    const out = await html(
+      overviewPage.default(props({ id: "00000000-0000-4000-8000-00000000dead" })),
+    );
+    expect(out).toContain("<h1");
+    expect(out).toContain("Form not found");
+    expect(out).toContain('href="/admin/forms"');
+    expect(actions()).not.toContain("submissions_listed");
+  });
+
   it("the overview opens the export dialog from ?export=1", async () => {
     const out = await html(overviewPage.default(props({ id: story.formId }, { export: "1" })));
     expect(out).toContain(`action="/admin/forms/${story.formId}/export"`);
