@@ -231,6 +231,41 @@ describe("unmarkPublished", () => {
     ]);
   });
 
+  it("unmark runs once more when the day's index refuses it", async () => {
+    const deps = makeReviewDeps();
+    const a = await seed(deps);
+    plan(deps, a, "2026-10-20");
+    await mark(deps, a.formId);
+    const b = await seedAnotherStory(deps, a.formId);
+    plan(deps, { formId: a.formId, submissionId: b.submissionId }, "2026-10-20");
+    const lockDay = deps.stories.lockDay.bind(deps.stories);
+    let missed = false;
+    // The first look at the day misses its holder, so the write reaches the unique index.
+    deps.stories.lockDay = async (uow, date) => {
+      const holder = await lockDay(uow, date);
+      if (missed) return holder;
+      missed = true;
+      return null;
+    };
+
+    expect(await unmark(deps, a.formId)).toEqual({
+      ok: true,
+      status: "viewed",
+      movedToWaiting: true,
+      dayHeldBy: "ST-0002",
+    });
+
+    expect(deps.stories.rows.get(a.submissionId)?.plannedOn).toBeNull();
+    expect(deps.stories.rows.get(b.submissionId)?.plannedOn).toBe("2026-10-20");
+    expect(auditOf(deps, "submission_status_changed").map((e) => e.details?.to)).toEqual([
+      "published",
+      "viewed",
+    ]);
+    expect(auditOf(deps, "story_planned").map((e) => e.details)).toEqual([
+      { from: "2026-10-20", to: "none" },
+    ]);
+  });
+
   it("unmark of a story published without a date sends it to waiting", async () => {
     const deps = makeReviewDeps();
     const story = await seed(deps);
