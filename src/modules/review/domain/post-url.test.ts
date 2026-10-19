@@ -22,6 +22,14 @@ describe("post link", () => {
     expect(parsePostUrl(atLimit + "a")).toEqual({ ok: false });
   });
 
+  it("refuses a link that does not start with https:// and its host", () => {
+    expect(parsePostUrl("https:example.com")).toEqual({ ok: false });
+    expect(parsePostUrl("https:/example.com")).toEqual({ ok: false });
+    expect(parsePostUrl("https:///foo")).toEqual({ ok: false });
+    expect(parsePostUrl("https:\\\\x.example/p")).toEqual({ ok: false });
+    expect(parsePostUrl("HTTPS://x.example/p")).toEqual({ ok: true, url: "HTTPS://x.example/p" });
+  });
+
   it("refuses a link with spaces or control characters inside", () => {
     expect(parsePostUrl("https://x.example/a b")).toEqual({ ok: false });
     expect(parsePostUrl("https://x.example/a\nb")).toEqual({ ok: false });
