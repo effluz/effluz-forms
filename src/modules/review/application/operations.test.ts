@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { reviewAuditActions } from "../domain/audit";
-import { discardJob, operationsView, retryAllOfType, retryJob, retryStoryJobs } from "./operations";
+import {
+  OPERATIONS_DEAD_LIMIT,
+  discardJob,
+  operationsView,
+  retryAllOfType,
+  retryJob,
+  retryStoryJobs,
+} from "./operations";
 import { OWNER, seedAnotherStory, seedStory } from "./testing/fixtures";
 import { makeReviewDeps, type FakeReviewDeps } from "./testing/fakes";
 
@@ -66,6 +73,24 @@ describe("operationsView", () => {
 
     expect(view.typesWithMany).toEqual([{ type: "media.upload", count: 2 }]);
     expect(view.dead.map((j) => j.story)).toEqual([null, null, null]);
+  });
+
+  it("offers retry all for a type with one listed job and more beyond the list", async () => {
+    const deps = makeReviewDeps();
+    const at = (minutes: number) => new Date(Date.UTC(2026, 9, 18, 0, minutes));
+    for (let i = 0; i < OPERATIONS_DEAD_LIMIT - 1; i += 1)
+      deps.jobs.add({ type: "media.upload", payload: {}, finishedAt: at(600 + i) });
+    deps.jobs.add({ type: "email.staff_notification", payload: {}, finishedAt: at(500) });
+    deps.jobs.add({ type: "email.staff_notification", payload: {}, finishedAt: at(100) });
+
+    const view = await operationsView(deps);
+
+    expect(view.dead).toHaveLength(OPERATIONS_DEAD_LIMIT);
+    expect(view.dead.filter((j) => j.type === "email.staff_notification")).toHaveLength(1);
+    expect(view.typesWithMany).toEqual([
+      { type: "media.upload", count: OPERATIONS_DEAD_LIMIT - 1 },
+      { type: "email.staff_notification", count: 2 },
+    ]);
   });
 });
 

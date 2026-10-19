@@ -88,14 +88,13 @@ export async function operationsView(deps: ReviewDeps): Promise<OperationsView> 
     })),
   );
 
-  const listed = new Map<string, number>();
-  for (const job of dead) listed.set(job.type, (listed.get(job.type) ?? 0) + 1);
-  // The count on "Retry all" is every dead job of the type, not only the listed ones.
-  const typesWithMany = await Promise.all(
-    [...listed]
-      .filter(([, n]) => n > 1)
-      .map(async ([type]) => ({ type, count: (await deps.jobs.deadOfType(type, 0)).count })),
+  // "Retry all" counts every dead job of a listed type, not only the listed ones, so a type
+  // with one job in the list and more beyond it still offers it.
+  const listed = [...new Set(dead.map((job) => job.type))];
+  const counted = await Promise.all(
+    listed.map(async (type) => ({ type, count: (await deps.jobs.deadOfType(type, 0)).count })),
   );
+  const typesWithMany = counted.filter((t) => t.count > 1);
   typesWithMany.sort((a, b) => b.count - a.count || a.type.localeCompare(b.type));
 
   return {
